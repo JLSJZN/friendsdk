@@ -10,7 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(here, "shots");
 const filter = process.argv[2] ?? "";
 const SCENARIOS = ["thumbs", "nursery", "nursery-prompt", "matchmaker", "matchmaker-buy", "matchmaker-broke", "matchmaker-busy",
-  "matchmaker-brood", "matchmaker-first", "intro-1", "intro-2", "intro-3", "intro-4", "nursery-coach", "shop", "shop-wish", "eggs", "eggs-stocked", "eggs-broke", "hatching", "reveal-common", "reveal-spotted", "reveal-mutant", "reveal-prismatic", "brood", "brood-detail",
+  "matchmaker-brood", "matchmaker-first", "intro-1", "intro-2", "intro-3", "intro-4", "nursery-coach", "shop", "shop-wish", "eggs", "eggs-stocked", "eggs-broke", "hatching", "reveal-common", "reveal-spotted", "reveal-mutant", "reveal-prismatic", "reveal-f3", "brood", "brood-detail",
   "brood-empty", "brood-tabs", "brood-legacy", "brood-legacy-ghost", "brood-legacy-empty", "brood-legacy-detail", "friend-panel",
   "matchmaker-stock", "matchmaker-preferred", "settings", "loading", "error"];
 // Page viewport = frame + its 1px border, so the SDK frame renders at exactly 960 x 640 / 390 x 260 / 360 x 240.

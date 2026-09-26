@@ -71,7 +71,7 @@ export function BroodPanel({ babies, tiers, creature, initialSelectedKey, onRele
       aria-label="Back to your brood"><PixelIcon name="back" /></button>;
     return <Panel eyebrow="Nursery" title={`Your brood · ${babies.length}`} onClose={busy ? undefined : onClose} headerStart={back} size="lg"
       focusKey={selected.key} className="rb-brood rb-brood-detail">
-      <BabyCard baby={selected} mode="detail" chance={tier?.chance ?? "?"} value={tier?.value ?? "?"}
+      <BabyCard baby={selected} mode="detail" chance={tier?.chance ?? "?"} value={tier?.value ?? "?"} creature={creature}
         parentA={selected.parents && creature ? creature(selected.parents[0]) : null}
         parentB={selected.parents && creature ? creature(selected.parents[1]) : null}
         onRelease={() => onRelease(selected)} onUseAsParent={onUseAsParent && (() => onUseAsParent(selected))}

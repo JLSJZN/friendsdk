@@ -119,7 +119,7 @@ function Hatch({ stage, baby }: { stage: "hatching" | "result"; baby: Creature }
   return <>
     <Nursery inert />
     <HatchOverlay stage={stage} canvasRef={setCanvas} onSkip={() => console.log("skip")} onClose={() => console.log("close")}>
-      <BabyCard baby={baby} parentA={creature(baby.parents![0])} parentB={creature(baby.parents![1])} chance={info.chance} value={info.value}
+      <BabyCard baby={baby} parentA={creature(baby.parents![0])} parentB={creature(baby.parents![1])} creature={creature} chance={info.chance} value={info.value}
         onKeep={() => console.log("keep")} onRelease={() => console.log("release")} heartsPerMinute={heartsPerMinute(baby.tier)} keepBonus={5}
         hint={params.has("first") ? `Keep ${baby.name} to breed again (it follows your Friend), or trade it in at the Sanctuary for a fixed ${info.value} (simulated).` : undefined}
         discoveries={discoveriesOf(baby, params.has("first") ? buildCollection([]) : collectionWithout(baby))} />
@@ -222,6 +222,7 @@ const scenarios: Record<string, () => ReactNode> = {
   "reveal-spotted": () => <Hatch stage="result" baby={babies[2]} />,
   "reveal-mutant": () => <Hatch stage="result" baby={babies[0]} />,
   "reveal-prismatic": () => <Hatch stage="result" baby={babies[3]} />,
+  "reveal-f3": () => <Hatch stage="result" baby={babies[5]} />,
   brood: () => <Brood list={babies} />,
   "brood-detail": () => <Brood list={babies} detail={babies[4].key} />,
   "brood-empty": () => <Brood list={[]} />,

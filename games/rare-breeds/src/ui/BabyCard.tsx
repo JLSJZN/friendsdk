@@ -1,4 +1,5 @@
 import { useId, useMemo, useRef, type CSSProperties } from "react";
+import { familyLine, type CreatureLookup } from "../legacy.ts";
 import { FRAME_SIZE, type Creature, type Dna } from "../types.ts";
 import { DnaTrio, mutatedRows } from "./DnaTrio.tsx";
 import { PixelIcon } from "./PixelIcon.tsx";
@@ -10,6 +11,11 @@ export type BabyCardProps = Readonly<{
   /** Resolved parents (from baby.parents keys). Missing parents show as "Parent A" / "Parent B" with a placeholder. */
   parentA?: Creature | null;
   parentB?: Creature | null;
+  /**
+   * Resolves ancestor keys (e.g. the controller's `creature`). From F2 on the card then lists the baby's whole
+   * family line (familyLine in src/legacy.ts) as chips under its two-name family label.
+   */
+  creature?: CreatureLookup;
   /** Preformatted chance of this baby's tier, e.g. "12%". */
   chance: string;
   /** Preformatted fixed Sanctuary value, e.g. "3 RF". */
@@ -73,7 +79,7 @@ function Confetti({ seed }: { seed: string }) {
  * The shareable result card: the baby between its two parents on one 16 row grid (every row traced to the
  * parent it came from), tier, lineage, traits, chance / value / Hearts, and the Keep vs trade-in choice.
  */
-export function BabyCard({ baby, parentA, parentB, chance, value, mode = "reveal", onKeep, onRelease, onUseAsParent, discoveries, hint, heartsPerMinute, keepBonus,
+export function BabyCard({ baby, parentA, parentB, creature, chance, value, mode = "reveal", onKeep, onRelease, onUseAsParent, discoveries, hint, heartsPerMinute, keepBonus,
   busy, busyLabel, error, reducedMotion, className }: BabyCardProps) {
   const id = useId();
   const node = useRef<HTMLElement>(null);
@@ -84,6 +90,11 @@ export function BabyCard({ baby, parentA, parentB, chance, value, mode = "reveal
   const traits = dna?.traits ?? [];
   const reveal = mode === "reveal";
   const hasRate = heartsPerMinute !== undefined;
+  const line = useMemo(() => {
+    if (!creature) return [];
+    const known = new Map([parentA, parentB].filter((parent): parent is Creature => !!parent).map(parent => [parent.key, parent]));
+    return familyLine(baby, key => known.get(key) ?? creature(key));
+  }, [baby, parentA, parentB, creature]);
 
   const keepParts = [keepBonus ? `+${keepBonus} Hearts now` : "", hasRate ? `${heartsPerMinute} Hearts/min` : ""].filter(Boolean);
   const choice = !hasRate ? null : reveal
@@ -112,6 +123,9 @@ export function BabyCard({ baby, parentA, parentB, chance, value, mode = "reveal
               <span className="rb-card-family">{baby.family}</span>
             </p>
           </div>
+          {line.length > 2 && <ul className="rb-card-line" aria-label={`Family line: ${line.join(", ")}`}>
+            {line.map(name => <li key={name}>{name}</li>)}
+          </ul>}
           {discoveries && discoveries.length > 0 && <ul className="rb-card-news" aria-label="New in your collection">
             {discoveries.map(line => <li key={line}><PixelIcon name="sparkle" /><span>{line}</span></li>)}
           </ul>}

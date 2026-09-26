@@ -1816,6 +1816,11 @@
 }
 .rb-card-v2 .rb-card-head > .rb-eyebrow { grid-area: eyebrow; }
 .rb-card-v2 .rb-card-news { grid-area: news; flex-direction: row; flex-wrap: wrap; justify-content: flex-end; gap: 2px 14px; }
+/* From F2 on: the whole family line under the two-name label. */
+.rb-card-v2 .rb-card-head { grid-template-areas: "eyebrow news" "title title" "line line"; }
+.rb-card-line { grid-area: line; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.rb-card-line li { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--rb-rule); border-radius: 3px; font: 700 10px/1 var(--rb-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--rb-muted-2); white-space: nowrap; }
+.rb-card-line li:first-child { border-color: var(--rb-signal); color: var(--rb-signal); }
 .rb-card-titlebar { grid-area: title; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; min-width: 0; }
 .rb-card-v2 .rb-card-name { font-size: 30px; }
 .rb-card-v2 .rb-card-badges { gap: 6px; }
@@ -1869,7 +1874,8 @@
 @container rb (max-height: 300px) {
   .rb-card-v2 .rb-card-scroll { padding: 6px 8px; gap: 6px; }
   .rb-card-v2 .rb-card-head > .rb-eyebrow { display: none; }
-  .rb-card-v2 .rb-card-head { grid-template-areas: "title news"; grid-template-columns: minmax(0, 1fr) auto; }
+  .rb-card-v2 .rb-card-head { grid-template-areas: "title news" "line line"; grid-template-columns: minmax(0, 1fr) auto; }
+  .rb-card-line li { height: 16px; font-size: 9px; padding: 0 4px; }
   .rb-card-titlebar { flex-wrap: nowrap; gap: 8px; }
   .rb-card-v2 .rb-card-family { display: none; }
   .rb-card-v2 .rb-card-name { font-size: 17px; }
@@ -2184,6 +2190,10 @@ button.rb-tree-item:disabled { opacity: .5; cursor: not-allowed; }
   scrollbar-color: var(--rb-rule) transparent;
 }
 .rb-match-v2 .rb-chip-scroll > .rb-pick { flex: none; max-width: 190px; scroll-snap-align: start; }
+.rb-match-v2 .rb-chip-scroll > .rb-pick:has(input[value^="friend:"]) { max-width: 240px; }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-match-v2 .rb-chip-scroll > .rb-pick:has(input[value^="friend:"]) { max-width: 200px; }
+}
 /* Phones: Parent B (the real wild Friends) comes first; a single Parent A sits beside it on short frames. */
 @container rb (max-height: 300px) {
   .rb-match-b-first:not(.rb-match-stacked) .rb-section-a { grid-column: 1; grid-row: 1; }
@@ -2233,4 +2243,46 @@ button.rb-tree-item:disabled { opacity: .5; cursor: not-allowed; }
   .rb-match-foot-stock .rb-stock { min-height: var(--rb-tap); padding: 0 8px; gap: 5px; }
   .rb-match-foot-stock .rb-breed { padding: 0 10px; font-size: 14px; }
   .rb-stock-long, .rb-stock-eggs { display: none; }
+}
+
+.rb-worn-short { display: none; }
+
+/* ---------- Hearts shop v2: the preview is never empty, and on phones the hats come before the wearers ---------- */
+
+.rb-shop-hats.rb-shop-v2 {
+  display: grid;
+  grid-template-columns: minmax(200px, 250px) minmax(0, 1fr);
+  grid-template-areas: "stage grid" "wearers grid";
+  align-items: start;
+  gap: 12px 14px;
+}
+.rb-shop-v2 .rb-shop-stage { grid-area: stage; justify-content: center; }
+.rb-shop-v2 .rb-shop-grid { grid-area: grid; }
+.rb-shop-v2 .rb-shop-wearers { grid-area: wearers; }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-shop-hats.rb-shop-v2 { grid-template-columns: 104px minmax(0, 1fr); grid-template-areas: "stage grid" "wearers wearers"; gap: 8px; align-items: stretch; }
+  .rb-shop-v2 .rb-shop-stage { width: auto; justify-content: center; padding: 6px 4px; }
+  .rb-shop-v2 .rb-shop-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); align-self: start; gap: 4px; }
+  .rb-shop-v2 .rb-shop-item .rb-pick-body { padding: 3px 2px 4px; gap: 2px; }
+  .rb-shop-v2 .rb-shop-item .rb-slot { height: 46px; }
+  .rb-shop-v2 .rb-shop-item-name { display: none; }
+  .rb-shop-v2 .rb-shop-item-state { font-size: 9px; letter-spacing: -.02em; }
+  .rb-shop-v2 .rb-worn-long { display: none; }
+  .rb-shop-v2 .rb-worn-short { display: inline; }
+  .rb-shop-v2 .rb-shop-wearer-list { flex-wrap: nowrap; gap: 4px; margin: -4px; padding: 4px 4px 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--rb-rule) transparent; }
+  .rb-shop-v2 .rb-shop-wearer { flex: none; }
+}
+@container rb (max-height: 300px) {
+  .rb-shop-hats.rb-shop-v2 { grid-template-columns: 92px minmax(0, 1fr); }
+  .rb-shop-v2 .rb-shop-stage figcaption strong { font-size: 11px; }
+}
+
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-tree-sub { margin-left: 16px; padding-left: 12px; }
+  .rb-tree-node > .rb-tree-sub { margin-left: 18px; }
+  .rb-tree-sub > .rb-tree-node::before, .rb-tree-sub > .rb-tree-node::after { left: -12px; }
+  .rb-tree-sub > .rb-tree-node::after { width: 10px; }
+  .rb-tree-item { min-width: 200px; }
+  .rb-tree-rows { min-width: 44px; gap: 4px; }
+  .rb-card-line li { height: 18px; font-size: 9px; padding: 0 5px; }
 }

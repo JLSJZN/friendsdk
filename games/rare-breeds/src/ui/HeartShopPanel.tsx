@@ -118,7 +118,8 @@ export function HeartShopPanel({ hearts, perMinute, wearers, catalog, owned, equ
               <span className="rb-slot"><SpriteThumb creature={Object.freeze({ ...wearer, accessory: item.id })} scale={2} label="" animate={false} /></span>
               <span className="rb-shop-item-name">{item.name}</span>
               <span className={cx("rb-shop-item-state", owned.has(item.id) && "rb-owned")}>
-                {!owned.has(item.id) ? <Hearts amount={item.price} /> : by ? <>On {by.kind === "friend" ? "Friend" : by.name}</> : "Owned"}
+                {!owned.has(item.id) ? <Hearts amount={item.price} /> : by
+                  ? <><span className="rb-worn-long">On {by.kind === "friend" ? "Friend" : by.name}</span><span className="rb-worn-short">Worn</span></> : "Owned"}
               </span>
             </span>
           </label>;

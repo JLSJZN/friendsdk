@@ -18,7 +18,7 @@ export { IntroPanel, type IntroPanelProps } from "./IntroPanel.tsx";
 export { HeartShopPanel, type HeartShopPanelProps, type ShopTab } from "./HeartShopPanel.tsx";
 export { exampleBabies } from "./intro.ts";
 export { CollectionMeter, type CollectionMeterProps } from "./Collection.tsx";
-export { buildCollection, discoveriesOf, familiesOf, EMPTY_COLLECTION, type Collection } from "./collection.ts";
+export { buildCollection, discoveriesOf, familiesOf, familyOf, EMPTY_COLLECTION, type Collection } from "./collection.ts";
 export { LoadingScreen, ErrorScreen, type LoadingScreenProps, type ErrorScreenProps } from "./Screens.tsx";
 export { Toast, type ToastProps } from "./Toast.tsx";
 export { PixelIcon, type PixelIconName } from "./PixelIcon.tsx";
