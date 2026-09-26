@@ -1795,3 +1795,442 @@
   .rb-eggshop-pack { min-height: 36px; padding: 4px; flex-direction: row; flex-wrap: wrap; gap: 3px 6px; }
   .rb-eggshop-eggs { display: none; }
 }
+
+/* ==========================================================================================
+   Polish 2 (UI): DNA trio result card, the Friend's legacy, Matchmaker and shop phone fixes.
+   Appended block. It never edits the rules above; it overrides them with more specific
+   selectors (.rb-card-v2, .rb-match-v2, .rb-shop-v2, ...) so a later merge stays conflict free.
+   ========================================================================================== */
+
+/* ---------- Result card v2: header, DNA trio, facts, Keep vs trade-in line ---------- */
+
+.rb-card.rb-card-v2 { max-width: 700px; }
+.rb-hatch-result > .rb-card.rb-card-v2 { max-width: 700px; }
+.rb-card-v2 .rb-card-scroll { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px 12px; }
+.rb-card-v2 .rb-card-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "eyebrow news" "title title";
+  align-items: center;
+  gap: 4px 14px;
+}
+.rb-card-v2 .rb-card-head > .rb-eyebrow { grid-area: eyebrow; }
+.rb-card-v2 .rb-card-news { grid-area: news; flex-direction: row; flex-wrap: wrap; justify-content: flex-end; gap: 2px 14px; }
+.rb-card-titlebar { grid-area: title; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; min-width: 0; }
+.rb-card-v2 .rb-card-name { font-size: 30px; }
+.rb-card-v2 .rb-card-badges { gap: 6px; }
+.rb-card-v2 .rb-card-family { margin-left: 4px; }
+.rb-card-v2 .rb-card-hero { align-self: center; padding: 12px 18px; }
+.rb-card-facts { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 14px; min-width: 0; }
+.rb-card-v2 .rb-card-traits, .rb-card-v2 .rb-card-head, .rb-card-v2 .rb-card-stats-row { grid-area: auto; }
+.rb-card-v2 .rb-card-traits { align-self: center; min-width: 0; }
+.rb-card-v2 .rb-card-head { grid-area: auto; }
+.rb-card-stats-row { display: grid; grid-template-columns: repeat(2, auto); gap: 6px; margin: 0; }
+.rb-card-stats-row.rb-stats-3 { grid-template-columns: repeat(3, auto); }
+.rb-card-stats-row > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 6px 10px; border: 1px solid var(--rb-rule); border-radius: 3px; background: var(--rb-panel-2); }
+.rb-card-stats-row dt { font: 700 10px/1.2 var(--rb-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--rb-muted); white-space: nowrap; }
+.rb-card-stats-row dd { margin: 0; font: 800 17px/1.1 var(--rb-mono); color: var(--rb-panel-text); white-space: nowrap; }
+.rb-card-stats-row .rb-card-hearts dd { display: flex; align-items: center; gap: 5px; color: var(--rb-signal); }
+.rb-card-stats-row .rb-card-hearts dd span { font-size: 11px; color: var(--rb-muted-2); }
+.rb-card-v2 .rb-card-stats-note { margin-top: -4px; }
+.rb-card-choice { display: flex; align-items: flex-start; gap: 8px; color: #D9D5CB; font: 13px/1.4 var(--rb-font); }
+.rb-card-choice strong { color: var(--rb-panel-text); }
+.rb-card-choice .rb-icon { flex: none; margin-top: 2px; color: var(--rb-signal); }
+.rb-card-v2 .rb-card-actions { gap: 10px; }
+@container rb-card (min-width: 540px) {
+  .rb-card-v2 .rb-card-scroll { display: flex; padding: 16px 20px 12px; gap: 12px; }
+  .rb-card-v2 .rb-card-traits, .rb-card-v2 .rb-card-stats-row { align-self: center; }
+  .rb-card-v2 .rb-card-actions { padding: 12px 20px 14px; }
+}
+@container rb-card (max-width: 539px) {
+  .rb-card-v2 .rb-card-scroll { padding: 12px 14px 10px; gap: 10px; }
+  .rb-card-v2 .rb-card-name { font-size: 24px; }
+  .rb-card-facts { grid-template-columns: minmax(0, 1fr); }
+  .rb-card-stats-row, .rb-card-stats-row.rb-stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rb-card-stats-row:not(.rb-stats-3) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-card-v2 .rb-card-scroll { padding: 8px 10px 8px; gap: 8px; }
+  .rb-card-v2 .rb-card-head { gap: 2px 10px; }
+  .rb-card-v2 .rb-card-name { font-size: 20px; }
+  .rb-card-titlebar { gap: 3px 10px; }
+  .rb-card-v2 .rb-card-family { margin-left: 0; font-size: 11px; }
+  .rb-card-stats-row { gap: 4px; }
+  .rb-card-stats-row > div { padding: 4px 7px; gap: 2px; }
+  .rb-card-stats-row dt { font-size: 9px; letter-spacing: .08em; }
+  .rb-card-stats-row dd { font-size: 14px; }
+  .rb-card-v2 .rb-chip { min-height: 24px; padding: 0 8px 0 6px; font-size: 12px; }
+  .rb-card-v2 .rb-card-stats-note { display: none; }
+  .rb-card-v2 .rb-card-actions { padding: 6px 8px 8px; gap: 6px; }
+  .rb-card-choice { font-size: 12px; line-height: 1.35; gap: 6px; }
+}
+.rb-choice-short { display: none; }
+/* Phone landscape frames (about 390 x 260): one line of title, the trio right under it, short Keep line. */
+@container rb (max-height: 300px) {
+  .rb-card-v2 .rb-card-scroll { padding: 6px 8px; gap: 6px; }
+  .rb-card-v2 .rb-card-head > .rb-eyebrow { display: none; }
+  .rb-card-v2 .rb-card-head { grid-template-areas: "title news"; grid-template-columns: minmax(0, 1fr) auto; }
+  .rb-card-titlebar { flex-wrap: nowrap; gap: 8px; }
+  .rb-card-v2 .rb-card-family { display: none; }
+  .rb-card-v2 .rb-card-name { font-size: 17px; }
+  .rb-card-v2 .rb-card-news li { font-size: 10px; }
+  .rb-card-choice { font-size: 11px; }
+  .rb-card-choice .rb-icon { display: none; }
+  .rb-choice-long { display: none; }
+  .rb-choice-short { display: inline; }
+  .rb-card-v2 .rb-card-actions { gap: 4px; padding: 4px 6px 6px; }
+}
+
+/* ---------- DNA trio: Parent A, baby, Parent B on one 16 row grid ---------- */
+
+.rb-trio {
+  --rb-bw: 2px;
+  container: rb-trio / inline-size;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 8px 8px;
+  border: 1px solid var(--rb-rule);
+  border-radius: 4px;
+  background: #0A0A0A;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.rb-trio-measuring .rb-trio-grid { visibility: hidden; }
+.rb-trio-grid {
+  display: grid;
+  grid-template-columns: calc(var(--rb-box) + 2 * var(--rb-bw)) var(--rb-link) calc(var(--rb-box) + 2 * var(--rb-bw)) var(--rb-link) calc(var(--rb-box) + 2 * var(--rb-bw));
+  column-gap: 6px;
+  row-gap: 5px;
+  align-items: start;
+  max-width: 100%;
+}
+.rb-trio-role { grid-row: 1; justify-self: center; font: 700 10px/1.2 var(--rb-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--rb-muted-2); white-space: nowrap; }
+.rb-trio-role-a { grid-column: 1; }
+.rb-trio-role-baby { grid-column: 3; color: var(--rb-signal); }
+.rb-trio-role-b { grid-column: 5; }
+.rb-trio-slot {
+  grid-row: 2;
+  position: relative;
+  display: block;
+  border: var(--rb-bw) solid var(--rb-ink);
+  border-radius: 3px;
+  background: var(--rb-paper);
+  line-height: 0;
+  cursor: crosshair;
+}
+.rb-trio-slot-a { grid-column: 1; }
+.rb-trio-slot-baby { grid-column: 3; box-shadow: 0 0 0 2px var(--rb-tier-glow, var(--rb-paper)); }
+.rb-tier-common .rb-trio-slot-baby { box-shadow: 0 0 0 2px var(--rb-signal); }
+.rb-trio-slot-b { grid-column: 5; }
+.rb-trio-canvas { display: block; image-rendering: pixelated; }
+.rb-trio-missing { display: grid; place-items: center; color: var(--rb-muted); line-height: 1; }
+.rb-trio-rows { position: absolute; left: 0; right: 0; top: var(--rb-px); display: grid; grid-template-rows: repeat(16, var(--rb-px)); pointer-events: none; }
+.rb-trio-row { position: relative; }
+.rb-trio-row.rb-hot { box-shadow: 0 0 0 1px rgba(17, 17, 17, .55); z-index: 1; }
+.rb-trio-row.rb-src { box-shadow: 0 0 0 2px var(--rb-ink); }
+.rb-trio-row.rb-mut::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: max(3px, calc(var(--rb-px) * .6));
+  background: var(--rb-mut);
+}
+.rb-trio-link { grid-row: 2; display: grid; grid-template-rows: repeat(16, var(--rb-px)); padding-top: calc(var(--rb-bw) + var(--rb-px)); }
+.rb-trio-link-a { grid-column: 2; }
+.rb-trio-link-b { grid-column: 4; }
+.rb-trio-cell { position: relative; }
+.rb-trio-cell::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 1px;
+  margin: 0 0 0 -2px;
+  background: #34322D;
+}
+.rb-trio-cell.rb-on::before {
+  top: 0;
+  bottom: max(1px, calc(var(--rb-px) * .2));
+  left: 0;
+  width: auto;
+  right: 0;
+  height: auto;
+  margin: 0;
+  background: var(--rb-tint-a);
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 50%, calc(100% - 4px) 100%, 0 100%);
+  transform-origin: 0 50%;
+}
+.rb-trio-link-b .rb-trio-cell.rb-on::before {
+  background: var(--rb-tint-b);
+  clip-path: polygon(4px 0, 100% 0, 100% 100%, 4px 100%, 0 50%);
+  transform-origin: 100% 50%;
+}
+.rb-trio-cell.rb-hot { background: rgba(244, 241, 234, .12); }
+.rb-trio-cell.rb-hot.rb-on::before { top: -1px; bottom: 0; }
+.rb-trio-name { grid-row: 3; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; text-align: center; }
+.rb-trio-name-a { grid-column: 1; }
+.rb-trio-name-baby { grid-column: 3; }
+.rb-trio-name-b { grid-column: 5; }
+.rb-trio-name strong { max-width: 100%; font-size: 12px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-trio-count { display: inline-flex; align-items: center; gap: 5px; font: 11px/1.2 var(--rb-mono); color: var(--rb-muted-2); white-space: nowrap; }
+.rb-trio-swatch { display: block; width: 9px; height: 9px; flex: none; }
+.rb-trio-swatch-a { background: var(--rb-tint-a); }
+.rb-trio-swatch-b { background: var(--rb-tint-b); }
+.rb-trio-caption { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 14px; min-height: 15px; font: 11px/1.35 var(--rb-mono); color: var(--rb-muted-2); text-align: center; }
+.rb-trio-caption strong { color: var(--rb-panel-text); }
+.rb-trio-mut-note { display: inline-flex; align-items: center; gap: 6px; color: var(--rb-mut); }
+.rb-trio-mut-pip { display: block; width: 4px; height: 10px; background: var(--rb-mut); }
+.rb-trio-slot .rb-confetti { z-index: 3; }
+.rb-trio:focus-visible { outline: 3px solid var(--rb-signal); outline-offset: 2px; }
+
+/* Reveal: the baby lands with a squash, then the parents' rows stream into it. */
+.rb-trio-reveal .rb-trio-slot-baby .rb-trio-canvas { transform-origin: 50% 94%; animation: rb-squash 620ms cubic-bezier(.3, 1.5, .5, 1) 120ms both; }
+.rb-trio-reveal .rb-trio-slot-a, .rb-trio-reveal .rb-trio-slot-b { animation: rb-pop-in 280ms cubic-bezier(.2, 1.3, .4, 1) both; }
+.rb-trio-reveal .rb-trio-cell.rb-on::before { animation: rb-trio-flow 220ms steps(4) both; animation-delay: calc(360ms + var(--rb-i, 0) * 28ms); }
+@keyframes rb-trio-flow { from { transform: scaleX(0); } }
+
+@container rb-trio (max-width: 380px) {
+  .rb-trio-name strong { font-size: 11px; }
+  .rb-trio-count { font-size: 10px; gap: 4px; }
+  .rb-trio-role { font-size: 9px; letter-spacing: .08em; }
+  .rb-trio-caption { min-height: 29px; font-size: 10px; }
+  .rb-trio-name .rb-long { display: none; }
+}
+.rb-trio-name .rb-short { display: none; }
+@container rb-trio (max-width: 380px) {
+  .rb-trio-name .rb-short { display: inline; }
+}
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-trio { --rb-bw: 1px; padding: 7px 4px 6px; gap: 5px; }
+  .rb-trio-grid { column-gap: 4px; row-gap: 3px; }
+  .rb-trio-cell.rb-on::before { clip-path: polygon(0 0, calc(100% - 3px) 0, 100% 50%, calc(100% - 3px) 100%, 0 100%); }
+  .rb-trio-link-b .rb-trio-cell.rb-on::before { clip-path: polygon(3px 0, 100% 0, 100% 100%, 3px 100%, 0 50%); }
+}
+@container rb (max-height: 300px) {
+  .rb-trio { padding: 4px 4px 3px; gap: 2px; }
+  .rb-trio-grid { row-gap: 2px; }
+  .rb-trio-name strong { font-size: 10px; }
+  .rb-trio-count { font-size: 9px; }
+  .rb-trio-role { display: none; }
+  .rb-trio-caption { min-height: 0; }
+  .rb-trio-hint { display: none; }
+}
+
+/* ---------- The Friend's legacy: brood tabs, FriendCard, family tree ---------- */
+
+.rb-brood-tabs { margin-top: -6px; }
+.rb-tab-count { padding: 3px 5px 2px; border-radius: 2px; background: var(--rb-panel-2); font: 700 10px/1 var(--rb-mono); color: var(--rb-muted-2); }
+.rb-tab.rb-on .rb-tab-count { background: var(--rb-signal); color: var(--rb-ink); }
+.rb-brood-pane { display: flex; flex-direction: column; gap: inherit; min-width: 0; }
+
+.rb-friend {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  flex: none;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--rb-rule);
+  border-radius: 4px;
+  background: var(--rb-panel-2);
+}
+.rb-friend-hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 148px;
+  padding: 16px 18px 10px;
+  border: 2px solid var(--rb-ink);
+  border-radius: 4px;
+  background-color: var(--rb-paper);
+  background-image:
+    linear-gradient(var(--rb-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rb-grid) 1px, transparent 1px);
+  background-size: 16px 16px;
+  background-position: -1px -1px;
+  box-shadow: 0 0 0 2px var(--rb-signal);
+  color: var(--rb-ink);
+  overflow: hidden;
+}
+.rb-friend-sprite { position: relative; z-index: 1; }
+.rb-friend-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rb-friend-name { font: 850 26px/1.05 var(--rb-font); letter-spacing: -.02em; overflow-wrap: anywhere; }
+.rb-friend-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; font: 12px/1.3 var(--rb-mono); color: var(--rb-muted-2); }
+.rb-friend-token { color: var(--rb-signal); }
+.rb-friend-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 2px 0 0; }
+.rb-friend-stats > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 6px 8px; border: 1px solid var(--rb-rule); border-radius: 3px; background: var(--rb-panel); }
+.rb-friend-stats dt { font: 700 9px/1.2 var(--rb-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--rb-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-friend-stats dd { margin: 0; font: 800 18px/1.1 var(--rb-mono); color: var(--rb-panel-text); white-space: nowrap; }
+.rb-friend-stats dd span { font-size: 12px; color: var(--rb-muted); }
+.rb-friend-share dd { color: var(--rb-signal); }
+.rb-friend-line { display: flex; align-items: center; gap: 10px; font-size: 13px; line-height: 1.35; color: #D9D5CB; }
+.rb-friend-line strong { color: var(--rb-panel-text); }
+.rb-friend-bar { flex: none; width: 84px; height: 10px; border: 1px solid var(--rb-rule); border-radius: 2px; background: #0A0A0A; overflow: hidden; }
+.rb-friend-bar i { display: block; height: 100%; background: var(--rb-signal); }
+.rb-friend-families { list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
+.rb-friend-families li { display: inline-flex; align-items: center; height: 22px; padding: 0 6px; border: 1px solid var(--rb-signal); border-radius: 3px; font: 700 10px/1 var(--rb-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--rb-signal); white-space: nowrap; }
+.rb-friend-families li.rb-own { background: var(--rb-signal); color: var(--rb-ink); }
+.rb-friend-cta { align-self: flex-start; }
+.rb-friend-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+.rb-legacy-tree { display: flex; flex-direction: column; gap: 8px; flex: none; min-width: 0; }
+.rb-tree { min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 2px; scrollbar-width: thin; scrollbar-color: var(--rb-rule) transparent; }
+.rb-tree-root { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rb-tree-root .rb-tree-thumb { box-shadow: 0 0 0 2px var(--rb-signal); }
+.rb-tree-root .rb-tree-meta .rb-icon { color: var(--rb-signal); }
+.rb-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 250px;
+  min-height: 54px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--rb-rule);
+  border-radius: 4px;
+  background: var(--rb-panel-2);
+  color: var(--rb-panel-text);
+  font: inherit;
+  text-align: left;
+}
+button.rb-tree-item { cursor: pointer; transition: border-color 120ms, transform 120ms ease-out; }
+button.rb-tree-item:hover:not(:disabled) { border-color: var(--rb-tier-glow); }
+.rb-tree-item.rb-tier-common:hover:not(:disabled) { border-color: var(--rb-panel-text); }
+button.rb-tree-item:disabled { opacity: .5; cursor: not-allowed; }
+.rb-tree-ghost { border-style: dashed; background: transparent; }
+.rb-tree-ghost .rb-tree-thumb, .rb-tree-ghost .rb-tree-text { opacity: .55; }
+.rb-tree-thumb { width: 42px; height: 42px; }
+.rb-tree-text { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rb-tree-name { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-tree-meta { display: inline-flex; align-items: center; gap: 5px; font: 11px/1.2 var(--rb-mono); color: var(--rb-muted-2); white-space: nowrap; }
+.rb-tree-mate { flex: none; display: inline-flex; align-items: center; gap: 5px; font: 11px/1.2 var(--rb-mono); color: var(--rb-muted-2); }
+.rb-tree-mate-x { color: var(--rb-muted); }
+.rb-tree-mate-thumb { width: 26px; height: 26px; border-width: 1px; }
+.rb-tree-rows { flex: none; display: inline-flex; align-items: center; gap: 5px; min-width: 50px; font: 700 11px/1 var(--rb-mono); color: var(--rb-signal); }
+.rb-rowstrip { display: grid; grid-template-rows: repeat(16, 2px); row-gap: 1px; width: 7px; flex: none; }
+.rb-rowstrip i { background: #34322D; }
+.rb-rowstrip i.rb-on { background: var(--rb-signal); }
+.rb-tree-sub { list-style: none; margin: 0 0 0 19px; padding: 0 0 0 16px; }
+.rb-tree-node > .rb-tree-sub { margin-left: 24px; }
+.rb-tree-sub > .rb-tree-node { position: relative; padding-top: 6px; }
+.rb-tree-sub > .rb-tree-node::before { content: ""; position: absolute; top: 0; bottom: 0; left: -16px; border-left: 2px solid var(--rb-rule); }
+.rb-tree-sub > .rb-tree-node:last-child::before { bottom: auto; height: 34px; }
+.rb-tree-sub > .rb-tree-node::after { content: ""; position: absolute; top: 32px; left: -16px; width: 14px; border-top: 2px solid var(--rb-rule); }
+.rb-tree-empty { margin-left: 50px; font-size: 12px; }
+
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-brood-tabs { margin-top: -2px; }
+  .rb-friend { grid-template-columns: auto minmax(0, 1fr); gap: 10px; padding: 8px; align-items: start; }
+  .rb-friend-hero { min-width: 0; padding: 10px 10px 6px; }
+  .rb-friend-info { gap: 4px; }
+  .rb-friend-name { font-size: 18px; }
+  .rb-friend-meta { font-size: 11px; flex-direction: column; }
+  .rb-friend-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .rb-friend-stats > div { padding: 4px 6px; gap: 2px; }
+  .rb-friend-stats dt { font-size: 8px; letter-spacing: .06em; }
+  .rb-friend-stats dd { font-size: 14px; }
+  .rb-friend-line { font-size: 12px; gap: 8px; }
+  .rb-friend-bar { width: 56px; }
+  .rb-friend-families li { height: 18px; font-size: 9px; padding: 0 4px; }
+  .rb-tree-item { min-width: 230px; min-height: 50px; gap: 6px; padding-right: 6px; }
+  .rb-tree-mate-name { display: none; }
+  .rb-tree-sub > .rb-tree-node { padding-top: 4px; }
+  .rb-tree-sub > .rb-tree-node:last-child::before { height: 30px; }
+  .rb-tree-sub > .rb-tree-node::after { top: 28px; }
+  .rb-friend-foot p { display: none; }
+}
+/* The stats move under the card on phones: the Friend and its name side by side, numbers full width. */
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-friend { display: flex; flex-wrap: wrap; }
+  .rb-friend-hero { flex: none; }
+  .rb-friend-info { flex: 1 1 150px; }
+}
+
+/* ---------- Matchmaker v2: Parent A as one sideways row, Parent B first on phones, odds that wrap, stock up ---------- */
+
+.rb-match-pickers.rb-match-stacked { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+/* A choice of Parent A (stacked rows): a slimmer pair preview and mate cards keep Parent B in view at 960 x 640. */
+.rb-match:has(.rb-match-stacked) .rb-match-captions { display: none; }
+.rb-match:has(.rb-match-stacked) .rb-match-heart { display: none; }
+.rb-match:has(.rb-match-stacked) .rb-match-scene { padding-top: 8px; border-bottom-width: 4px; }
+.rb-match:has(.rb-match-stacked) .rb-panel-body { gap: 12px; }
+.rb-match-stacked .rb-pick-card .rb-slot { height: 72px; }
+.rb-match-stacked .rb-section { gap: 8px; }
+.rb-match-stacked .rb-section-head { min-height: 32px; }
+.rb-section-hint { margin-left: 8px; font-weight: 400; letter-spacing: .04em; text-transform: none; color: var(--rb-muted); }
+.rb-match-v2 .rb-chip-list.rb-chip-scroll {
+  display: flex;
+  flex-flow: row nowrap;
+  gap: 8px;
+  margin: -5px;
+  padding: 5px 5px 7px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding: 5px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--rb-rule) transparent;
+}
+.rb-match-v2 .rb-chip-scroll > .rb-pick { flex: none; max-width: 190px; scroll-snap-align: start; }
+/* Phones: Parent B (the real wild Friends) comes first; a single Parent A sits beside it on short frames. */
+@container rb (max-height: 300px) {
+  .rb-match-b-first:not(.rb-match-stacked) .rb-section-a { grid-column: 1; grid-row: 1; }
+  .rb-match-b-first:not(.rb-match-stacked) .rb-section-b { grid-column: 2; grid-row: 1; }
+  .rb-match-pickers.rb-match-stacked { gap: 6px; }
+  .rb-match-v2 .rb-chip-list.rb-chip-scroll { gap: 4px; padding-bottom: 5px; }
+  .rb-match-v2 .rb-chip-scroll .rb-pick-meta { display: none; }
+}
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-match-v2 .rb-chip-scroll > .rb-pick { max-width: 172px; }
+  .rb-match-v2 .rb-chip-list.rb-chip-scroll { gap: 6px; }
+  /* Odds never truncate: a chip wraps its value onto a second line instead. */
+  .rb-match .rb-odds-strip li { flex-wrap: wrap; row-gap: 1px; white-space: normal; }
+  .rb-match .rb-odds-strip li .rb-odds-value { overflow: visible; text-overflow: clip; white-space: nowrap; }
+}
+@container rb (max-width: 420px) {
+  .rb-match .rb-odds-strip { flex-wrap: wrap; row-gap: 4px; }
+  .rb-match .rb-odds-strip-label { flex-basis: 100%; max-width: none; }
+  .rb-match .rb-odds-strip ul { flex-basis: 100%; }
+}
+
+.rb-stock { flex: none; }
+.rb-stock .rb-icon { color: var(--rb-signal); }
+.rb-match-foot.rb-match-foot-stock .rb-breed { max-width: none; }
+.rb-section-brood { gap: 4px; }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-match-foot.rb-match-foot-stock {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "info stock" "breed breed";
+    align-items: center;
+    gap: 5px 8px;
+  }
+  .rb-match-foot-stock .rb-foot-info { grid-area: info; }
+  .rb-match-foot-stock .rb-stock { grid-area: stock; min-height: 34px; padding: 0 8px; }
+  .rb-match-foot-stock .rb-breed { grid-area: breed; width: 100%; }
+  .rb-match-foot-stock .rb-foot-hint { display: none; }
+}
+/* Phone landscape: odds stay one short row, and the stock-up pack sits beside the main button. */
+@container rb (max-height: 300px) {
+  .rb-match .rb-odds-strip { flex-wrap: nowrap; }
+  .rb-match .rb-odds-strip-label { flex-basis: auto; }
+  .rb-match .rb-odds-strip ul { flex-basis: auto; display: flex; flex-wrap: nowrap; }
+  .rb-match-foot.rb-match-foot-stock { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "info info" "stock breed"; gap: 0 6px; }
+  .rb-match-foot-stock .rb-foot-meta { display: none; }
+  .rb-match-foot-stock .rb-foot-info:not(:has(.rb-foot-msg:not(.rb-foot-hint))) { display: none; }
+  .rb-match-foot-stock .rb-stock { min-height: var(--rb-tap); padding: 0 8px; gap: 5px; }
+  .rb-match-foot-stock .rb-breed { padding: 0 10px; font-size: 14px; }
+  .rb-stock-long, .rb-stock-eggs { display: none; }
+}

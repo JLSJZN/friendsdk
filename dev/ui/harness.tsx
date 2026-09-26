@@ -11,8 +11,8 @@ import "./harness.css";
 import { drawCreature, setupPixelCanvas } from "../../games/rare-breeds/src/draw.ts";
 import type { Creature } from "../../games/rare-breeds/src/types.ts";
 import {
-  ActionBar, BabyCard, BroodPanel, EggShopPanel, ErrorScreen, GameRoot, HatchOverlay, HeartShopPanel, Hud, IntroPanel, LoadingScreen, MatchmakerPanel,
-  PixelIcon, SettingsPanel, SpriteThumb, Toast, WorldLayer, buildCollection, discoveriesOf, type Collection, type PixelIconName,
+  ActionBar, BabyCard, BroodPanel, EggShopPanel, ErrorScreen, FriendPanel, GameRoot, HatchOverlay, HeartShopPanel, Hud, IntroPanel, LoadingScreen, MatchmakerPanel,
+  PixelIcon, SettingsPanel, SpriteThumb, Toast, WorldLayer, buildCollection, discoveriesOf, type BroodTab, type Collection, type PixelIconName,
 } from "../../games/rare-breeds/src/ui/index.ts";
 import { babies, candidates, creature, player, rerolled, tierInfo, tiers, wild } from "./fixtures.ts";
 import { ACCESSORIES } from "../../games/rare-breeds/src/accessories.ts";
@@ -97,11 +97,14 @@ function Nursery({ prompt, toast, coach, brood = babies.slice(0, 3), inert }: { 
   </WorldLayer>;
 }
 
-function Matchmaker(props: { needsEgg?: boolean; canAfford?: boolean; busy?: boolean; error?: string; withBrood?: boolean; reason?: string; guide?: boolean }) {
+function Matchmaker(props: { needsEgg?: boolean; canAfford?: boolean; busy?: boolean; error?: string; withBrood?: boolean; reason?: string; guide?: boolean;
+  stock?: boolean; preferred?: string; parentA?: string }) {
   const [pool, setPool] = useState(candidates);
   return <>
     <Nursery inert />
-    <MatchmakerPanel parents={props.withBrood ? [player, ...babies.slice(0, 4)] : [player]} candidates={pool}
+    <MatchmakerPanel parents={props.withBrood ? [player, ...babies.slice(0, 5)] : [player]} candidates={pool}
+      onStockUp={props.stock ? quantity => console.log("stock up", String(quantity)) : undefined} stockUpPrice="5 RF"
+      preferredMateKey={props.preferred} initialParentA={props.parentA}
       eggs={props.needsEgg ? 0 : 2} price="1 RF" needsEgg={!!props.needsEgg} canAfford={props.canAfford ?? true}
       busy={props.busy} busyLabel={props.busy ? "Buying egg…" : undefined} error={props.error} disabledReason={props.reason}
       onReroll={() => setPool(pool === candidates ? rerolled : candidates)} onBreed={(a, b) => console.log("breed", a.key, b.key)}
@@ -124,11 +127,12 @@ function Hatch({ stage, baby }: { stage: "hatching" | "result"; baby: Creature }
   </>;
 }
 
-function Brood({ list, detail }: { list: Creature[]; detail?: string }) {
+function Brood({ list, detail, friend, tab }: { list: Creature[]; detail?: string; friend?: boolean; tab?: BroodTab }) {
   const [items, setItems] = useState(list);
   return <>
     <Nursery brood={items.slice(0, 3)} inert />
     <BroodPanel babies={items} tiers={tiers} creature={creature} initialSelectedKey={detail} onRelease={baby => setItems(items.filter(item => item !== baby))}
+      friend={friend ? { ...player, accessory: "party-hat" } : undefined} initialTab={tab}
       onUseAsParent={baby => console.log("parent", baby.key)} onFindMatch={() => console.log("find")} onClose={() => console.log("close")}
       heartsRate={baby => heartsPerMinute(baby.tier)} onOpenShop={() => console.log("shop")}
       collection={list.length ? collectionWithout() : buildCollection([])} />
@@ -221,6 +225,15 @@ const scenarios: Record<string, () => ReactNode> = {
   brood: () => <Brood list={babies} />,
   "brood-detail": () => <Brood list={babies} detail={babies[4].key} />,
   "brood-empty": () => <Brood list={[]} />,
+  "brood-tabs": () => <Brood list={babies} friend />,
+  "brood-legacy": () => <Brood list={babies} friend tab="legacy" />,
+  "brood-legacy-ghost": () => <Brood list={babies.slice(1)} friend tab="legacy" />,
+  "brood-legacy-empty": () => <Brood list={[]} friend tab="legacy" />,
+  "brood-legacy-detail": () => <Brood list={babies} friend tab="legacy" detail={babies[5].key} />,
+  "friend-panel": () => <><Nursery inert /><FriendPanel friend={player} babies={babies} creature={creature} onFindMatch={() => console.log("find")}
+    onSelectBaby={baby => console.log("select", baby.key)} onClose={() => console.log("close")} /></>,
+  "matchmaker-stock": () => <Matchmaker needsEgg withBrood stock />,
+  "matchmaker-preferred": () => <Matchmaker withBrood preferred={candidates[2].key} parentA={babies[3].key} />,
   settings: () => <Settings />,
   loading: () => <LoadingScreen />,
   error: () => <ErrorScreen message="Could not read Friend #77949's art from the chain. Check your connection and try again." onRetry={() => console.log("retry")} />,

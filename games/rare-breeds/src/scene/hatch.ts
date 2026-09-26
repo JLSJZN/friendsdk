@@ -1,4 +1,6 @@
 // The hatch overlay: egg wobble -> crack -> parent pixel rows fly in and merge -> tier reveal.
+// createHatchSequence plays the full show (about 4.75 s); createQuickHatchSequence plays a 1.8 s cut of the same
+// beats (one wobble, crack, rows snap together, reveal) for repeat hatches.
 import { WORLD_HEIGHT as H, WORLD_WIDTH as W, type HatchSequence, type HatchSequenceOptions } from "../api.ts";
 import { FRAME_SIZE, TIER_STYLE, type Creature, type Facing, type Frame, type TierId } from "../types.ts";
 import {
@@ -11,15 +13,38 @@ import { createPixelView } from "./view.ts";
 
 type Beat = "wobble" | "crack" | "merge" | "reveal";
 
-// Timeline (ms).
-const T = {
-  parentsIn: 120, eggDrop: 220, eggLand: 620,
-  wobbles: [[640, 300, 2, 1], [1040, 320, 3, 2], [1420, 330, 4, 3]] as const, // start, duration, swings, amplitude
-  crack: 1780, crackDraw: 240, burst: 2080,
-  rows: 2180, rowStagger: 58, rowFlight: 470,
+/** Timeline (ms). Every beat fires in the same order in both cuts: wobble (once per wobble), crack, merge, reveal. */
+type Timeline = Readonly<{
+  parentsIn: number; slide: number; tagsIn: number; caption: number; eggDrop: number; eggLand: number;
+  /** start, duration, swings, amplitude */
+  wobbles: readonly (readonly [number, number, number, number])[];
+  crack: number; crackDraw: number; burst: number; shell: number;
+  rows: number; rowStagger: number; rowFlight: number; arc: number; arcSpread: number;
+  mutations: number; mutationStagger: number;
+  reveal: number; end: number;
+}>;
+
+const FULL: Timeline = {
+  parentsIn: 120, slide: 520, tagsIn: 300, caption: 300, eggDrop: 220, eggLand: 620,
+  wobbles: [[640, 300, 2, 1], [1040, 320, 3, 2], [1420, 330, 4, 3]],
+  crack: 1780, crackDraw: 240, burst: 2080, shell: 700,
+  rows: 2180, rowStagger: 58, rowFlight: 470, arc: 90, arcSpread: 14,
   mutations: 3560, mutationStagger: 70,
   reveal: 3820, end: 4750,
 };
+
+/** Quick cut: parents and egg arrive together, one wobble, crack, all rows snap in within 0.45 s, reveal. */
+const QUICK: Timeline = {
+  parentsIn: 0, slide: 320, tagsIn: 120, caption: 0, eggDrop: 0, eggLand: 240,
+  wobbles: [[300, 240, 2, 2]],
+  crack: 560, crackDraw: 140, burst: 760, shell: 480,
+  rows: 820, rowStagger: 14, rowFlight: 230, arc: 36, arcSpread: 6,
+  mutations: 1180, mutationStagger: 18,
+  reveal: 1300, end: 1800,
+};
+
+/** How long play() takes to resolve in each cut (reduced motion always resolves after 0.5 s). */
+export const HATCH_DURATION = { full: FULL.end, quick: QUICK.end } as const;
 const PARENT_SCALE = 7, BABY_SCALE = 11;
 const A_POS = { x: 186, y: 452 }, B_POS = { x: 774, y: 452 }, BABY_POS = { x: 480, y: 454 };
 const EGG_PX = 5, EGG_W = 24, EGG_H = 30, EGG_MID = 17;
@@ -54,7 +79,17 @@ function babyPixels(baby: Creature) {
   return { frame, rows, cells };
 }
 
+/** The full hatch show (about 4.75 s). */
 export function createHatchSequence(options: HatchSequenceOptions): HatchSequence {
+  return createSequence(options, FULL);
+}
+
+/** Same options, beats and skip()/destroy() behaviour as createHatchSequence, in a 1.8 s cut for repeat hatches. */
+export function createQuickHatchSequence(options: HatchSequenceOptions): HatchSequence {
+  return createSequence(options, QUICK);
+}
+
+function createSequence(options: HatchSequenceOptions, T: Timeline): HatchSequence {
   const { canvas, parentA, parentB, baby, onBeat } = options;
   const reducedMotion = options.reducedMotion;
   let destroyed = false, dirty = true, raf = 0, last = 0;
@@ -249,17 +284,19 @@ export function createHatchSequence(options: HatchSequenceOptions): HatchSequenc
     drawRays(time, revealed ? (rm ? 0.8 : easeOutCubic(revealT)) : 0);
 
     // Parents slide in from the sides.
-    const slide = rm ? 1 : easeOutBack(clamp((time - T.parentsIn) / 520), 1.4);
+    const slide = rm ? 1 : easeOutBack(clamp((time - T.parentsIn) / T.slide), 1.4);
     const ax = lerp(-140, A_POS.x, slide), bx = lerp(W + 140, B_POS.x, slide);
     const parentFrame = rm ? 0 : Math.floor(time / 160) % 8;
     const hopAt = (start: number, height: number, duration = 300) => {
       const k = (time - start) / duration;
       return k > 0 && k < 1 ? Math.sin(k * Math.PI) * height : 0;
     };
-    const cheer = rm ? 0 : hopAt(T.wobbles[1][0], 10) + hopAt(T.crack, 16) + hopAt(T.reveal + 120, 24, 360) + hopAt(T.reveal + 520, 12, 280);
-    const cheerB = rm ? 0 : hopAt(T.wobbles[2][0], 10) + hopAt(T.crack + 60, 16) + hopAt(T.reveal + 220, 24, 360) + hopAt(T.reveal + 620, 12, 280);
+    // Parents hop on the second (A) and third (B) wobble when the cut has them.
+    const wobbleHop = (i: number) => (T.wobbles[i] ? hopAt(T.wobbles[i][0], 10) : 0);
+    const cheer = rm ? 0 : wobbleHop(1) + hopAt(T.crack, 16) + hopAt(T.reveal + 120, 24, 360) + hopAt(T.reveal + 520, 12, 280);
+    const cheerB = rm ? 0 : wobbleHop(2) + hopAt(T.crack + 60, 16) + hopAt(T.reveal + 220, 24, 360) + hopAt(T.reveal + 620, 12, 280);
     const facingA: Facing = revealed ? "right" : "down", facingB: Facing = revealed ? "left" : "down";
-    const tagAlpha = rm ? 1 : clamp((time - T.parentsIn - 300) / 300);
+    const tagAlpha = rm ? 1 : clamp((time - T.parentsIn - T.tagsIn) / 300);
     drawPedestal(ax, A_POS.y - 3, SOURCE_TINT[0], tagAlpha);
     drawPedestal(bx, B_POS.y - 3, SOURCE_TINT[1], tagAlpha);
     paintCreature(ctx, parentA, { clip: "idle", facing: facingA, frame: parentFrame, x: ax, y: A_POS.y - cheer, scale: PARENT_SCALE, time });
@@ -303,8 +340,8 @@ export function createHatchSequence(options: HatchSequenceOptions): HatchSequenc
       }
     }
     // Shell halves after the burst.
-    if (!rm && time >= T.burst && time < T.burst + 700) {
-      const k = (time - T.burst) / 700;
+    if (!rm && time >= T.burst && time < T.burst + T.shell) {
+      const k = (time - T.burst) / T.shell;
       drawEgg(BABY_POS.x - k * 40, BABY_POS.y - 8, -k * 0.6, 0, 1 - k, "top", easeOutCubic(k) * 220);
       drawEgg(BABY_POS.x, BABY_POS.y - 8 + easeInCubic(k) * 60, 0, 0, 1 - k, "bottom");
     }
@@ -364,12 +401,13 @@ export function createHatchSequence(options: HatchSequenceOptions): HatchSequenc
         const to = { x: bl, y: bt + r * BABY_SCALE };
         const e = easeOutCubic(k);
         const scale = lerp(PARENT_SCALE, BABY_SCALE, e);
-        const arc = Math.sin(k * Math.PI) * (90 + (r % 4) * 14);
+        const lift = T.arc + (r % 4) * T.arcSpread;
+        const arc = Math.sin(k * Math.PI) * lift;
         const x = lerp(from.x, to.x, e), y = lerp(from.y, to.y, e) - arc;
         // Motion trail.
         for (let i = 3; i >= 1; i--) {
           const kt = Math.max(0, k - i * 0.05), et = easeOutCubic(kt);
-          drawPixelRow(rows[r], lerp(from.x, to.x, et), lerp(from.y, to.y, et) - Math.sin(kt * Math.PI) * (90 + (r % 4) * 14), lerp(PARENT_SCALE, BABY_SCALE, et), SOURCE_TINT[source], null, 0.12 * (4 - i));
+          drawPixelRow(rows[r], lerp(from.x, to.x, et), lerp(from.y, to.y, et) - Math.sin(kt * Math.PI) * lift, lerp(PARENT_SCALE, BABY_SCALE, et), SOURCE_TINT[source], null, 0.12 * (4 - i));
         }
         drawLitRow(rows[r], x, y, scale, SOURCE_TINT[source]);
       }
@@ -401,7 +439,7 @@ export function createHatchSequence(options: HatchSequenceOptions): HatchSequenc
     // Captions and labels.
     if (!rm && !revealed) {
       const text = time < T.crack ? "SOMETHING IS HATCHING" : time < T.rows ? "!" : "MIXING 16 PIXEL ROWS";
-      const alpha = clamp((time - 300) / 300);
+      const alpha = clamp((time - T.caption) / 300);
       ctx.globalAlpha = alpha;
       drawText(ctx, text, W / 2, 92, { scale: time >= T.crack && time < T.rows ? 6 : 3, color: time >= T.crack && time < T.rows ? GREEN : SHADE, align: "center" });
       ctx.globalAlpha = 1;
@@ -460,7 +498,7 @@ export function createHatchSequence(options: HatchSequenceOptions): HatchSequenc
     if (reducedMotion) return;
     T.wobbles.forEach(([start], i) => { if (crossed(start)) beat("wobble", `wobble${i}`); });
     if (crossed(T.eggLand)) fx.puff(BABY_POS.x, BABY_POS.y - 6, 12, 60);
-    if (crossed(T.wobbles[2][0] + 250)) fx.squares(BABY_POS.x + 40, BABY_POS.y - 110, 3, ["#FFFDF8"], 160);
+    if (crossed(T.wobbles[T.wobbles.length - 1][0] + 250)) fx.squares(BABY_POS.x + 40, BABY_POS.y - 110, 3, ["#FFFDF8"], 160);
     if (crossed(T.crack)) {
       beat("crack");
       const crackY = BABY_POS.y - 8 - (EGG_H - CRACK_ROW) * EGG_PX;
@@ -548,7 +586,7 @@ export function createHatchSequence(options: HatchSequenceOptions): HatchSequenc
       fx.clear();
       shake = 0;
       if (!fired.has("reveal")) beat("reveal");
-      for (const name of ["wobble0", "wobble1", "wobble2", "crack", "merge"]) fired.add(name);
+      for (const name of [...T.wobbles.map((_, i) => `wobble${i}`), "crack", "merge"]) fired.add(name);
       t = Math.max(t, reducedMotion ? 700 : T.end + 1);
       finish();
       dirty = true;

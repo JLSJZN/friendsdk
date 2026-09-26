@@ -1,19 +1,24 @@
 // Dev tool: render Rare Breeds genetics contact sheets from the bundled wild Friend pool.
-// Run from the SDK root: node tools/genetics-sheet.mjs
-// Writes games/rare-breeds/docs/media/genetics-{sheet,pairs,f2}.svg and, on macOS (qlmanage), matching PNGs.
+// Run from the SDK root: node tools/genetics-sheet.mjs [--out <dir>]
+// Writes genetics-{sheet,pairs,f2}.svg and, on macOS (qlmanage), matching PNGs to games/rare-breeds/docs/media (or --out).
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { breed, breedSeed } from "../games/rare-breeds/src/genetics.ts";
+import { familyLine } from "../games/rare-breeds/src/legacy.ts";
 import { creatureFromRecord, FAMILY_NAMES } from "../games/rare-breeds/src/sprites.ts";
 import { TIER_ORDER, TIER_STYLE } from "../games/rare-breeds/src/types.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const game = join(root, "games/rare-breeds"), media = join(game, "docs/media");
+const game = join(root, "games/rare-breeds");
+const outFlag = process.argv.indexOf("--out");
+const media = outFlag > 0 && process.argv[outFlag + 1] ? resolve(process.argv[outFlag + 1]) : join(game, "docs/media");
 const pool = JSON.parse(readFileSync(join(game, "data/wild-friends.json"), "utf8")).friends.map(record => creatureFromRecord(record));
 const pinned = pool.find(creature => creature.tokenId === 77949n);
 const byFamily = FAMILY_NAMES.map((_, id) => pool.filter(creature => creature.familyId === id && creature !== pinned));
+/** Every creature by key, like the game's lineage map (for familyLine). */
+const known = new Map(pool.map(creature => [creature.key, creature]));
 
 const PAPER = "#F4F1EA", INK = "#111111", MUTED = "#8C877D", GRID = "#E6E1D6", A_TINT = "#2F6BFF", B_TINT = "#FF5A36";
 const S = 4, BOX = 18 * S; // sprite pixel size, and a sprite cell including the one-pixel halo
@@ -22,8 +27,10 @@ const ROW = BOX + 30, LABELS = 150, WALK_X = LABELS + 2 * (BOX + 4) + 30 + 4 * (
 /** Hatch a baby the way the game does (seed from friend, parent keys and play id). */
 function hatch(a, b, tier, playId) {
   const play = BigInt(playId), result = breed({ a, b, seed: breedSeed(77949n, a.key, b.key, play), tier, playId: play });
-  return Object.freeze({ key: `baby:${playId}`, kind: "baby", name: result.name, family: result.family, familyId: result.familyId,
+  const baby = Object.freeze({ key: `baby:${playId}`, kind: "baby", name: result.name, family: result.family, familyId: result.familyId,
     lineage: result.lineage, sheet: result.sheet, tier, parents: [a.key, b.key], dna: result.dna, playId: play });
+  known.set(baby.key, baby);
+  return baby;
 }
 
 /** Sticker sprite like drawCreature: white halo, ink, pattern pixels in the tier accent (prismatic: rainbow at time 0). */
@@ -54,7 +61,7 @@ const dnaStrip = (baby, x, y) => baby.dna.rowSource.map((source, row) =>
   `<rect x="${x}" y="${y + S + row * S}" width="${S * 3}" height="${S - 1}" fill="${source ? B_TINT : A_TINT}"/>`).join("");
 
 /** One pair: parents, DNA strip, the same seed in all four tiers, and 8 walk frames of one tier. */
-function pairRow({ a, b, playId, walkTier = "mutant", walkFacing = "right" }, y) {
+function pairRow({ a, b, playId, walkTier = "mutant", walkFacing = "right", line = false }, y) {
   const babies = TIER_ORDER.map(tier => hatch(a, b, tier, playId)), parts = [];
   parts.push(text(16, y + 16, a.name, { size: 11, weight: 700 }), text(16, y + 30, a.family, { size: 10, fill: MUTED }));
   parts.push(text(16, y + 48, `× ${b.name}`, { size: 11, weight: 700 }), text(16, y + 62, b.family, { size: 10, fill: MUTED }));
@@ -70,7 +77,8 @@ function pairRow({ a, b, playId, walkTier = "mutant", walkFacing = "right" }, y)
     x += BOX + 4;
   }
   const shown = babies[TIER_ORDER.indexOf(walkTier)];
-  parts.push(text(WALK_X, y + 8, `${shown.name} · ${shown.family} · F${shown.lineage} · ${shown.dna.traits.join(", ") || "plain"} · walk ${walkFacing}`, { size: 10, fill: MUTED }));
+  const lineage = line ? ` · line ${familyLine(shown, key => known.get(key) ?? null).join(" + ")}` : "";
+  parts.push(text(WALK_X, y + 8, `${shown.name} · ${shown.family} · F${shown.lineage}${lineage} · ${shown.dna.traits.join(", ") || "plain"} · walk ${walkFacing}`, { size: 10, fill: MUTED }));
   for (let frame = 0; frame < 8; frame++) parts.push(sprite(shown, WALK_X + frame * (BOX + 2), y + 12, { clip: "walk", facing: walkFacing, frame }));
   return parts.join("");
 }
@@ -119,7 +127,16 @@ const f1 = [
   hatch(pinned, byFamily[0][1], "common", 3001), hatch(pinned, byFamily[7][1], "spotted", 3002), hatch(byFamily[1][2], byFamily[8][2], "mutant", 3003),
   hatch(byFamily[5][1], byFamily[2][3], "common", 3004), hatch(pinned, byFamily[6][2], "common", 3005), hatch(byFamily[4][1], byFamily[3][2], "prismatic", 3006),
 ];
+// One Friend's family line, as a player builds it: two F1s, their F2, a backcross and an F3.
+const lines = { mask: byFamily[1][0], sparkling: byFamily[7][0], hollow: byFamily[8][0] };
+const fapu = hatch(pinned, lines.mask, "common", 5001), sibo = hatch(pinned, lines.sparkling, "common", 5002);
+const rimi = hatch(fapu, sibo, "common", 5003), hollowF1 = hatch(pinned, lines.hollow, "common", 5005);
+
 writePage("genetics-f2", "Rare Breeds genetics: later generations", "F1 babies bred again. Lineage grows by one per generation; Side-walker stays dominant.", [
+  { title: "Family lines: F2 and F3 labels", note: "A label names the family line each side passes on (rows traced to the Friend or wild Friend they came from); 'line' lists every family mixed in.",
+    rows: [{ a: pinned, b: lines.mask, playId: 5001, line: true }, { a: pinned, b: lines.sparkling, playId: 5002, line: true },
+      { a: fapu, b: sibo, playId: 5003, line: true }, { a: fapu, b: pinned, playId: 5004, line: true, walkFacing: "down" },
+      { a: rimi, b: hollowF1, playId: 5006, line: true, walkTier: "prismatic" }] },
   { title: "F2: baby × baby", note: "Both parents are babies from the rows below.",
     rows: [{ a: f1[0], b: f1[1], playId: 4000 }, { a: f1[2], b: f1[3], playId: 4001 }, { a: f1[4], b: f1[5], playId: 4002, walkTier: "prismatic" },
       { a: f1[5], b: f1[2], playId: 4003, walkTier: "spotted", walkFacing: "down" }] },

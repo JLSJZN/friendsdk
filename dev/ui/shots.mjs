@@ -11,11 +11,12 @@ const outDir = path.join(here, "shots");
 const filter = process.argv[2] ?? "";
 const SCENARIOS = ["thumbs", "nursery", "nursery-prompt", "matchmaker", "matchmaker-buy", "matchmaker-broke", "matchmaker-busy",
   "matchmaker-brood", "matchmaker-first", "intro-1", "intro-2", "intro-3", "intro-4", "nursery-coach", "shop", "shop-wish", "eggs", "eggs-stocked", "eggs-broke", "hatching", "reveal-common", "reveal-spotted", "reveal-mutant", "reveal-prismatic", "brood", "brood-detail",
-  "brood-empty", "settings", "loading", "error"];
+  "brood-empty", "brood-tabs", "brood-legacy", "brood-legacy-ghost", "brood-legacy-empty", "brood-legacy-detail", "friend-panel",
+  "matchmaker-stock", "matchmaker-preferred", "settings", "loading", "error"];
 // Page viewport = frame + its 1px border, so the SDK frame renders at exactly 960 x 640 / 390 x 260 / 360 x 240.
 // 390 matches the phone run of tools/test-game.mjs (390 x 844 page, 390 x 260 frame).
 // 390p is a portrait phone: host.css switches the frame to 3:4 (390 x 520).
-const SIZES = [{ name: "960", width: 962, height: 642 }, { name: "390p", width: 392, height: 522 }, { name: "390", width: 392, height: 262 }, { name: "360", width: 362, height: 242 }];
+const SIZES = [{ name: "960", width: 962, height: 642 }, { name: "390p", width: 392, height: 522 }, { name: "360p", width: 362, height: 482 }, { name: "390", width: 392, height: 262 }, { name: "360", width: 362, height: 242 }];
 
 await mkdir(outDir, { recursive: true });
 const server = await startServer();

@@ -1,8 +1,9 @@
 import { useId, useMemo, useRef, type CSSProperties } from "react";
 import { FRAME_SIZE, type Creature, type Dna } from "../types.ts";
+import { DnaTrio, mutatedRows } from "./DnaTrio.tsx";
 import { PixelIcon } from "./PixelIcon.tsx";
 import { SpriteThumb } from "./SpriteThumb.tsx";
-import { cx, hashString, lineageLabel, pixelMetrics, tierLabel, tierVars, useCompact, useDevicePixelRatio, useReducedMotion } from "./shared.ts";
+import { cx, hashString, lineageLabel, tierLabel, tierVars, useCompact, useReducedMotion } from "./shared.ts";
 
 export type BabyCardProps = Readonly<{
   baby: Creature;
@@ -22,7 +23,10 @@ export type BabyCardProps = Readonly<{
   onUseAsParent?: () => void;
   /** Reveal mode: what this baby added to the collection, e.g. ["New family: Hollow · 3/9"] (see discoveriesOf). */
   discoveries?: readonly string[];
-  /** First-run line above the buttons explaining the choice, e.g. Keep vs Sanctuary. */
+  /**
+   * First-run line above the buttons explaining the choice. Only shown when `heartsPerMinute` is omitted:
+   * with it, the card writes its own Keep vs trade-in line ("Keep: +5 Hearts now, 12 Hearts/min. ...").
+   */
   hint?: string;
   /** Hearts this baby earns per minute while kept (game points, never RF). Shown next to the Sanctuary value. */
   heartsPerMinute?: number;
@@ -36,18 +40,13 @@ export type BabyCardProps = Readonly<{
   className?: string;
 }>;
 
-const PARENT_A_FALLBACK = "Parent A", PARENT_B_FALLBACK = "Parent B";
-
-function rowsOf(indices: readonly number[]) {
-  return [...new Set(indices.map(index => Math.floor(index / FRAME_SIZE)))].filter(row => row >= 0 && row < FRAME_SIZE).sort((x, y) => x - y);
-}
-
 /**
  * Vertical DNA ribbon: one segment per sprite row, ink = parent A, green = parent B, violet pip = mutated.
  * `pixel` is the CSS size of one sprite pixel of the SpriteThumb it sits next to (pixelMetrics(scale, ratio).css).
+ * Used by the intro tour; the result card shows the full DnaTrio instead.
  */
 export function DnaRail({ dna, pixel, className }: { dna: Dna; pixel: number; className?: string }) {
-  const mutated = new Set(rowsOf(dna.mutations));
+  const mutated = new Set(mutatedRows(dna.mutations));
   return <span className={cx("rb-dna-rail", className)} style={{ "--rb-px": `${pixel}px` } as CSSProperties} aria-hidden="true">
     {Array.from({ length: FRAME_SIZE }, (_, row) => <span key={row}
       className={cx("rb-dna-seg", dna.rowSource[row] === 1 ? "rb-dna-b" : "rb-dna-a", mutated.has(row) && "rb-dna-mut")} />)}
@@ -60,7 +59,7 @@ function Confetti({ seed }: { seed: string }) {
     const next = () => { hash = Math.imul(hash ^ (hash >>> 15), 2246822507) >>> 0; return hash / 4294967296; };
     return Array.from({ length: 18 }, (_, index) => {
       const angle = (index / 18) * Math.PI * 2 + next() * 0.5;
-      const distance = 70 + next() * 70;
+      const distance = 60 + next() * 70;
       return { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance * 0.8 - 20, delay: next() * 120, tone: index % 3 };
     });
   }, [seed]);
@@ -70,7 +69,10 @@ function Confetti({ seed }: { seed: string }) {
   </span>;
 }
 
-/** The shareable result card: big animated baby, tier, lineage, parents, DNA ribbon, traits, value and actions. */
+/**
+ * The shareable result card: the baby between its two parents on one 16 row grid (every row traced to the
+ * parent it came from), tier, lineage, traits, chance / value / Hearts, and the Keep vs trade-in choice.
+ */
 export function BabyCard({ baby, parentA, parentB, chance, value, mode = "reveal", onKeep, onRelease, onUseAsParent, discoveries, hint, heartsPerMinute, keepBonus,
   busy, busyLabel, error, reducedMotion, className }: BabyCardProps) {
   const id = useId();
@@ -79,15 +81,16 @@ export function BabyCard({ baby, parentA, parentB, chance, value, mode = "reveal
   const reduced = useReducedMotion(reducedMotion);
   const tier = baby.tier ?? "common";
   const dna = baby.dna;
-  const heroScale = compact ? 4 : 8;
-  const heroPixel = pixelMetrics(heroScale, useDevicePixelRatio()).css;
-  const fromA = dna ? dna.rowSource.filter(source => source === 0).length : 0;
-  const fromB = dna ? FRAME_SIZE - fromA : 0;
-  const mutatedRows = dna ? rowsOf(dna.mutations) : [];
   const traits = dna?.traits ?? [];
-  const nameA = parentA?.name ?? PARENT_A_FALLBACK, nameB = parentB?.name ?? PARENT_B_FALLBACK;
-  const dnaSummary = dna ? `DNA: ${fromA} of 16 rows from ${nameA}, ${fromB} from ${nameB}` +
-    (mutatedRows.length ? `, ${mutatedRows.length} mutated.` : ".") : "";
+  const reveal = mode === "reveal";
+  const hasRate = heartsPerMinute !== undefined;
+
+  const keepParts = [keepBonus ? `+${keepBonus} Hearts now` : "", hasRate ? `${heartsPerMinute} Hearts/min` : ""].filter(Boolean);
+  const choice = !hasRate ? null : reveal
+    ? <><strong>Keep:</strong> {keepParts.join(", ")}. <span className="rb-choice-long">You can still trade it in later for <strong>{value}</strong>.</span>
+      <span className="rb-choice-short">Trade in later for <strong>{value}</strong>.</span></>
+    : <><strong>Kept:</strong> earns {heartsPerMinute} Hearts/min and can breed again. <span className="rb-choice-long">Trade it in any time for <strong>{value}</strong>.</span>
+      <span className="rb-choice-short">Trade in for <strong>{value}</strong>.</span></>;
 
   const releaseButton = onRelease && <button type="button" className="rb-button rb-button-outline rb-button-lg rb-release"
     onClick={onRelease} disabled={busy} aria-busy={busy || undefined}>
@@ -95,78 +98,61 @@ export function BabyCard({ baby, parentA, parentB, chance, value, mode = "reveal
     <span>{busy ? busyLabel ?? "Trading in…" : <><span className="rb-long">Trade in at the Sanctuary · </span><span className="rb-short">Sanctuary </span><strong>+{value}</strong></>}</span>
   </button>;
 
-  return <article ref={node} className={cx("rb-card", `rb-card-${mode}`, `rb-tier-${tier}`, !reduced && "rb-animate", className)}
-    style={tierVars(tier)} aria-labelledby={`${id}-name`} aria-describedby={dna ? `${id}-dna` : undefined}>
+  return <article ref={node} className={cx("rb-card", "rb-card-v2", `rb-card-${mode}`, `rb-tier-${tier}`, !reduced && "rb-animate", className)}
+    style={tierVars(tier)} aria-labelledby={`${id}-name`}>
     <div className="rb-card-surface">
       <div className="rb-card-scroll">
-        <div className="rb-card-top">
-          <div className="rb-card-hero">
-            <span className="rb-card-floor" aria-hidden="true" />
-            {dna && <DnaRail dna={dna} pixel={heroPixel} />}
-            <SpriteThumb creature={baby} scale={heroScale} reducedMotion={reduced} label={`${baby.name}, ${tierLabel(tier)} baby`} className="rb-card-sprite" />
-            {mode === "reveal" && !reduced && <Confetti seed={baby.key} />}
-          </div>
-          <header className="rb-card-head">
-            <p className="rb-eyebrow">{mode === "reveal" ? "It hatched!" : "In your brood"}</p>
+        <header className="rb-card-head">
+          <p className="rb-eyebrow">{reveal ? "It hatched!" : "In your brood"}</p>
+          <div className="rb-card-titlebar">
             <h2 className="rb-card-name" id={`${id}-name`}>{baby.name}</h2>
             <p className="rb-card-badges">
               <span className="rb-tier-badge"><PixelIcon name="sparkle" />{tierLabel(tier)}</span>
               <span className="rb-lineage" title="Generation">{lineageLabel(baby)}</span>
+              <span className="rb-card-family">{baby.family}</span>
             </p>
-            <p className="rb-card-family">{baby.family}</p>
-            {discoveries && discoveries.length > 0 && <ul className="rb-card-news" aria-label="New in your collection">
-              {discoveries.map(line => <li key={line}><PixelIcon name="sparkle" /><span>{line}</span></li>)}
-            </ul>}
-          </header>
-        </div>
+          </div>
+          {discoveries && discoveries.length > 0 && <ul className="rb-card-news" aria-label="New in your collection">
+            {discoveries.map(line => <li key={line}><PixelIcon name="sparkle" /><span>{line}</span></li>)}
+          </ul>}
+        </header>
 
-        {dna && <section className="rb-card-dna" aria-labelledby={`${id}-dna-title`}>
-          <h3 className="rb-section-label" id={`${id}-dna-title`}><PixelIcon name="dna" />DNA · 16 pixel rows</h3>
-          <p className="rb-sr-only" id={`${id}-dna`}>{dnaSummary}</p>
-          <ul className="rb-dna-legend" aria-hidden="true">
-            {([[parentA, nameA, fromA, "a", "Parent A"], [parentB, nameB, fromB, "b", "Parent B"]] as const).map(([parent, name, rows, side, role]) =>
-              <li key={side} className="rb-dna-parent">
-                <span className={`rb-dna-swatch rb-dna-${side}`} />
-                <span className="rb-slot rb-slot-mini">{parent ? <SpriteThumb creature={parent} scale={2} reducedMotion={reduced} label="" /> : <PixelIcon name="help" />}</span>
-                <span className="rb-dna-parent-text"><strong>{name}</strong><span>{role}</span></span>
-                <span className="rb-dna-count"><strong>{rows}</strong> {rows === 1 ? "row" : "rows"}</span>
-              </li>)}
-          </ul>
-          {mutatedRows.length > 0 && <p className="rb-dna-mut-note"><span className="rb-dna-pip" aria-hidden="true" />
-            {mutatedRows.length === 1 ? `Row ${mutatedRows[0] + 1} mutated` : `Rows ${mutatedRows.map(row => row + 1).join(", ")} mutated`}</p>}
-        </section>}
+        {dna ? <DnaTrio baby={baby} parentA={parentA} parentB={parentB} reveal={reveal} reducedMotion={reduced}
+          maxScale={reveal ? 8 : 6} babyExtra={reveal && !reduced ? <Confetti seed={baby.key} /> : null} />
+          : <div className="rb-card-hero"><SpriteThumb creature={baby} scale={compact ? 4 : 7} clip="walk" reducedMotion={reduced}
+            label={`${baby.name}, ${tierLabel(tier)} baby`} className="rb-card-sprite" /></div>}
 
-        <section className="rb-card-traits" aria-label="Traits">
-          {traits.length ? <ul className="rb-chips">{traits.map(trait => <li key={trait} className="rb-chip"><PixelIcon name="sparkle" />{trait}</li>)}</ul>
-            : <p className="rb-muted rb-small">No mutations. A timeless classic.</p>}
-        </section>
-
-        <div className="rb-card-stats">
-          <dl className={cx(heartsPerMinute !== undefined && "rb-card-stats-3")}>
+        <div className="rb-card-facts">
+          <section className="rb-card-traits" aria-label="Traits">
+            {traits.length ? <ul className="rb-chips">{traits.map(trait => <li key={trait} className="rb-chip"><PixelIcon name="sparkle" />{trait}</li>)}</ul>
+              : <p className="rb-muted rb-small">No mutations. A timeless classic.</p>}
+          </section>
+          <dl className={cx("rb-card-stats-row", hasRate && "rb-stats-3")}>
             <div><dt>Chance</dt><dd>{chance}</dd></div>
             <div><dt>Sanctuary</dt><dd>{value}</dd></div>
-            {heartsPerMinute !== undefined && <div className="rb-card-hearts">
-              <dt>{mode === "reveal" ? "If kept" : "Earning"}</dt>
+            {hasRate && <div className="rb-card-hearts">
+              <dt>{reveal ? "If kept" : "Earning"}</dt>
               <dd><PixelIcon name="heart" />{heartsPerMinute}<span>/min</span></dd>
             </div>}
           </dl>
-          <p className="rb-card-stats-note">{tierLabel(tier)} eggs hatch {chance} of the time, whatever the parents.
-            {heartsPerMinute !== undefined ? " Sanctuary pays simulated RF once; Hearts are game points, not RF." : " Values are simulated RF."}</p>
         </div>
+        <p className="rb-card-stats-note">{tierLabel(tier)} eggs hatch {chance} of the time, whatever the parents.
+          {hasRate ? " Values are simulated RF; Hearts are game points, not RF." : " Values are simulated RF."}</p>
       </div>
 
       <footer className="rb-card-actions">
         {error && <p className="rb-error rb-card-error" role="alert">{error}</p>}
-        {hint && !error && <p className="rb-card-hint"><PixelIcon name="sparkle" /><span>{hint}</span></p>}
+        {!error && (choice ? <p className="rb-card-choice"><PixelIcon name="heart" /><span>{choice}</span></p>
+          : hint ? <p className="rb-card-hint"><PixelIcon name="sparkle" /><span>{hint}</span></p> : null)}
         <div className="rb-card-buttons">
-          {mode === "reveal" && onKeep && <button type="button" className="rb-button rb-button-primary rb-button-lg rb-keep" onClick={onKeep}
+          {reveal && onKeep && <button type="button" className="rb-button rb-button-primary rb-button-lg rb-keep" onClick={onKeep}
             disabled={busy} data-autofocus><PixelIcon name="heart" /><span>Keep</span>
             {keepBonus ? <span className="rb-keep-bonus">+{keepBonus}<span className="rb-sr-only"> Hearts</span></span> : null}</button>}
-          {mode === "detail" && onUseAsParent && <button type="button" className="rb-button rb-button-primary rb-button-lg" onClick={onUseAsParent}
+          {!reveal && onUseAsParent && <button type="button" className="rb-button rb-button-primary rb-button-lg" onClick={onUseAsParent}
             disabled={busy} data-autofocus><PixelIcon name="heart" /><span><span className="rb-long">Breed with {baby.name}</span><span className="rb-short">Breed</span></span></button>}
           {releaseButton}
         </div>
-        <p className="rb-card-fine rb-muted">{mode === "reveal" ? "Keep: it follows your Friend and can breed again. " : "Kept babies can breed again. "}Sanctuary: trade it in for a fixed simulated RF value that never expires.</p>
+        {!choice && <p className="rb-card-fine rb-muted">{reveal ? "Keep: it follows your Friend and can breed again. " : "Kept babies can breed again. "}Sanctuary: trade it in for a fixed simulated RF value that never expires.</p>}
       </footer>
     </div>
   </article>;

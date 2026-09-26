@@ -735,6 +735,57 @@ function makePattern(frames: Frames, tier: TierId, seed: number, sideWalker: boo
 }
 
 // ---------------------------------------------------------------------------------------------
+// Family label
+
+/** "Cellular × Mask" -> ["Cellular", "Mask"] (the A and B side lines); null for a single family name. */
+export function familySides(label: string): readonly [string, string] | null {
+  const parts = label.split(/\s+[×x]\s+/).map(part => part.trim());
+  return parts.length === 2 && parts[0] && parts[1] ? [parts[0], parts[1]] : null;
+}
+
+/** The family line of each of a parent's rows as the parent records it: one family, or its label's A and B sides. */
+function rowLines(parent: Creature): readonly string[] {
+  const rowSource = parent.lineage > 0 ? parent.dna?.rowSource : undefined;
+  const sides = rowSource ? familySides(parent.family) : null;
+  return Array.from({ length: N }, (_, y) => sides && rowSource ? sides[rowSource[y] ?? 0] : familyName(parent));
+}
+
+const rowInk = (frame: Frame, y: number) => { let sum = 0; for (let x = 0; x < N; x++) sum += frame[y * N + x]; return sum; };
+
+/**
+ * The baby's label "<A side> × <B side>". A side is named by a family line it really passes on: the lines of
+ * the rows the baby takes from that parent, weighted by their ink (row count when those rows are empty),
+ * heaviest first. Each side prefers a line the other side lacks, so two babies of one Friend give
+ * "Mask × Sparkling" instead of "Cellular × Cellular"; when both sides carry the same lines and would show the
+ * same name, the side whose other line weighs more shows that one. F1 stays "<family A> × <family B>".
+ * Exact through F2; from F3 on, a baby parent's rows count as the lines its own label names
+ * (legacy.ts traces every row to its real ancestor when a lookup is available).
+ */
+function familyLabel(a: Creature, b: Creature, rows: Rows, view: Facing): string {
+  const ranked = [a, b].map((parent, side) => {
+    const lines = rowLines(parent), frame = parent.sheet.idle[view][0];
+    const mine = Array.from({ length: N }, (_, y) => y).filter(y => rows[y] === side);
+    const inked = mine.some(y => rowInk(frame, y) > 0);
+    const weights = new Map<string, number>();
+    for (const y of mine) {
+      const weight = inked ? rowInk(frame, y) : 1;
+      if (weight) weights.set(lines[y], (weights.get(lines[y]) ?? 0) + weight);
+    }
+    // Map order is first appearance (top row first), which the stable sort keeps for equal weights.
+    const list = [...weights].map(([name, weight]) => ({ name, weight })).sort((p, q) => q.weight - p.weight);
+    return list.length ? list : [{ name: familyName(parent), weight: 0 }];
+  });
+  const carries = (side: number, name: string) => ranked[side].some(entry => entry.name === name);
+  const names = ranked.map((list, side) => (list.find(entry => !carries(1 - side, entry.name)) ?? list[0]).name);
+  if (names[0] === names[1]) {
+    const other = ranked.map(list => list.find(entry => entry.name !== names[0]));
+    const side = (other[0]?.weight ?? -1) > (other[1]?.weight ?? -1) ? 0 : 1;
+    if (other[side]) names[side] = other[side].name;
+  }
+  return `${names[0]} × ${names[1]}`;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Breeding
 
 /**
@@ -777,7 +828,7 @@ export function breed(input: BreedInput): BreedResult {
       traits: Object.freeze(traits),
     }),
     name: babyName(seed),
-    family: `${familyName(a)} × ${familyName(b)}`,
+    family: familyLabel(a, b, rows, sideWalker ? "right" : "down"),
     familyId: dominant.familyId,
     lineage: Math.max(a.lineage, b.lineage) + 1,
   });
