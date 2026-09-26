@@ -1,18 +1,26 @@
 // Dev-only harness for the Rare Breeds renderer (nursery scene + hatch overlay).
 // URL flags: babies=N, tier=common|spotted|mutant|prismatic, reduced=1, fake=1, clean=1, eggs=N, w=<frame css width>,
-// chrome=1 (phone UI stand-ins over the world, to judge the camera band)
+// chrome=1 (phone UI stand-ins over the world, to judge the camera band),
+// hats=1 (accessories on the Friend and babies; stub pixels until the real art exists), hat=<accessory id> (the Friend's),
+// hearts=1 (heart income like the game: tier rates, 10 s cycle, staggered) or hearts=fast (3 s cycle)
 import wild from "../../games/rare-breeds/data/wild-friends.json";
 import { breed, breedSeed } from "../../games/rare-breeds/src/genetics.ts";
 import { createHatchSequence } from "../../games/rare-breeds/src/scene/hatch.ts";
 import { createNurseryScene } from "../../games/rare-breeds/src/scene/nursery.ts";
 import { creatureFromRecord, type WildFriendRecord } from "../../games/rare-breeds/src/sprites.ts";
-import { TIER_ORDER, type Creature, type TierId } from "../../games/rare-breeds/src/types.ts";
+import { HEART_CYCLE_SECONDS, HEART_RATE } from "../../games/rare-breeds/src/hearts.ts";
+import { TIER_ORDER, type AccessoryId, type Creature, type TierId } from "../../games/rare-breeds/src/types.ts";
 import type { HatchSequence } from "../../games/rare-breeds/src/api.ts";
 import { fakeBaby } from "./fake.ts";
 
 const params = new URLSearchParams(location.search);
 const records = (wild as { friends: WildFriendRecord[] }).friends;
-const player = creatureFromRecord(records[0], "friend");
+const hats = params.get("hats") === "1";
+(globalThis as { __stubHats?: boolean }).__stubHats = hats;
+const BABY_HATS: AccessoryId[] = ["party-hat", "crown", "halo", "bow", "beanie", "flower", "headphones"];
+const wear = (creature: Creature, accessory: AccessoryId | undefined): Creature => Object.freeze({ ...creature, accessory });
+let player = creatureFromRecord(records[0], "friend");
+if (hats || params.get("hat")) player = wear(player, (params.get("hat") as AccessoryId) || "top-hat");
 const pool = records.slice(1).map(record => creatureFromRecord(record));
 const useFake = params.get("fake") === "1";
 let reducedMotion = params.get("reduced") === "1";
@@ -40,6 +48,7 @@ let nextPlay = 1;
 const tiers: TierId[] = ["spotted", "prismatic", "common", "mutant", "spotted", "mutant"];
 const count = Number(params.get("babies") ?? 3);
 let brood: Creature[] = Array.from({ length: count }, (_, i) => makeBaby(player, pool[(i * 7 + 3) % pool.length], nextPlay++, tiers[i % tiers.length]));
+if (hats) brood = brood.map((baby, i) => wear(baby, BABY_HATS[i % BABY_HATS.length]));
 
 const world = document.getElementById("world") as HTMLCanvasElement;
 const scene = createNurseryScene({
@@ -73,8 +82,30 @@ function closeHatch() {
   scene.setPaused(false);
 }
 
+// Heart income, as src/hearts.ts schedules it: each baby earns its tier rate once per cycle, at its own second.
+const cycle = params.get("hearts") === "fast" ? 3 : HEART_CYCLE_SECONDS;
+const phase = (key: string) => { let hash = 0; for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) >>> 0; return hash % cycle; };
+let second = 0, earned = 0;
+if (params.get("hearts")) setInterval(() => {
+  const now = second++ % cycle;
+  for (const baby of brood) if (phase(baby.key) === now) {
+    const amount = HEART_RATE[baby.tier ?? "common"];
+    earned += amount;
+    scene.emitHearts(baby.key, amount);
+    log.push(`hearts:${baby.key}:+${amount}`);
+  }
+}, 1000);
+
 const api = {
   scene, log, player, pool,
+  earned: () => earned,
+  emit: (key: string, amount: number) => scene.emitHearts(key, amount),
+  /** Put an accessory on a baby (same key, new object) or on the Friend (key "player"). */
+  dress: (key: string, accessory: AccessoryId | null) => {
+    if (key === "player") { player = wear(player, accessory ?? undefined); scene.setPlayer(player); return; }
+    brood = brood.map(baby => baby.key === key ? wear(baby, accessory ?? undefined) : baby);
+    scene.setBrood(brood);
+  },
   brood: () => brood,
   courtship: (index = 5) => { const started = performance.now(); return scene.playCourtship(pool[index % pool.length]).then(() => { log.push(`courtship:done:${Math.round(performance.now() - started)}`); status(); }); },
   release: (key = brood[0]?.key) => {

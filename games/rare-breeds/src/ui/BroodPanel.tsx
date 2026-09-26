@@ -26,6 +26,12 @@ export type BroodPanelProps = Readonly<{
   onClose?: () => void;
   /** Collection progress (families bred, tiers found), shown above the grid. */
   collection?: Collection;
+  /** Opened at the Sanctuary gate: explains trading a baby in. */
+  sanctuary?: boolean;
+  /** Hearts a kept baby earns per minute (game points, never RF). Shown per baby and as the brood total. */
+  heartsRate?: (baby: Creature) => number;
+  /** Opens the Hearts shop (hats and wish matches). */
+  onOpenShop?: () => void;
   busy?: boolean;
   busyLabel?: string;
   error?: string;
@@ -34,7 +40,8 @@ export type BroodPanelProps = Readonly<{
 
 /** Grid of kept babies; selecting one shows its BabyCard with the Sanctuary action. */
 export function BroodPanel({ babies, tiers, creature, initialSelectedKey, onRelease, onUseAsParent, onFindMatch, onClose,
-  collection, busy, busyLabel, error, reducedMotion }: BroodPanelProps) {
+  collection, sanctuary, heartsRate, onOpenShop, busy, busyLabel, error, reducedMotion }: BroodPanelProps) {
+  const income = heartsRate ? babies.reduce((sum, baby) => sum + heartsRate(baby), 0) : 0;
   const [selectedKey, setSelectedKey] = useState(initialSelectedKey ?? null);
   const selected = babies.find(baby => baby.key === selectedKey) ?? null;
   const info = (baby: Creature) => tiers.find(row => row.tier === (baby.tier ?? "common"));
@@ -49,17 +56,25 @@ export function BroodPanel({ babies, tiers, creature, initialSelectedKey, onRele
         parentA={selected.parents && creature ? creature(selected.parents[0]) : null}
         parentB={selected.parents && creature ? creature(selected.parents[1]) : null}
         onRelease={() => onRelease(selected)} onUseAsParent={onUseAsParent && (() => onUseAsParent(selected))}
+        heartsPerMinute={heartsRate?.(selected)}
         busy={busy} busyLabel={busyLabel} error={error} reducedMotion={reducedMotion} />
     </Panel>;
   }
 
-  return <Panel eyebrow="Nursery" title={`Your brood · ${babies.length}`} onClose={busy ? undefined : onClose} size="lg"
+  return <Panel eyebrow={sanctuary ? "Sanctuary" : "Nursery"} title={`Your brood · ${babies.length}`} onClose={busy ? undefined : onClose} size="lg"
     focusKey="grid" className="rb-brood">
+    {sanctuary && <p className="rb-match-guide" role="note"><PixelIcon name="sprout" />
+      <span><strong>The Sanctuary</strong> takes babies you trade in and pays their fixed simulated RF value. Tap a baby to see its value.</span></p>}
     {collection && <CollectionMeter collection={collection} />}
+    {(heartsRate || onOpenShop) && babies.length > 0 && <div className="rb-brood-income">
+      {heartsRate && <p><PixelIcon name="heart" /><span>Your brood earns <strong>{income} Hearts</strong> a minute.</span></p>}
+      {onOpenShop && <button type="button" className="rb-button rb-button-ghost rb-button-sm rb-brood-shop" onClick={onOpenShop} disabled={busy}>
+        <PixelIcon name="sparkle" /><span>Hats &amp; wishes</span></button>}
+    </div>}
     {babies.length === 0 ? <div className="rb-empty">
       <span className="rb-empty-art" aria-hidden="true"><PixelIcon name="eggBig" pixel={5} /></span>
       <p className="rb-empty-title">No babies yet</p>
-      <p className="rb-muted">Find a match to hatch your first baby. Kept babies follow you around the nursery.</p>
+      <p className="rb-muted">Find a match to hatch your first baby. Kept babies follow your Friend around the nursery.</p>
       {onFindMatch && <button type="button" className="rb-button rb-button-primary rb-button-lg" onClick={onFindMatch} data-autofocus>
         <PixelIcon name="heart" /><span>Find a match</span></button>}
     </div> : <>
@@ -67,16 +82,17 @@ export function BroodPanel({ babies, tiers, creature, initialSelectedKey, onRele
       <ul className="rb-brood-grid">
         {babies.map(baby => <li key={baby.key}>
           <button type="button" className={`rb-brood-item rb-tier-${baby.tier ?? "common"}`} style={tierVars(baby.tier)} onClick={() => setSelectedKey(baby.key)}
-            aria-label={`${baby.name}, ${tierLabel(baby.tier)}, ${lineageLabel(baby)}. Show details`}>
+            aria-label={`${baby.name}, ${tierLabel(baby.tier)}, ${lineageLabel(baby)}${heartsRate ? `, earns ${heartsRate(baby)} Hearts a minute` : ""}. Show details`}>
             <span className="rb-slot"><SpriteThumb creature={baby} scale={4} compactScale={2} reducedMotion={reducedMotion} label="" /></span>
             <span className="rb-brood-name">{baby.name}</span>
             <span className="rb-brood-meta">
               <span className="rb-tier-dot" aria-hidden="true" />{tierLabel(baby.tier)} · {lineageLabel(baby)}
             </span>
+            {heartsRate && <span className="rb-brood-rate"><PixelIcon name="heart" />{heartsRate(baby)}/min</span>}
           </button>
         </li>)}
       </ul>
-      <p className="rb-muted rb-small rb-brood-note">Tap a baby for its DNA card. The Sanctuary pays a fixed Simulated RF value for each tier.</p>
+      <p className="rb-muted rb-small rb-brood-note">Tap a baby for its DNA card. Breed it again, or trade it in at the Sanctuary for its fixed simulated RF value.</p>
     </>}
   </Panel>;
 }

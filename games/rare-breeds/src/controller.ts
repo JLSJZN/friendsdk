@@ -192,12 +192,18 @@ export function useRareBreeds({ friendId, client, paused }: { friendId: bigint; 
   [client, paused]);
 
   const reroll = useCallback(() => setCandidates(pickCandidates(friendId)), [friendId]);
+  /** Wish match: three candidates from one family (the Hearts price is charged by the caller). */
+  const wish = useCallback((familyId: number) => {
+    const family = WILD_POOL.filter(creature => creature.familyId === familyId && creature.tokenId !== friendId);
+    const picked = [...family].sort(() => Math.random() - 0.5).slice(0, CANDIDATES);
+    if (picked.length) setCandidates(picked);
+  }, [friendId]);
   const brood = useMemo(() => [...babies.values()].sort((x, y) => Number((x.playId ?? 0n) - (y.playId ?? 0n))), [babies]);
   const creature = useCallback((key: string) => lineage.current.get(key) ?? null, []);
 
   return {
     definition, snapshot, player, loadError, retryLoad: load, error, clearError: () => setError(""), busy,
-    eggs, needsEgg, canAfford, blockerText, buyEggs, pendingPlay, brood, candidates, reroll, hatch, breedPair, finishHatch, closeHatch,
+    eggs, needsEgg, canAfford, blockerText, buyEggs, pendingPlay, brood, candidates, reroll, wish, hatch, breedPair, finishHatch, closeHatch,
     release, creature,
   };
 }

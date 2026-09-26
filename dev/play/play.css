@@ -1,0 +1,7 @@
+html, body { margin: 0; min-height: 100%; background: #1b1b1a; color: #8c877d; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+body { display: grid; place-content: center; gap: 10px; padding: 16px; box-sizing: border-box; min-height: 100vh; }
+#root { display: contents; }
+.play-frame { position: relative; width: min(960px, calc(100vw - 32px)); aspect-ratio: 3 / 2; overflow: hidden; border: 2px solid #111; }
+@media (max-width: 600px) and (orientation: portrait) { .play-frame { aspect-ratio: 3 / 4; } }
+.play-frame > * { position: absolute; inset: 0; }
+.play-note { margin: 0; text-align: center; }

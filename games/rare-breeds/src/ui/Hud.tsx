@@ -17,12 +17,16 @@ export type HudProps = Readonly<{
   disabled?: boolean;
   /** Collection progress: families collected, shown next to the brood count on wide layouts. */
   collection?: Collection;
+  /** Hearts balance (game points, never RF). Shown first in the pill: the scene's heart particles fly there. */
+  hearts?: number;
+  /** Makes the Hearts counter a button that opens the Hearts shop. */
+  onOpenShop?: () => void;
 }>;
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** Top-left stats pill and top-right icon buttons. Leaves both bottom corners free for the runtime. */
-export function Hud({ balance, eggs, broodCount, muted, onToggleSound, onOpenSettings, onOpenBrood, disabled, collection }: HudProps) {
+export function Hud({ balance, eggs, broodCount, muted, onToggleSound, onOpenSettings, onOpenBrood, disabled, collection, hearts, onOpenShop }: HudProps) {
   const families = collection && { found: collection.families.length, total: ALL_FAMILIES.length };
   const brood = <>
     <PixelIcon name="baby" />
@@ -36,12 +40,22 @@ export function Hud({ balance, eggs, broodCount, muted, onToggleSound, onOpenSet
   </>;
   return <div className="rb-hud">
     <div className="rb-hud-stats" role="group" aria-label="Your nursery">
-      <span className="rb-hud-stat rb-hud-balance" title="Simulated RF balance">
+      {hearts !== undefined && (onOpenShop
+        ? <button type="button" className="rb-hud-stat rb-hud-stat-button rb-hud-hearts" onClick={onOpenShop} disabled={disabled}
+            title="Hearts: game points your kept babies earn. Not RF. Tap for the shop.">
+            <PixelIcon name="heart" />
+            <span key={hearts} className="rb-hud-num rb-hud-bump">{hearts}</span>
+            <span className="rb-sr-only">Hearts, open the shop</span>
+          </button>
+        : <span className="rb-hud-stat rb-hud-hearts" title="Hearts: game points your kept babies earn. Not RF.">
+            <PixelIcon name="heart" /><span className="rb-hud-num">{hearts}</span><span className="rb-sr-only">Hearts</span>
+          </span>)}
+      <span className="rb-hud-stat rb-hud-balance" title="Simulated RF ($RAREFRIENDS) balance. No real money.">
         <span className="rb-sr-only">Simulated balance:</span>
         <span className="rb-hud-tag" aria-hidden="true"><span className="rb-long">Simulated</span><span className="rb-short">Sim</span></span>
         <span className="rb-hud-num">{balance}</span>
       </span>
-      <span className="rb-hud-stat" title={plural(eggs, "egg", "eggs")}>
+      <span className="rb-hud-stat" title={`${plural(eggs, "egg", "eggs")} waiting. One egg per hatch.`}>
         <PixelIcon name="egg" />
         <span className="rb-hud-num">{eggs}</span>
         <span className="rb-sr-only">{eggs === 1 ? "egg" : "eggs"}</span>

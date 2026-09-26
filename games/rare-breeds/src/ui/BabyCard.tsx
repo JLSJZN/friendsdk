@@ -22,8 +22,14 @@ export type BabyCardProps = Readonly<{
   onUseAsParent?: () => void;
   /** Reveal mode: what this baby added to the collection, e.g. ["New family: Hollow · 3/9"] (see discoveriesOf). */
   discoveries?: readonly string[];
+  /** First-run line above the buttons explaining the choice, e.g. Keep vs Sanctuary. */
+  hint?: string;
+  /** Hearts this baby earns per minute while kept (game points, never RF). Shown next to the Sanctuary value. */
+  heartsPerMinute?: number;
+  /** Reveal mode: one-off Hearts for keeping it, shown on the Keep button. */
+  keepBonus?: number;
   busy?: boolean;
-  /** Text for the Sanctuary button while busy. Default "Sending…". */
+  /** Text for the Sanctuary button while busy. Default "Trading in…". */
   busyLabel?: string;
   error?: string;
   reducedMotion?: boolean;
@@ -65,7 +71,7 @@ function Confetti({ seed }: { seed: string }) {
 }
 
 /** The shareable result card: big animated baby, tier, lineage, parents, DNA ribbon, traits, value and actions. */
-export function BabyCard({ baby, parentA, parentB, chance, value, mode = "reveal", onKeep, onRelease, onUseAsParent, discoveries,
+export function BabyCard({ baby, parentA, parentB, chance, value, mode = "reveal", onKeep, onRelease, onUseAsParent, discoveries, hint, heartsPerMinute, keepBonus,
   busy, busyLabel, error, reducedMotion, className }: BabyCardProps) {
   const id = useId();
   const node = useRef<HTMLElement>(null);
@@ -86,7 +92,7 @@ export function BabyCard({ baby, parentA, parentB, chance, value, mode = "reveal
   const releaseButton = onRelease && <button type="button" className="rb-button rb-button-outline rb-button-lg rb-release"
     onClick={onRelease} disabled={busy} aria-busy={busy || undefined}>
     {busy ? <span className="rb-spinner" aria-hidden="true" /> : <PixelIcon name="sprout" />}
-    <span>{busy ? busyLabel ?? "Sending…" : <><span className="rb-long">Send to Sanctuary · </span><span className="rb-short">Sanctuary </span><strong>+{value}</strong></>}</span>
+    <span>{busy ? busyLabel ?? "Trading in…" : <><span className="rb-long">Trade in at the Sanctuary · </span><span className="rb-short">Sanctuary </span><strong>+{value}</strong></>}</span>
   </button>;
 
   return <article ref={node} className={cx("rb-card", `rb-card-${mode}`, `rb-tier-${tier}`, !reduced && "rb-animate", className)}
@@ -136,24 +142,31 @@ export function BabyCard({ baby, parentA, parentB, chance, value, mode = "reveal
         </section>
 
         <div className="rb-card-stats">
-          <dl>
+          <dl className={cx(heartsPerMinute !== undefined && "rb-card-stats-3")}>
             <div><dt>Chance</dt><dd>{chance}</dd></div>
             <div><dt>Sanctuary</dt><dd>{value}</dd></div>
+            {heartsPerMinute !== undefined && <div className="rb-card-hearts">
+              <dt>{mode === "reveal" ? "If kept" : "Earning"}</dt>
+              <dd><PixelIcon name="heart" />{heartsPerMinute}<span>/min</span></dd>
+            </div>}
           </dl>
-          <p className="rb-card-stats-note">{tierLabel(tier)} eggs hatch {chance} of the time. Values in Simulated RF.</p>
+          <p className="rb-card-stats-note">{tierLabel(tier)} eggs hatch {chance} of the time, whatever the parents.
+            {heartsPerMinute !== undefined ? " Sanctuary pays simulated RF once; Hearts are game points, not RF." : " Values are simulated RF."}</p>
         </div>
       </div>
 
       <footer className="rb-card-actions">
         {error && <p className="rb-error rb-card-error" role="alert">{error}</p>}
+        {hint && !error && <p className="rb-card-hint"><PixelIcon name="sparkle" /><span>{hint}</span></p>}
         <div className="rb-card-buttons">
           {mode === "reveal" && onKeep && <button type="button" className="rb-button rb-button-primary rb-button-lg rb-keep" onClick={onKeep}
-            disabled={busy} data-autofocus><PixelIcon name="heart" /><span>Keep</span></button>}
+            disabled={busy} data-autofocus><PixelIcon name="heart" /><span>Keep</span>
+            {keepBonus ? <span className="rb-keep-bonus">+{keepBonus}<span className="rb-sr-only"> Hearts</span></span> : null}</button>}
           {mode === "detail" && onUseAsParent && <button type="button" className="rb-button rb-button-primary rb-button-lg" onClick={onUseAsParent}
             disabled={busy} data-autofocus><PixelIcon name="heart" /><span><span className="rb-long">Breed with {baby.name}</span><span className="rb-short">Breed</span></span></button>}
           {releaseButton}
         </div>
-        <p className="rb-card-fine rb-muted">{mode === "reveal" ? "Kept babies follow you and can breed again. " : "Kept babies can breed again. "}The Sanctuary value is fixed and never expires.</p>
+        <p className="rb-card-fine rb-muted">{mode === "reveal" ? "Keep: it follows your Friend and can breed again. " : "Kept babies can breed again. "}Sanctuary: trade it in for a fixed simulated RF value that never expires.</p>
       </footer>
     </div>
   </article>;

@@ -31,13 +31,13 @@ const eggWord = (count: bigint | number) => `${count} ${count === 1 || count ===
 /** The incubator station: stock up on eggs in packs (one runtime confirmation per pack). */
 export function EggShopPanel({ eggs, packs, balance, note, reason, busy, onBuy, onClose }: EggShopPanelProps) {
   const [pressed, setPressed] = useState<bigint | null>(null);
-  return <Panel title="Egg incubator" eyebrow="Simulated RF" size="sm" onClose={onClose} className="rb-eggshop-panel">
+  return <Panel title="Egg incubator" eyebrow="Buy eggs · simulated RF" size="sm" onClose={onClose} className="rb-eggshop-panel">
     <div className="rb-eggshop">
       <div className="rb-eggshop-stock">
         <span className="rb-slot rb-eggshop-art" aria-hidden="true"><PixelIcon name="eggBig" pixel={3} /></span>
         <p className="rb-eggshop-lead">
           <strong>{eggs === 0 ? "The incubator is empty" : `${eggWord(eggs)} waiting`}</strong>
-          <span>Each hatch uses one egg. Buy a pack and you confirm once, not every hatch.</span>
+          <span>Babies hatch from eggs, one egg per hatch. Buy a pack here and you confirm once instead of before every hatch.</span>
         </p>
       </div>
       {reason && <p className="rb-eggshop-reason rb-warn" role="status">{reason}</p>}

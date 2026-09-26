@@ -15,6 +15,8 @@ export type SettingsPanelProps = Readonly<{
   onClose: () => void;
   /** Optional extra economy line under the table, e.g. the expected value per egg. */
   note?: ReactNode;
+  /** Shows a "Replay intro" button that reopens the first-run tour. */
+  onReplayIntro?: () => void;
 }>;
 
 function Switch({ label, detail, checked, onToggle }: { label: string; detail: string; checked: boolean; onToggle: () => void }) {
@@ -26,19 +28,23 @@ function Switch({ label, detail, checked, onToggle }: { label: string; detail: s
 }
 
 /** Sound and motion settings, how to play, the exact odds table and the simulation notice. */
-export function SettingsPanel({ muted, onToggleSound, reducedMotion, onToggleReducedMotion, odds, price, onClose, note }: SettingsPanelProps) {
+export function SettingsPanel({ muted, onToggleSound, reducedMotion, onToggleReducedMotion, odds, price, onClose, note, onReplayIntro }: SettingsPanelProps) {
   return <Panel eyebrow="Rare Breeds" title="How to play" onClose={onClose} size="md" className="rb-settings">
-    <p className="rb-notice" role="note"><PixelIcon name="sparkle" />All balances and outcomes are simulated. No real RF moves, and reloading starts a fresh session.</p>
+    <p className="rb-notice" role="note"><PixelIcon name="sparkle" /><span>Everything here is simulated: RF ($RAREFRIENDS) balances, eggs and hatches. No real money moves, no transactions are sent, and reloading starts a fresh session.</span></p>
+    {onReplayIntro && <button type="button" className="rb-button rb-button-ghost rb-replay" onClick={onReplayIntro}>
+      <PixelIcon name="back" className="rb-flip" /><span>Replay intro</span></button>}
 
     <ol className="rb-steps">
       <li><strong>Find a match.</strong> Pick a parent and one of three real Rare Friends. New faces are free.</li>
-      <li><strong>Hatch an egg.</strong> Each egg costs {price} (simulated). The runtime asks you to confirm.</li>
+      <li><strong>Hatch an egg.</strong> Each egg costs {price} (simulated). Rare Friends asks you to confirm Buy egg and Use egg; both are previews.</li>
       <li><strong>Meet the baby.</strong> Every pixel row comes from one parent, walk cycle included.</li>
-      <li><strong>Keep or release.</strong> Kept babies follow you and can breed again (F1, F2, F3). The Sanctuary pays a fixed value.</li>
+      <li><strong>Keep or trade in.</strong> Kept babies follow you, earn Hearts and can breed again (F1, F2, F3). The Sanctuary trades a baby in for a fixed simulated RF value.</li>
+      <li><strong>Spend Hearts.</strong> Hearts are game points, never RF. Tap the heart counter to buy hats for your Friend and babies, or a Wish match (three mates from a family you pick).</li>
       <li><strong>Collect them all.</strong> Hatch babies from all 9 Friend families and find all 4 tiers. Your brood tracks the set.</li>
     </ol>
     <p className="rb-controls rb-muted rb-small">
-      Walk with <kbd className="rb-kbd">WASD</kbd> / arrows or tap the floor. Use a station with <kbd className="rb-kbd">E</kbd>, Enter, Space or a tap.
+      Walk with <kbd className="rb-kbd">WASD</kbd> / arrows or tap the floor. Use a station with <kbd className="rb-kbd">E</kbd>, Enter, Space or a tap:
+      the MATCH terminal finds a mate, the egg incubator sells eggs, the Sanctuary gate takes babies you trade in.
     </p>
 
     <h3 className="rb-section-label">Hatch odds · per egg</h3>

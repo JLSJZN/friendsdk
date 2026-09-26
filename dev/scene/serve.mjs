@@ -14,6 +14,15 @@ export async function startServer({ port = 0 } = {}) {
     entryPoints: [join(here, "harness.ts")],
     bundle: true, format: "esm", platform: "browser", target: "es2022",
     write: false, sourcemap: "inline", logLevel: "silent", absWorkingDir: sdkRoot,
+    plugins: [{
+      // The game's accessories module is swapped for dev/scene/accessories-stub.ts (which wraps the real one),
+      // so ?hats=1 shows stub hats until the real pixel art exists.
+      name: "stub-accessories",
+      setup(build) {
+        const stub = join(here, "accessories-stub.ts");
+        build.onResolve({ filter: /accessories\.ts$/ }, args => args.importer === stub ? undefined : { path: stub });
+      },
+    }],
   });
   const server = http.createServer(async (request, response) => {
     const { pathname } = new URL(request.url ?? "/", "http://127.0.0.1");

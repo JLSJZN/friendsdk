@@ -3,8 +3,8 @@
 // camera zooms in on it and keeps it centred in the band the UI leaves uncovered.
 import { WORLD_HEIGHT, WORLD_WIDTH, type NurseryScene, type NurserySceneOptions } from "../api.ts";
 import { TIER_STYLE, type Clip, type Creature, type Facing, type StationId } from "../types.ts";
-import { GREEN, INK, MUTED, PAPER, WHITE, clamp, easeOutCubic, ellipse, rect } from "./art.ts";
-import { feetRow, inkSpan, paintCreature } from "./creatures.ts";
+import { GREEN, HEART, INK, MUTED, PAPER, WHITE, clamp, easeInCubic, easeOutCubic, ellipse, rect } from "./art.ts";
+import { feetRow, headroom, inkSpan, paintCreature } from "./creatures.ts";
 import { drawText, textWidth } from "./font.ts";
 import { createParticles } from "./fx.ts";
 import { createNavigator, pathLength, type Point } from "./nav.ts";
@@ -25,6 +25,8 @@ const FIRST_GAP = 54, GAP = 42;
 const HERO_FOOT = { half: 15, up: 12, down: 1 }, BABY_FOOT = { half: 11, up: 9, down: 1 };
 /** Spawn intro: the Friend drops onto the rug, then the brood pops in. */
 const DROP = 460, INTRO = 620;
+/** Hearts income: badges alive at once (older ones make way), lifetime and heart flight time (ms). */
+const MAX_INCOMES = 6, INCOME_LIFE = 1500, HEART_FLIGHT = 1150;
 
 // Camera. Displays narrower than 600 or lower than 400 CSS px zoom in so the Friend's 16-row frame is
 // about HERO_CSS CSS px tall; larger ones show the whole room with no camera motion.
@@ -110,12 +112,12 @@ function rectDistance(x: number, y: number, [x0, y0, x1, y1]: Rect) {
 const inside = (x: number, y: number, [x0, y0, x1, y1]: Rect) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
 
 export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
-  const { canvas, player: playerCreature, onStationNear, onStationActivate, onCreatureActivate } = options;
+  const { canvas, player: firstPlayer, onStationNear, onStationActivate, onCreatureActivate } = options;
   let reducedMotion = options.reducedMotion;
   let paused = false, destroyed = false, dirty = true;
   const view = createPixelView(canvas, WORLD_WIDTH, WORLD_HEIGHT, { onResize: () => { dirty = true; }, zoomFor: compactZoom });
   const ctx = view.ctx;
-  const room = createRoom(playerCreature);
+  const room = createRoom(firstPlayer);
   /** The Friend and visiting mates path with bigger feet; babies with smaller ones. */
   const heroNav = createNavigator(HERO_WALK, OBSTACLES, HERO_FOOT);
   const nav = createNavigator(WALK, OBSTACLES, BABY_FOOT);
@@ -137,13 +139,16 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   let guided = false;
   /** The player's nameplate shows during the intro and after tapping the Friend. */
   let tagUntil = 3200, nextLookAt = 5000;
-  const debug = { x: "", y: "", near: "", brood: "", babies: "", view: "" };
+  const debug = { x: "", y: "", near: "", brood: "", babies: "", view: "", incomes: "" };
   /** Camera: top-left of the visible region (logical px), eased look-ahead, and the UI insets (CSS px). */
   const cam = { x: 0, y: 0, lookX: 0, lookY: 0, layout: -1, top: 0, bottom: 0, family: 1 };
   /** The Friend's measured velocity (logical px / s), smoothed, for the look-ahead. */
   const heroVelocity = { x: 0, y: 0 };
   /** Scenes push a framing function; the newest one steers the camera while it runs. */
   const framers: (() => Point)[] = [];
+  /** Hearts income in flight: a "+N" badge over the creature and a few pixel hearts heading for the HUD counter. */
+  type Income = { key: string; x: number; y: number; start: number; amount: number; hearts: { dx: number; delay: number }[] };
+  const incomes: Income[] = [];
 
   const timers: { at: number; resolve: () => void }[] = [];
   const wait = (ms: number) => new Promise<void>(resolve => { if (destroyed) resolve(); else timers.push({ at: time + ms, resolve }); });
@@ -160,7 +165,9 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     };
   };
 
-  const player = makeEntity(playerCreature, SPAWN.x, SPAWN.y, PLAYER_SCALE);
+  /** Height from the feet to the top of the sprite, hat included (logical px). */
+  const topOf = (entity: Entity) => (16 + headroom(entity.creature)) * entity.scale;
+  const player = makeEntity(firstPlayer, SPAWN.x, SPAWN.y, PLAYER_SCALE);
   let brood: Entity[] = [];
   const departing = new Map<string, { entity: Entity; since: number }>();
   const released = new Set<string>();
@@ -255,7 +262,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
 
   const entityBox = (entity: Entity): Rect => {
     const size = 16 * entity.scale;
-    return [entity.x - size / 2 - 6, entity.y - size - 6 - hopOffset(entity), entity.x + size / 2 + 6, entity.y + 8];
+    return [entity.x - size / 2 - 6, entity.y - topOf(entity) - 6 - hopOffset(entity), entity.x + size / 2 + 6, entity.y + 8];
   };
 
   // ------------------------------------------------------------------------------------------
@@ -297,7 +304,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     const { width, inner } = band();
     const s = labelScale();
     const prompt = !!near && !paused && !inputLock, bubble = prompt && view.zoom > 1;
-    const hy0 = player.y - 16 * PLAYER_SCALE - (prompt ? (bubble ? 10 * s : 17 * s + 14) : 6);
+    const hy0 = player.y - topOf(player) - (prompt ? (bubble ? 10 * s : 17 * s + 14) : 6);
     const side = bubble ? textWidth("TAP", s) + 12 * s + 26 : 0;
     const hx0 = player.x - 8 * PLAYER_SCALE - side, hx1 = player.x + 8 * PLAYER_SCALE + side;
     const hy1 = player.y + (time < tagUntil ? 3 * PLAYER_SCALE + 11 * s + 4 : 8);
@@ -305,7 +312,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     for (const baby of brood) {
       if (time < baby.bornAt || Math.hypot(baby.x - player.x, baby.y - player.y) > 300) continue;
       x0 = Math.min(x0, baby.x - 8 * BABY_SCALE); x1 = Math.max(x1, baby.x + 8 * BABY_SCALE);
-      y0 = Math.min(y0, baby.y - 16 * BABY_SCALE); y1 = Math.max(y1, baby.y + 6);
+      y0 = Math.min(y0, baby.y - topOf(baby)); y1 = Math.max(y1, baby.y + 6);
     }
     const w = cam.family;
     const hero = { x: (hx0 + hx1) / 2, y: (hy0 + hy1) / 2 };
@@ -422,7 +429,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     if (beaconBox && inside(x, y, beaconBox)) { goToStation("matchmaker"); return; }
     const baby = hitBaby(x, y, slop);
     if (baby) { hop(baby, 12, 300); onCreatureActivate?.(baby.creature.key); dirty = true; return; }
-    if (inside(x, y, entityBox(player))) { hopChain(); fx.hearts(player.x, player.y - 16 * PLAYER_SCALE - 4, 1, 6); tagUntil = time + 2200; return; }
+    if (inside(x, y, entityBox(player))) { hopChain(); fx.hearts(player.x, player.y - topOf(player) - 4, 1, 6); tagUntil = time + 2200; return; }
     const station = hitStation(x, y);
     if (station) { goToStation(station); return; }
     if (walkTo({ x, y })) {
@@ -750,6 +757,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     updateBall(dt);
     if (!paused) updateNear();
     fx.update(dt);
+    for (let i = incomes.length - 1; i >= 0; i--) if (time - incomes[i].start > INCOME_LIFE) incomes.splice(i, 1);
     updateCamera(dt);
   }
 
@@ -935,19 +943,78 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   /** Pixel font scale: at least about 1.6 CSS px per font pixel, whatever the zoom. */
   const labelScale = () => clamp(Math.ceil(1.6 / (view.cssScale || 1)), 2, 4);
 
+  /** Badge size for an amount at pixel font scale s: "♥+N" in an ink pill. */
+  const badgeSize = (amount: number, s: number) => ({
+    glyph: textWidth("♥", s) + s * 2,
+    width: s * 3 + textWidth("♥", s) + s * 2 + textWidth(`+${amount}`, s) + s * 3,
+    height: 7 * s + s * 4,
+  });
+
+  /**
+   * Hearts income. A small ink badge "♥+N" pops over the creature and rises a little; one to three pixel
+   * hearts burst out of its heart glyph, then speed off towards the HUD heart counter (top-left of the
+   * screen) and fade before they reach it. Reduced motion: the badge only, fading in and out in place.
+   */
+  function drawIncome() {
+    if (!incomes.length) return;
+    const s = labelScale(), cssScale = view.cssScale || 1;
+    const { width: viewWidth } = band();
+    // The HUD heart icon centre in CSS px (measured: compact pill 23/24, wide pill 33/36).
+    const [iconX, iconY] = view.zoom > 1 ? [23, 24] : [33, 36];
+    const target = { x: view.camera.x + iconX / cssScale, y: view.camera.y + iconY / cssScale };
+    for (const item of incomes) {
+      const age = time - item.start;
+      const { glyph, width, height } = badgeSize(item.amount, s);
+      const lift = reducedMotion ? 0 : Math.round(easeOutCubic(clamp(age / 700)) * 14);
+      const x = Math.round(clamp(item.x - width / 2, view.camera.x + 6, view.camera.x + viewWidth - width - 6));
+      const y = Math.round(item.y - height - 6 - lift);
+      // Hearts first, so they come out from behind the badge.
+      for (const [index, heart] of item.hearts.entries()) {
+        const t = (age - heart.delay) / HEART_FLIGHT;
+        if (t <= 0 || t >= 1) continue;
+        const burst = easeOutCubic(Math.min(1, t / 0.25));
+        const origin = { x: x + s * 5.5, y: y + height / 2 + s * 3 };
+        const from = { x: origin.x + (heart.dx - 12) * burst, y: origin.y - (16 + index * 8) * burst };
+        let hx = from.x, hy = from.y;
+        if (t > 0.25) {
+          // Off to the counter: accelerate along a gentle arc and stop short of the HUD.
+          const u = easeInCubic((t - 0.25) / 0.75);
+          const end = { x: from.x + (target.x - from.x) * 0.82, y: from.y + (target.y - from.y) * 0.82 };
+          const control = { x: from.x + (end.x - from.x) * 0.2, y: Math.min(from.y, end.y) - 30 };
+          hx = (1 - u) * (1 - u) * from.x + 2 * (1 - u) * u * control.x + u * u * end.x;
+          hy = (1 - u) * (1 - u) * from.y + 2 * (1 - u) * u * control.y + u * u * end.y;
+        }
+        const px = t < 0.08 ? 1 : 2;
+        ctx.globalAlpha = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+        ctx.drawImage(HEART, Math.round(hx - (HEART.width * px) / 2), Math.round(hy - HEART.height * px), HEART.width * px, HEART.height * px);
+      }
+      // The badge.
+      const fadeIn = clamp(age / 110), fadeOut = clamp(((reducedMotion ? 1000 : 1150) - age) / 300);
+      const alpha = Math.min(fadeIn, fadeOut);
+      if (alpha <= 0) continue;
+      const amount = `+${item.amount}`;
+      ctx.globalAlpha = alpha;
+      rect(ctx, x, y + s, width, height - s * 2, INK);
+      rect(ctx, x + s, y, width - s * 2, height, INK);
+      drawText(ctx, "♥", x + s * 3, y + s * 2, { scale: s, color: GREEN });
+      drawText(ctx, amount, x + s * 3 + glyph, y + s * 2, { scale: s, color: PAPER });
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawNameplate() {
     const fadeIn = reducedMotion ? 1 : clamp((time - DROP - 150) / 200), fadeOut = clamp((tagUntil - time) / 350);
     const alpha = Math.min(fadeIn, fadeOut);
     if (alpha <= 0 || near || inputLock) return;
     const s = labelScale();
-    const label = playerCreature.name.toUpperCase();
+    const label = player.creature.name.toUpperCase();
     const width = textWidth(label, s) + s * 12, height = 7 * s + s * 4;
     const { width: viewWidth, height: viewHeight, top, bottom } = band();
     const { x: left, y: upper } = view.camera;
     const x = Math.round(clamp(player.x - width / 2, left + 8, left + viewWidth - width - 8));
     // Under the feet, or over the head when the UI chrome would cover it.
     let y = Math.round(player.y + 3 * PLAYER_SCALE);
-    if (y + height > upper + viewHeight - bottom - 4) y = Math.round(Math.max(upper + top + 4, player.y - 16 * PLAYER_SCALE - hopOffset(player) - height - 8));
+    if (y + height > upper + viewHeight - bottom - 4) y = Math.round(Math.max(upper + top + 4, player.y - topOf(player) - hopOffset(player) - height - 8));
     ctx.globalAlpha = alpha;
     rect(ctx, x, y + s, width, height - s * 2, INK);
     rect(ctx, x + s, y, width - s * 2, height, INK);
@@ -969,7 +1036,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     const padding = s * 3;
     const width = keyW + labelW + padding * 3, height = keyH + padding * 2 - s * 2;
     const bob = reducedMotion ? 0 : Math.round(Math.sin(time / 260) * 1.5) * s / 2;
-    const headTop = player.y - 16 * player.scale + player.feetOffset * 0 - hopOffset(player);
+    const headTop = player.y - topOf(player) - hopOffset(player);
     if (view.zoom > 1) {
       // Zoomed in (phones): the action bar already names the station, so a keycap bubble beside the head
       // says "tap to use" without eating the short band above the Friend.
@@ -1046,6 +1113,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
 
     drawButterfly();
     fx.draw(ctx, "top");
+    drawIncome();
     drawBeacon();
     drawNameplate();
     drawPrompt();
@@ -1059,6 +1127,9 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     // Camera: left, top, visible width, height (logical px) and zoom, for mapping world points in tests.
     const shown = `${camera.x},${camera.y},${+view.viewWidth.toFixed(2)},${+view.viewHeight.toFixed(2)},${+view.zoom.toFixed(3)}`;
     if (shown !== debug.view) canvas.dataset.view = debug.view = shown;
+    // Hearts income in flight: badges / hearts.
+    const flying = `${incomes.length}/${incomes.reduce((sum, item) => sum + item.hearts.filter(heart => time - item.start - heart.delay < HEART_FLIGHT).length, 0)}`;
+    if (flying !== debug.incomes) canvas.dataset.incomes = debug.incomes = flying;
   }
 
   function loop(now: number) {
@@ -1105,7 +1176,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
         player.facing = facingFrom(meet.x - player.x, meet.y - player.y, player.facing);
         actors.push(actor);
         fadeTo(actor, 1, 150);
-        fx.bigHeart((player.x + meet.x) / 2, Math.min(player.y, meet.y) - 16 * PLAYER_SCALE - 8);
+        fx.bigHeart((player.x + meet.x) / 2, Math.min(player.y - topOf(player), meet.y - topOf(actor)) - 8);
         await wait(700);
         fadeTo(actor, 0, 150);
         await wait(160);
@@ -1127,7 +1198,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
       player.facing = facingFrom(actor.x - player.x, actor.y - player.y, player.facing);
       for (const baby of brood) baby.facing = facingFrom(actor.x - baby.x, actor.y - baby.y, baby.facing), baby.lookUntil = time + 1400;
       doorWant = 0;
-      const midX = (player.x + actor.x) / 2, topY = Math.min(player.y, actor.y) - 16 * PLAYER_SCALE - 2;
+      const midX = (player.x + actor.x) / 2, topY = Math.min(player.y - topOf(player), actor.y - topOf(actor)) - 2;
       hop(actor, 20, 300); hop(player, 20, 300, 120);
       fx.bigHeart(midX, topY - 6, 40);
       fx.hearts(midX, topY + 18, 6, 110, 120);
@@ -1181,7 +1252,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
       entity.facing = "down";
       await wait(160);
       hop(entity, 14, 280);
-      fx.hearts(entity.x, entity.y - 16 * BABY_SCALE - 4, 2, 20, 180);
+      fx.hearts(entity.x, entity.y - topOf(entity) - 4, 2, 20, 180);
       await wait(360);
       hop(entity, 14, 280);
       await wait(340);
@@ -1202,6 +1273,28 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   function findEntity(key: string) {
     if (player.creature.key === key) return player;
     return brood.find(baby => baby.creature.key === key) ?? actors.find(actor => actor.creature.key === key) ?? null;
+  }
+
+  /** A new look (accessory put on or taken off): a little hop and a twinkle around the head. */
+  function dressed(entity: Entity) {
+    dirty = true;
+    if (reducedMotion) return;
+    hop(entity, 14, 300);
+    fx.sparkles(entity.x, entity.y - topOf(entity) + 4 * entity.scale, 5, 9 * entity.scale, GREEN, 3, 60);
+  }
+
+  /** Swap in a new object for the same creature (a new accessory, say), keeping position and state. */
+  function restyle(entity: Entity, next: Creature) {
+    const before = entity.creature;
+    if (before === next) return;
+    entity.creature = next;
+    if (next.sheet !== before.sheet) {
+      const span = inkSpan(next);
+      entity.shadowSpan = Math.max(4, (span.max - span.min + 1) / 2);
+      entity.feetOffset = (15 - feetRow(next)) * entity.scale;
+    }
+    if ((next.accessory ?? null) !== (before.accessory ?? null)) dressed(entity);
+    dirty = true;
   }
 
   /** Celebrations play even over a paused world, so the burst the UI asked for is always seen. */
@@ -1227,6 +1320,36 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   // Public API
 
   return {
+    setPlayer(next) {
+      if (destroyed) return;
+      restyle(player, next);
+    },
+    emitHearts(key, amount) {
+      if (destroyed || !(amount > 0)) return;
+      // A frozen world (panel or hatch overlay on top) has nothing to show; the HUD counter still counts.
+      if (paused && scripts === 0) return;
+      const entity = findEntity(key);
+      if (!entity || entity.alpha < 0.5 || time < entity.bornAt) return;
+      const recent = incomes.find(item => item.key === key && time - item.start < 350);
+      if (recent) { recent.amount += amount; dirty = true; return; }
+      const count = reducedMotion ? 0 : amount >= 10 ? 3 : amount >= 4 ? 2 : 1;
+      // Neighbours earning at once: stack the new badge above a fresh one it would cover.
+      const { width, height } = badgeSize(amount, labelScale());
+      let y = entity.y - topOf(entity) - hopOffset(entity);
+      for (let tries = 0; tries < 3; tries++) {
+        const cover = incomes.find(item => time - item.start < 700 && Math.abs(item.x - entity.x) < width && Math.abs(item.y - y) < height + 2);
+        if (!cover) break;
+        y = cover.y - height - 2;
+      }
+      incomes.push({
+        key, x: entity.x, y, start: time, amount,
+        hearts: Array.from({ length: count }, (_, i) => ({ dx: (i - (count - 1) / 2) * 16 + (Math.random() - 0.5) * 6, delay: i * 90 })),
+      });
+      while (incomes.length > MAX_INCOMES) incomes.shift();
+      // A happy little hop from a baby standing still.
+      if (entity !== player && !reducedMotion && entity.clip === "idle") hop(entity, 9, 260);
+      dirty = true;
+    },
     setBrood(babies) {
       if (destroyed) return;
       for (const [key, at] of pendingCelebrations) if (time - at > 8000) pendingCelebrations.delete(key);
@@ -1250,7 +1373,8 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
           entity.popped = false;
           stagger++;
         } else if (entity.creature !== creature) {
-          entity.creature = creature;
+          // Same baby, new object (e.g. a new accessory): update in place, no pop-in, same place in line.
+          restyle(entity, creature);
         }
         next.push(entity);
       }
@@ -1311,6 +1435,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
       for (const timer of timers.splice(0)) timer.resolve();
       for (const entity of [player, ...brood, ...actors]) { const done = entity.onArrive; entity.onArrive = null; done?.(); }
       fx.clear();
+      incomes.length = 0;
       canvas.style.cursor = "";
     },
   };

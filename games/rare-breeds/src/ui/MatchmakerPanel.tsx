@@ -4,7 +4,7 @@ import { Panel } from "./Panel.tsx";
 import { PixelIcon } from "./PixelIcon.tsx";
 import { SpriteThumb } from "./SpriteThumb.tsx";
 import { familyOf } from "./collection.ts";
-import { cx, hashString, lineageLabel, tierLabel, tierVars, useReducedMotion } from "./shared.ts";
+import { cx, hashString, lineageLabel, tierLabel, tierVars, useReducedMotion, type TierInfo } from "./shared.ts";
 
 export type MatchmakerPanelProps = Readonly<{
   /** Parent A options: the player's Friend first, then kept babies. */
@@ -34,6 +34,14 @@ export type MatchmakerPanelProps = Readonly<{
   onClose?: () => void;
   /** Families already in the collection. Wild mates from any other family get a "New" tag. Omit to hide the tags. */
   collectedFamilies?: readonly string[];
+  /** "What can hatch" strip above the button: chance and fixed Sanctuary value per tier. */
+  odds?: readonly TierInfo[];
+  /** First-time help: explains Parent A / Parent B and the runtime confirmations that follow. */
+  guide?: boolean;
+  /** Opens the Wish match (pick a family for Parent B). Shown next to New faces with its price. */
+  onWish?: () => void;
+  /** Wish match price in Hearts, e.g. 15. */
+  wishPrice?: number;
   reducedMotion?: boolean;
 }>;
 
@@ -89,7 +97,7 @@ function Pick({ creature, name, checked, disabled, onPick, variant, isNew }: Pic
 
 /** Choose two parents, reroll wild mates for free, and breed (buying an egg first when needed). */
 export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, canAfford, busy, busyLabel, actionLabel, error, disabledReason,
-  initialParentA, onReroll, onBreed, onClose, collectedFamilies, reducedMotion }: MatchmakerPanelProps) {
+  initialParentA, onReroll, onBreed, onClose, collectedFamilies, odds, guide, onWish, wishPrice, reducedMotion }: MatchmakerPanelProps) {
   const id = useId();
   const reduced = useReducedMotion(reducedMotion);
   const [aKey, setAKey] = useState(initialParentA ?? parents[0]?.key ?? "");
@@ -102,29 +110,48 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
   const newCount = collectedFamilies && a && b ? new Set([a, b].filter(isNew).map(familyOf)).size : 0;
 
   const reason = disabledReason
-    ?? (needsEgg && !canAfford ? `Not enough Simulated RF. An egg costs ${price}.` : undefined)
+    ?? (needsEgg && !canAfford ? `Not enough simulated RF. An egg costs ${price}.` : undefined)
     ?? (!a || !b ? "Pick two parents first." : undefined);
   const label = busy ? busyLabel ?? "Hatching…" : actionLabel ?? (needsEgg ? `Buy egg & breed · ${price}` : "Breed · uses 1 egg");
-  const footer = <div className="rb-match-foot">
+  const footer = <>
+    {odds && odds.length > 0 && <div className="rb-odds-strip">
+      <p className="rb-odds-strip-label"><span className="rb-long">What can hatch</span><span className="rb-short">Odds</span></p>
+      <ul aria-label="What can hatch: chance and fixed Sanctuary value per tier">
+        {odds.map(row => <li key={row.tier} className={`rb-tier-${row.tier}`} style={tierVars(row.tier)}>
+          <span className="rb-tier-dot" aria-hidden="true" />
+          <strong>{tierLabel(row.tier)}</strong>
+          <span className="rb-odds-chance">{row.chance}</span>
+          <span className="rb-odds-value">{row.value}</span>
+        </li>)}
+      </ul>
+    </div>}
+    {guide && !busy && <p className="rb-match-confirm" role="note"><PixelIcon name="sparkle" />
+      <span className="rb-long">{needsEgg
+        ? "Next, Rare Friends asks you to confirm twice: Buy egg, then Use egg. Both are simulated previews, no real RF moves."
+        : "Next, Rare Friends asks you to confirm Use egg. It is a simulated preview, no real RF moves."}</span>
+      <span className="rb-short">{needsEgg ? "Next: confirm Buy egg and Use egg (both simulated)." : "Next: confirm Use egg (simulated)."}</span>
+    </p>}
+    <div className="rb-match-foot">
     <div className="rb-foot-info">
       <p className="rb-foot-meta">
         <PixelIcon name="egg" /><strong>{eggs}</strong> {eggs === 1 ? "egg" : "eggs"}
-        <span className="rb-muted"> · {needsEgg ? `1 egg = ${price} Simulated` : "1 egg per hatch"}</span>
+        <span className="rb-muted"> · {needsEgg ? `1 egg = ${price} simulated` : "1 egg per hatch"}</span>
       </p>
       {error && <p className="rb-foot-msg rb-error" role="alert">{error}</p>}
       {reason ? <p className="rb-foot-msg rb-warn" role="status">{reason}</p>
         : !error && <p className={cx("rb-foot-msg rb-foot-hint", newCount ? "rb-foot-new" : "rb-muted")}>{newCount
           ? `This pair adds ${newCount === 1 ? "a new family" : `${newCount} new families`} to your collection.`
-          : needsEgg ? "You confirm the purchase in the runtime." : "Pick a pair, then hatch."}</p>}
+          : needsEgg ? "You confirm the purchase in Rare Friends." : "Pick a pair, then hatch."}</p>}
     </div>
     <button type="button" className="rb-button rb-button-primary rb-button-lg rb-breed" aria-busy={busy || undefined}
       disabled={busy || !!reason} onClick={() => a && b && onBreed(a, b)} data-autofocus>
       {busy ? <span className="rb-spinner" aria-hidden="true" /> : <PixelIcon name="heart" />}
       <span>{label}</span>
     </button>
-  </div>;
+    </div>
+  </>;
 
-  return <Panel eyebrow="Matchmaker" title="Find a match" onClose={busy ? undefined : onClose} size="lg" footer={footer} className="rb-match">
+  return <Panel eyebrow="Matchmaker" title="Find a match" onClose={busy ? undefined : onClose} size="lg" footer={footer} className={cx("rb-match", guide && "rb-match-guided")}>
     {a && b && fun && <section className={cx("rb-match-stage", !reduced && "rb-animate")} aria-label={`Chosen pair: ${a.name} and ${b.name}`}>
       <div className="rb-match-scene">
         <span className="rb-match-sprite"><SpriteThumb key={a.key} creature={a} scale={4} compactScale={2} clip="walk" facing="right" label="" /></span>
@@ -147,6 +174,10 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
       </div>
     </section>}
 
+    {guide && <p className="rb-match-guide" role="note"><PixelIcon name="help" />
+      <span><strong>Parent A</strong> is yours: your Friend or a kept baby. <strong>Parent B</strong> is the mate: a real Rare Friend or one of your babies.</span>
+    </p>}
+
     <div className="rb-match-pickers">
       <div className="rb-section rb-section-a">
         <div className="rb-section-head"><h3 className="rb-section-label" id={`${id}-a`}>Parent A</h3></div>
@@ -162,6 +193,10 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
           <button type="button" className="rb-button rb-button-ghost rb-button-sm rb-reroll" onClick={onReroll} disabled={busy}>
             <PixelIcon name="dice" /><span>New faces</span><span className="rb-tag">Free</span>
           </button>
+          {onWish && <button type="button" className="rb-button rb-button-ghost rb-button-sm rb-wish" onClick={onWish} disabled={busy}
+            aria-label={`Wish match: pick a family${wishPrice ? `, ${wishPrice} Hearts` : ""}`}>
+            <PixelIcon name="sparkle" /><span>Wish</span>{wishPrice ? <span className="rb-wish-price"><PixelIcon name="heart" />{wishPrice}</span> : null}
+          </button>}
         </div>
         <div role="radiogroup" aria-labelledby={`${id}-b`} className="rb-section-b-options">
           <div className="rb-card-row">

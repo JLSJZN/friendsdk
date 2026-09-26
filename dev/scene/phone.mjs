@@ -50,7 +50,7 @@ try {
   }
   const helpers = createHelpers({ page, game, definition, viewport, mediaDirectory: out, prefix: "game-", log: () => {} });
   const ctx = { page, game, viewport, definition, helpers, timeout: 20_000 };
-  const canvas = game.locator("canvas.rb-world-canvas");
+  const canvas = game.locator("canvas.rb-world-canvas").first();
   const shot = async name => {
     const path = join(out, `game-${tag}-${name}.png`);
     await page.locator(".rf-game-frame").screenshot({ path });
@@ -92,6 +92,12 @@ try {
     await shot(`${keep}-reveal`);
   };
 
+  // The intro tour opens on every start: skip it (tools/scenarios/rare-breeds.mjs walks through it).
+  const skip = game.getByRole("button", { name: "Skip intro" });
+  if (await skip.count() > 0 || await skip.waitFor({ timeout: 4000 }).then(() => true, () => false)) {
+    await skip.click();
+    await game.getByRole("dialog").waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  }
   await page.waitForTimeout(1600);
   await shot("01-intro");
   await page.screenshot({ path: join(out, `game-${tag}-page.png`) });
@@ -111,7 +117,9 @@ try {
   check(Number(walked.playerX) < 380, `tap to walk through the camera reaches the target (${walked.playerX}, ${walked.playerY})`);
   await tapWorld(470, 300);
   await page.waitForTimeout(1300);
-  await tapWorld(470, 236);
+  // Floor just above the Friend's head and below the incubator (a tap on the Friend makes it hop instead,
+  // a tap on the incubator opens it).
+  await tapWorld(470, 225);
   await page.waitForTimeout(1300);
   await shot("04-incubator");
   const atIncubator = await read();

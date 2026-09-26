@@ -19,7 +19,11 @@ export type NurserySceneOptions = Readonly<{
 
 /** Created by createNurseryScene(options) in src/scene/nursery.ts. Owns its canvas, loop and input listeners. */
 export interface NurseryScene {
-  /** Babies currently kept; they follow the player in a line (newest last). */
+  /** Replace the player's creature (same key), e.g. after equipping an accessory. Position and state are kept. */
+  setPlayer(player: Creature): void;
+  /** Visual only: pixel hearts pop from a creature (key) and fly toward the HUD heart counter (top-left). */
+  emitHearts(key: string, amount: number): void;
+  /** Babies currently kept; they follow the player in a line (newest last). Same keys with new objects (e.g. new accessory) update in place. */
   setBrood(babies: readonly Creature[]): void;
   /** While paused the world renders a still frame, ignores input and stops held movement. */
   setPaused(paused: boolean): void;

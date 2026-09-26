@@ -10,11 +10,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(here, "shots");
 const filter = process.argv[2] ?? "";
 const SCENARIOS = ["thumbs", "nursery", "nursery-prompt", "matchmaker", "matchmaker-buy", "matchmaker-broke", "matchmaker-busy",
-  "matchmaker-brood", "eggs", "eggs-stocked", "eggs-broke", "hatching", "reveal-common", "reveal-spotted", "reveal-mutant", "reveal-prismatic", "brood", "brood-detail",
+  "matchmaker-brood", "matchmaker-first", "intro-1", "intro-2", "intro-3", "intro-4", "nursery-coach", "shop", "shop-wish", "eggs", "eggs-stocked", "eggs-broke", "hatching", "reveal-common", "reveal-spotted", "reveal-mutant", "reveal-prismatic", "brood", "brood-detail",
   "brood-empty", "settings", "loading", "error"];
 // Page viewport = frame + its 1px border, so the SDK frame renders at exactly 960 x 640 / 390 x 260 / 360 x 240.
 // 390 matches the phone run of tools/test-game.mjs (390 x 844 page, 390 x 260 frame).
-const SIZES = [{ name: "960", width: 962, height: 642 }, { name: "390", width: 392, height: 262 }, { name: "360", width: 362, height: 242 }];
+// 390p is a portrait phone: host.css switches the frame to 3:4 (390 x 520).
+const SIZES = [{ name: "960", width: 962, height: 642 }, { name: "390p", width: 392, height: 522 }, { name: "390", width: 392, height: 262 }, { name: "360", width: 362, height: 242 }];
 
 await mkdir(outDir, { recursive: true });
 const server = await startServer();
@@ -150,6 +151,21 @@ async function keyboard() {
     for (let i = 0; i < 3; i++) await page.keyboard.press("Tab");
     report.push(`reveal Tab x3 stays in overlay: ${await frame.evaluate(() => !!document.activeElement.closest(".rb-hatch"))}`);
     await page.screenshot({ path: path.join(outDir, "reveal-focus-960.png") });
+    await page.close();
+  }
+  {
+    const { page, frame, logs, messages } = await openFocused("intro-1");
+    report.push(`intro initial focus -> ${await describe(frame)}`);
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(150);
+    const title = await frame.locator(".rb-panel-title").textContent();
+    report.push(`intro ArrowRight -> ${title}`);
+    if (title !== "Find a match, hatch an egg") problems.push("intro: ArrowRight did not advance");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(100);
+    if (!messages.includes("close")) problems.push("intro: Escape did not skip");
+    report.push(`intro Escape -> onClose called: ${messages.includes("close")}`);
+    for (const log of logs) problems.push(`keyboard intro: ${log}`);
     await page.close();
   }
   {

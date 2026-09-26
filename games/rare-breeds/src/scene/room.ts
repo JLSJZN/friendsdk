@@ -7,7 +7,7 @@ import {
   GREEN, GRID, INK, MOSS, MUTED, PAPER, SHADE, WHITE, bitmap, box, dither, ditherEllipse, ellipse, ellipseBox,
   makeCanvas, rect, rng,
 } from "./art.ts";
-import { creatureFrame } from "./creatures.ts";
+import { BOX_X, BOX_Y, creatureFrame } from "./creatures.ts";
 import { drawText } from "./font.ts";
 
 export const A = 3;
@@ -314,8 +314,9 @@ function paintPortrait(ctx: CanvasRenderingContext2D, player: Creature) {
   rect(ctx, x + 1, y + 1, w - 2, h - 2, INK);
   box(ctx, x + 2, y + 2, w - 4, h - 4, WHITE, GREEN);
   rect(ctx, x + 3, y + 3, w - 6, h - 6, PAPER);
-  const frame = creatureFrame(player, "idle", "down", 0);
-  ctx.drawImage(frame, x + 3, y + 4);
+  // The official portrait: no hat (the frame is only 18 pixels tall). The 16 x 16 box lands at (x + 4, y + 5).
+  const frame = creatureFrame(player, "idle", "down", 0, undefined, undefined, null);
+  ctx.drawImage(frame, x + 4 - BOX_X, y + 5 - BOX_Y);
   // Name plate.
   box(ctx, x + 5, y + h, w - 10, 4, WHITE);
   rect(ctx, x + 8, y + h + 1, w - 16, 1, MUTED);

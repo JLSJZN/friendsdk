@@ -17,15 +17,19 @@ export type PanelProps = Readonly<{
   size?: "sm" | "md" | "lg";
   /** Change it to move focus back to the first control (e.g. when switching views inside the panel). */
   focusKey?: unknown;
+  /** Text for a labelled close button (e.g. "Skip intro") instead of the X icon. */
+  closeLabel?: string;
+  /** Close on a backdrop click. Default true. */
+  dismissOnBackdrop?: boolean;
   className?: string;
 }>;
 
 /** Centred modal card: aria-modal dialog, initial focus, focus trap, Escape to close, scrolls inside. */
-export function Panel({ title, eyebrow, onClose, children, footer, headerStart, size = "md", focusKey, className }: PanelProps) {
+export function Panel({ title, eyebrow, onClose, children, footer, headerStart, size = "md", focusKey, closeLabel, dismissOnBackdrop = true, className }: PanelProps) {
   const id = useId();
   const node = useRef<HTMLDivElement>(null);
   useModalFocus(node, onClose, focusKey);
-  return <div className="rb-scrim" onClick={event => { if (event.target === event.currentTarget && onClose) onClose(); }}>
+  return <div className="rb-scrim" onClick={event => { if (dismissOnBackdrop && event.target === event.currentTarget && onClose) onClose(); }}>
     <div ref={node} className={cx("rb-panel", `rb-panel-${size}`, className)} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}
       tabIndex={-1}>
       <header className="rb-panel-head" data-focus-late>
@@ -34,9 +38,11 @@ export function Panel({ title, eyebrow, onClose, children, footer, headerStart, 
           {eyebrow && <p className="rb-eyebrow">{eyebrow}</p>}
           <h2 id={`${id}-title`} className="rb-panel-title">{title}</h2>
         </div>
-        {onClose && <button type="button" className="rb-icon-button rb-panel-close" onClick={onClose} aria-label={`Close ${title}`}>
-          <PixelIcon name="close" />
-        </button>}
+        {onClose && (closeLabel
+          ? <button type="button" className="rb-button rb-button-ghost rb-button-sm rb-panel-skip" onClick={onClose}>{closeLabel}</button>
+          : <button type="button" className="rb-icon-button rb-panel-close" onClick={onClose} aria-label={`Close ${title}`}>
+            <PixelIcon name="close" />
+          </button>)}
       </header>
       <div className="rb-panel-body">{children}</div>
       {footer && <footer className="rb-panel-foot">{footer}</footer>}

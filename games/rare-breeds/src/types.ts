@@ -27,6 +27,9 @@ export type Dna = Readonly<{
 
 export type CreatureKind = "friend" | "wild" | "baby";
 
+/** Cosmetic head accessories bought with Hearts (catalog and pixel art in src/accessories.ts). */
+export type AccessoryId = "party-hat" | "bow" | "flower" | "beanie" | "headphones" | "top-hat" | "crown" | "halo";
+
 export type Creature = Readonly<{
   /** Stable unique key: "friend:<id>", "wild:<id>", "baby:<playId>". */
   key: string;
@@ -48,6 +51,8 @@ export type Creature = Readonly<{
   dna?: Dna;
   /** Babies only: the SDK play that hatched it. */
   playId?: bigint;
+  /** Equipped cosmetic, drawn by drawCreature on every frame. */
+  accessory?: AccessoryId;
 }>;
 
 /** Input to genetics.breed. seed must be derived deterministically from friendId, parents and playId. */

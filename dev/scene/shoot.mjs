@@ -1,5 +1,5 @@
 // Dev-only: screenshots and behaviour checks for the scene harness (headless Chromium, fake clock).
-// Usage: node dev/scene/shoot.mjs [nursery] [small] [phone] [hatch] [courtship] [release] [reduced] [checks]   (default: all)
+// Usage: node dev/scene/shoot.mjs [nursery] [small] [phone] [accessories] [hatch] [courtship] [release] [reduced] [checks]   (default: all)
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -174,6 +174,82 @@ try {
     check(settled.x < start.x && settled.x === later.x && settled.y === later.y, `phone reduced motion: camera snapped and holds (${start.x} -> ${settled.x} -> ${later.x})`);
     await shot(reduced.page, "phone-reduced");
     await reduced.context.close();
+  }
+
+  if (run("accessories")) {
+    const dataset = page => page.evaluate(() => ({ ...document.getElementById("world").dataset }));
+    // Hats on everyone at 960: hat tops count as part of the creature for taps.
+    const { page, context } = await open("babies=4&eggs=2&hats=1");
+    await page.clock.runFor(2200);
+    await shot(page, "hats-960");
+    const at = await state(page);
+    await page.mouse.click(at.x, at.y - 16 * 4 - 2 * 4); // on the Friend's top hat, above its 16-row box
+    await page.clock.runFor(400);
+    const after = await state(page);
+    check(Math.hypot(after.x - at.x, after.y - at.y) < 2, `a click on the Friend's hat counts as the Friend (no walk: ${at.x},${at.y} -> ${after.x},${after.y})`);
+    const [bx, by] = (await dataset(page)).babies.split(" ")[0].split(",").map(Number);
+    await page.evaluate(() => { window.__harness.log.length = 0; });
+    await page.mouse.click(bx, by - 16 * 3 - 2 * 3); // on the first baby's party hat
+    await page.clock.runFor(200);
+    check((await state(page)).log.some(entry => entry.startsWith("creature:")), "a click on a baby's hat opens that baby");
+    // Same keys with new objects (a new accessory): updated in place, no pop-in, the line keeps its order.
+    const before = await dataset(page);
+    await page.evaluate(() => { const h = window.__harness; h.dress(h.brood()[1].key, "top-hat"); h.dress("player", "crown"); });
+    await page.clock.runFor(150);
+    await shot(page, "hats-restyled");
+    await page.clock.runFor(600);
+    const restyled = await dataset(page);
+    const moved = before.babies.split(" ").map((point, i) => { const [x, y] = point.split(",").map(Number); const [x2, y2] = restyled.babies.split(" ")[i].split(",").map(Number); return Math.hypot(x2 - x, y2 - y); });
+    check(restyled.brood === before.brood && moved.every(distance => distance < 30) && restyled.playerX === before.playerX,
+      `new accessories update in place (brood ${before.brood} -> ${restyled.brood}, babies moved ${moved.map(d => d.toFixed(0)).join("/")} px, Friend kept its spot)`);
+    await context.close();
+
+    // Heart income with 15 babies on a 3 s cycle: capped, never a swarm.
+    const busy = await open("babies=15&hearts=fast");
+    let most = 0, hearts = 0;
+    for (let i = 0; i < 24; i++) {
+      await busy.page.clock.runFor(250);
+      const [badges, flying] = (await dataset(busy.page)).incomes.split("/").map(Number);
+      most = Math.max(most, badges); hearts = Math.max(hearts, flying);
+      if (i === 13) await shot(busy.page, "hearts-15-babies");
+    }
+    const earned = await busy.page.evaluate(() => window.__harness.earned());
+    check(earned > 0 && most <= 6 && hearts <= 18, `15 babies earning: at most ${most} badges and ${hearts} hearts in flight at once (${earned} hearts earned)`);
+    await busy.page.evaluate(() => window.__harness.pause(true));
+    await busy.page.clock.runFor(100);
+    const frozen = (await dataset(busy.page)).incomes;
+    await busy.page.evaluate(() => { const h = window.__harness; for (const baby of h.brood()) h.emit(baby.key, 4); });
+    await busy.page.clock.runFor(2000);
+    check((await dataset(busy.page)).incomes === frozen, `a paused world shows no new income (${frozen} stays ${(await dataset(busy.page)).incomes})`);
+    await busy.context.close();
+
+    // One big earner, frame by frame (prismatic: +10, three hearts).
+    const single = await open("babies=2");
+    await single.page.clock.runFor(1500);
+    await single.page.evaluate(() => { const h = window.__harness; h.emit(h.brood()[1].key, 10); });
+    let now = 0;
+    for (const at of [120, 350, 650, 950]) { await single.page.clock.runFor(at - now); now = at; await shot(single.page, `hearts-flight-${at}`); }
+    await single.context.close();
+
+    // Reduced motion: only the badge, fading in place.
+    const calm = await open("babies=2&reduced=1");
+    await calm.page.evaluate(() => { const h = window.__harness; h.emit(h.brood()[0].key, 2); });
+    await calm.page.clock.runFor(300);
+    const quiet = (await dataset(calm.page)).incomes;
+    check(quiet === "1/0", `reduced motion: a badge and no flying hearts (${quiet})`);
+    await shot(calm.page, "hearts-reduced");
+    await calm.context.close();
+
+    // Phone: hats stay inside the band, income over the family.
+    const phone = await open("babies=3&w=390&chrome=1&hats=1&hearts=fast", { width: 390, height: 260, scale: 3, touch: true });
+    await phone.page.clock.runFor(2600);
+    await shot(phone.page, "phone-hats");
+    const hero = await heroOnScreen(phone.page);
+    const hatTop = hero.y + 28 * hero.frame / 64 - (16 + 5) * hero.frame / 16;
+    check(hatTop > 44, `phone: the Friend's top hat stays below the HUD (hat top at ${hatTop.toFixed(0)} CSS px)`);
+    await phone.page.clock.runFor(1400);
+    await shot(phone.page, "phone-hearts");
+    await phone.context.close();
   }
 
   if (run("hatch")) {

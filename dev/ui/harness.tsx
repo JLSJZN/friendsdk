@@ -4,15 +4,20 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { createRoot } from "react-dom/client";
 import { GameFrame } from "@rarefriends/friendsdk/frame";
 import "@rarefriends/friendsdk/frame.css";
+// The game's trusted host.css: a 3:4 frame on portrait phones (390 x 520), like the CLI runtime.
+import "../../games/rare-breeds/host.css";
 import "../../games/rare-breeds/style.css";
 import "./harness.css";
 import { drawCreature, setupPixelCanvas } from "../../games/rare-breeds/src/draw.ts";
 import type { Creature } from "../../games/rare-breeds/src/types.ts";
 import {
-  ActionBar, BabyCard, BroodPanel, EggShopPanel, ErrorScreen, GameRoot, HatchOverlay, Hud, LoadingScreen, MatchmakerPanel,
+  ActionBar, BabyCard, BroodPanel, EggShopPanel, ErrorScreen, GameRoot, HatchOverlay, HeartShopPanel, Hud, IntroPanel, LoadingScreen, MatchmakerPanel,
   PixelIcon, SettingsPanel, SpriteThumb, Toast, WorldLayer, buildCollection, discoveriesOf, type Collection, type PixelIconName,
 } from "../../games/rare-breeds/src/ui/index.ts";
 import { babies, candidates, creature, player, rerolled, tierInfo, tiers, wild } from "./fixtures.ts";
+import { ACCESSORIES } from "../../games/rare-breeds/src/accessories.ts";
+import { heartsPerMinute, wishFamilies } from "../../games/rare-breeds/src/hearts.ts";
+import type { AccessoryId } from "../../games/rare-breeds/src/types.ts";
 
 const params = new URLSearchParams(location.search);
 const reduced = params.has("rm");
@@ -77,21 +82,22 @@ function useFakeHatch(stage: "hatching" | "result") {
   return setCanvas;
 }
 
-function Nursery({ prompt, toast, brood = babies.slice(0, 3), inert }: { prompt?: boolean; toast?: boolean; brood?: Creature[]; inert?: boolean }) {
+function Nursery({ prompt, toast, coach, brood = babies.slice(0, 3), inert }: { prompt?: boolean; toast?: boolean; coach?: boolean; brood?: Creature[]; inert?: boolean }) {
   const [muted, setMuted] = useState(false);
   const [message, setMessage] = useState<string | null>(toast ? "Zibu joined your brood" : null);
   const dismiss = useCallback(() => setMessage(null), []);
   return <WorldLayer inert={inert}>
     <FakeWorld brood={brood} />
     <Hud balance="18.5 RF" eggs={2} broodCount={brood.length} muted={muted} onToggleSound={() => setMuted(!muted)} onOpenSettings={() => {}} onOpenBrood={() => {}}
-      collection={collectionWithout()} />
+      collection={collectionWithout()} hearts={42} onOpenShop={() => {}} />
     {message && <Toast message={message} tone="success" onDismiss={dismiss} duration={0} />}
     {!inert && <ActionBar onFindMatch={() => {}} broodCount={brood.length} onOpenBrood={() => {}} hint="WASD / arrows or tap to walk · E near a station"
-      prompt={prompt ? { label: "Egg incubator", onActivate: () => {} } : null} />}
+      prompt={prompt ? { label: "Buy eggs", onActivate: () => {} } : null}
+      coach={coach ? { title: "Start here", detail: "Find a mate for your Friend, or walk to the MATCH terminal." } : null} />}
   </WorldLayer>;
 }
 
-function Matchmaker(props: { needsEgg?: boolean; canAfford?: boolean; busy?: boolean; error?: string; withBrood?: boolean; reason?: string }) {
+function Matchmaker(props: { needsEgg?: boolean; canAfford?: boolean; busy?: boolean; error?: string; withBrood?: boolean; reason?: string; guide?: boolean }) {
   const [pool, setPool] = useState(candidates);
   return <>
     <Nursery inert />
@@ -99,7 +105,8 @@ function Matchmaker(props: { needsEgg?: boolean; canAfford?: boolean; busy?: boo
       eggs={props.needsEgg ? 0 : 2} price="1 RF" needsEgg={!!props.needsEgg} canAfford={props.canAfford ?? true}
       busy={props.busy} busyLabel={props.busy ? "Buying egg…" : undefined} error={props.error} disabledReason={props.reason}
       onReroll={() => setPool(pool === candidates ? rerolled : candidates)} onBreed={(a, b) => console.log("breed", a.key, b.key)}
-      onClose={() => console.log("close")} collectedFamilies={collectionWithout().families} />
+      onClose={() => console.log("close")} collectedFamilies={props.guide ? [] : collectionWithout().families} odds={tiers} guide={props.guide}
+      onWish={() => console.log("wish")} wishPrice={15} />
   </>;
 }
 
@@ -110,7 +117,9 @@ function Hatch({ stage, baby }: { stage: "hatching" | "result"; baby: Creature }
     <Nursery inert />
     <HatchOverlay stage={stage} canvasRef={setCanvas} onSkip={() => console.log("skip")} onClose={() => console.log("close")}>
       <BabyCard baby={baby} parentA={creature(baby.parents![0])} parentB={creature(baby.parents![1])} chance={info.chance} value={info.value}
-        onKeep={() => console.log("keep")} onRelease={() => console.log("release")} discoveries={discoveriesOf(baby, params.has("first") ? buildCollection([]) : collectionWithout(baby))} />
+        onKeep={() => console.log("keep")} onRelease={() => console.log("release")} heartsPerMinute={heartsPerMinute(baby.tier)} keepBonus={5}
+        hint={params.has("first") ? `Keep ${baby.name} to breed again (it follows your Friend), or trade it in at the Sanctuary for a fixed ${info.value} (simulated).` : undefined}
+        discoveries={discoveriesOf(baby, params.has("first") ? buildCollection([]) : collectionWithout(baby))} />
     </HatchOverlay>
   </>;
 }
@@ -121,6 +130,7 @@ function Brood({ list, detail }: { list: Creature[]; detail?: string }) {
     <Nursery brood={items.slice(0, 3)} inert />
     <BroodPanel babies={items} tiers={tiers} creature={creature} initialSelectedKey={detail} onRelease={baby => setItems(items.filter(item => item !== baby))}
       onUseAsParent={baby => console.log("parent", baby.key)} onFindMatch={() => console.log("find")} onClose={() => console.log("close")}
+      heartsRate={baby => heartsPerMinute(baby.tier)} onOpenShop={() => console.log("shop")}
       collection={list.length ? collectionWithout() : buildCollection([])} />
   </>;
 }
@@ -134,6 +144,31 @@ function Eggs({ eggs = 0, broke }: { eggs?: number; broke?: boolean }) {
       packs={[1n, 3n, 5n].map(quantity => ({ quantity, price: `${quantity} RF`, disabled: broke }))}
       onBuy={quantity => { console.log("buy", String(quantity)); setBusy(true); setTimeout(() => setBusy(false), 1500); }}
       onClose={busy ? undefined : () => console.log("close")} />
+  </>;
+}
+
+function Intro({ step }: { step: number }) {
+  const mate = wild.find(item => item.familyId !== player.familyId) ?? wild[0];
+  return <>
+    <Nursery inert />
+    <IntroPanel player={player} mate={mate} tiers={tiers} price="1 RF" startBalance="20 RF" initialStep={step}
+      collection={buildCollection([])} onClose={() => console.log("close")} onStepChange={next => console.log("step", next)} />
+  </>;
+}
+
+function Shop({ tab }: { tab: "hats" | "wish" }) {
+  const [hearts, setHearts] = useState(64);
+  const [owned, setOwned] = useState<ReadonlySet<AccessoryId>>(new Set(["bow"]));
+  const [equipped, setEquipped] = useState<ReadonlyMap<string, AccessoryId>>(new Map([[babies[0].key, "bow"]]));
+  const brood = babies.slice(0, 4);
+  const dress = (item: Creature) => ({ ...item, accessory: equipped.get(item.key) });
+  return <>
+    <Nursery inert />
+    <HeartShopPanel hearts={hearts} perMinute={brood.reduce((sum, baby) => sum + heartsPerMinute(baby.tier), 0)} wearers={[player, ...brood].map(dress)}
+      catalog={ACCESSORIES} owned={owned} equipped={equipped} initialTab={tab} families={wishFamilies} wishPrice={15}
+      collectedFamilies={collectionWithout().families} onClose={() => console.log("close")} onWish={id => console.log("wish", id)}
+      onBuy={id => { const price = ACCESSORIES.find(item => item.id === id)!.price; if (hearts >= price) { setHearts(hearts - price); setOwned(new Set([...owned, id])); } }}
+      onEquip={(key, id) => setEquipped(current => { const next = new Map([...current].filter(([, value]) => value !== id)); if (id) next.set(key, id); else next.delete(key); return next; })} />
   </>;
 }
 
@@ -167,6 +202,14 @@ const scenarios: Record<string, () => ReactNode> = {
   "matchmaker-broke": () => <Matchmaker needsEgg canAfford={false} error="Cancelled. Nothing was spent." />,
   "matchmaker-busy": () => <Matchmaker needsEgg busy />,
   "matchmaker-brood": () => <Matchmaker withBrood />,
+  "matchmaker-first": () => <Matchmaker needsEgg guide />,
+  shop: () => <Shop tab="hats" />,
+  "shop-wish": () => <Shop tab="wish" />,
+  "intro-1": () => <Intro step={0} />,
+  "intro-2": () => <Intro step={1} />,
+  "intro-3": () => <Intro step={2} />,
+  "intro-4": () => <Intro step={3} />,
+  "nursery-coach": () => <Nursery coach />,
   eggs: () => <Eggs />,
   "eggs-stocked": () => <Eggs eggs={3} />,
   "eggs-broke": () => <Eggs broke />,

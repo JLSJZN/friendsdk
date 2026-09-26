@@ -94,6 +94,23 @@ export function useCompact(ref: RefObject<Element | null>) {
   return compact;
 }
 
+/** Size of the nearest .rb-root (the game area), updated on resize. Starts at the 960 x 640 reference. */
+export function useRootSize(ref: RefObject<Element | null>) {
+  const [size, setSize] = useState({ width: 960, height: 640 });
+  useLayoutEffect(() => {
+    const root = ref.current?.closest(".rb-root");
+    if (!root) return;
+    const update = () => setSize(current => current.width === root.clientWidth && current.height === root.clientHeight
+      ? current : { width: root.clientWidth, height: root.clientHeight });
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [ref]);
+  return size;
+}
+
 /** Current devicePixelRatio, updated when it changes (zoom, moving to another screen). */
 export function useDevicePixelRatio() {
   const [ratio, setRatio] = useState(() => (typeof window === "undefined" ? 1 : window.devicePixelRatio || 1));

@@ -1,4 +1,5 @@
 import { PixelIcon } from "./PixelIcon.tsx";
+import { cx } from "./shared.ts";
 
 export type StationPrompt = Readonly<{
   /** What happens, e.g. "Open the Matchmaker". */
@@ -19,6 +20,8 @@ export type ActionBarProps = Readonly<{
   prompt?: StationPrompt | null;
   /** Small controls hint for wide layouts, e.g. "WASD or tap to walk". Hidden when compact. */
   hint?: string;
+  /** First-run pointer at the Find a match button, e.g. { title: "Start here", detail: "..." }. */
+  coach?: Readonly<{ title: string; detail?: string }> | null;
 }>;
 
 /**
@@ -26,17 +29,22 @@ export type ActionBarProps = Readonly<{
  * bottom-right corner so the middle of the world stays visible. Always above the runtime toolbar band
  * (wallet/Friend controls bottom-left, menu bottom-right), so it never collides with them at any frame size.
  */
-export function ActionBar({ onFindMatch, broodCount, onOpenBrood, primaryLabel = "Find a match", disabled, prompt, hint }: ActionBarProps) {
+export function ActionBar({ onFindMatch, broodCount, onOpenBrood, primaryLabel = "Find a match", disabled, prompt, hint, coach }: ActionBarProps) {
   return <div className="rb-actionbar">
     {prompt ? <button type="button" className="rb-prompt" onClick={prompt.onActivate} disabled={disabled}>
       <kbd className="rb-kbd" aria-hidden="true">{prompt.keyHint ?? "E"}</kbd>
       <span>{prompt.label}</span>
     </button> : hint ? <p className="rb-actionbar-hint">{hint}</p> : null}
     <div className="rb-actionbar-row">
-      <button type="button" className="rb-button rb-button-primary rb-button-lg rb-find" onClick={onFindMatch} disabled={disabled}>
-        <PixelIcon name="heart" />
-        <span>{primaryLabel}</span>
-      </button>
+      <span className="rb-find-wrap">
+        {coach && <span className="rb-coach" role="status">
+          <strong>{coach.title}</strong>{coach.detail && <span>{coach.detail}</span>}
+        </span>}
+        <button type="button" className={cx("rb-button rb-button-primary rb-button-lg rb-find", coach && "rb-find-coached")} onClick={onFindMatch} disabled={disabled}>
+          <PixelIcon name="heart" />
+          <span>{primaryLabel}</span>
+        </button>
+      </span>
       <button type="button" className="rb-button rb-button-dark rb-button-lg rb-brood-button" onClick={onOpenBrood} disabled={disabled}
         aria-label={`Brood, ${broodCount} ${broodCount === 1 ? "baby" : "babies"}`}>
         <PixelIcon name="baby" />
