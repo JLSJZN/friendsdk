@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Same restrictions as the game sandbox: no network, no external images or fonts. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'">
+  <title>Rare Breeds scene harness</title>
+  <style>
+    html, body { margin: 0; background: #1b1b1b; color: #f4f1ea; font: 13px/1.4 ui-monospace, monospace; }
+    #frame { position: relative; width: 960px; max-width: 100vw; aspect-ratio: 3 / 2; margin: 0 auto; background: #f4f1ea; overflow: hidden; }
+    #frame canvas { position: absolute; inset: 0; }
+    #overlay[hidden] { display: none; }
+    #controls { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 10px; }
+    #controls button { font: inherit; padding: 8px 10px; background: #111; color: #f4f1ea; border: 2px solid #f4f1ea; cursor: pointer; }
+    #controls button:focus-visible { outline: 3px solid #ccff00; outline-offset: 2px; }
+    #status { text-align: center; color: #8c877d; min-height: 1.4em; }
+    .corner { position: absolute; bottom: 14px; width: 200px; height: 34px; border: 1px dashed rgba(204, 255, 0, .7); pointer-events: none; }
+    body.clean #controls, body.clean #status, body.clean .corner { display: none; }
+    /* chrome=1: stand-ins for the phone HUD (top), action bar and runtime toolbar (bottom). */
+    .chrome { position: absolute; pointer-events: none; background: rgba(17, 17, 17, .82); border-radius: 4px; }
+    .chrome.hud { top: 6px; left: 6px; right: 6px; height: 36px; background: transparent; }
+    .chrome.hud::before, .chrome.hud::after { content: ""; position: absolute; top: 0; height: 36px; background: rgba(17, 17, 17, .82); border-radius: 4px; }
+    .chrome.hud::before { left: 0; width: 55%; }
+    .chrome.hud::after { right: 0; width: 22%; }
+    .chrome.bar { bottom: 49px; left: 50%; transform: translateX(-50%); width: 70%; height: 36px; background: rgba(204, 255, 0, .85); }
+    .chrome.tools { bottom: 6px; left: 6px; width: 68%; height: 36px; background: rgba(244, 241, 234, .9); border: 1px solid #111; }
+    body.clean #frame { margin: 0; }
+  </style>
+</head>
+<body>
+  <div id="frame">
+    <canvas id="world"></canvas>
+    <canvas id="overlay" hidden></canvas>
+    <div class="corner" style="left:14px"></div>
+    <div class="corner" style="right:14px"></div>
+  </div>
+  <div id="controls"></div>
+  <div id="status"></div>
+  <script type="module" src="./harness.js"></script>
+</body>
+</html>

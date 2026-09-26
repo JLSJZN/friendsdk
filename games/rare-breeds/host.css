@@ -1,0 +1,4 @@
+/* Trusted runtime layout: use a taller frame on portrait phones so the nursery is not a thin strip. */
+@media (max-width: 600px) and (orientation: portrait) {
+  :root { --rf-game-aspect-ratio: 3 / 4; }
+}

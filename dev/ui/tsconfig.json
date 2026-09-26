@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "noUnusedLocals": true,
+    "paths": {
+      "@rarefriends/friendsdk/frame": ["../../dist/game-frame.d.ts"],
+      "@rarefriends/friendsdk/sprites": ["../../dist/friend-sprites.d.ts"]
+    }
+  },
+  "include": ["./*.ts", "./*.tsx", "../../examples/styles.d.ts", "../../games/rare-breeds/src/ui/**/*"]
+}

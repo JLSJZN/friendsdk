@@ -1,0 +1,12 @@
+/* Dev harness only. Mirrors the SDK runner's page and child layout. */
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #ddd; font-family: ui-monospace, monospace; }
+#root { max-width: 962px; }
+/* Child document mirrors the SDK runner's game-layout.css. */
+html.dev-child, html.dev-child body, html.dev-child #root { width: 100%; height: 100%; max-width: none; margin: 0; overflow: hidden; background: #F4F1EA; }
+.dev-index { padding: 24px; }
+.dev-index li { margin: 6px 0; }
+.dev-thumbs { position: absolute; inset: 0; overflow: auto; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 12px; padding: 16px 16px 70px; }
+.dev-thumbs figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font: 11px/1.2 ui-monospace, monospace; text-align: center; }
+.dev-icons { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 14px; padding: 12px; background: #111; color: #F4F1EA; }
+.dev-icons span { display: flex; flex-direction: column; align-items: center; gap: 4px; font: 9px ui-monospace, monospace; }

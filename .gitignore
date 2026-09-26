@@ -6,3 +6,7 @@ contracts/cache/
 contracts/deployments/
 
 .friendsdk/
+
+# Rare Breeds dev harness output
+dev/scene/shots/
+dev/ui/shots/

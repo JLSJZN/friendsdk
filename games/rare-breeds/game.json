@@ -1,0 +1,11 @@
+{
+  "name": "Rare Breeds",
+  "consumable": "Egg",
+  "price": "1000000000000000000",
+  "outcomes": [
+    { "name": "Common hatchling", "chanceBps": 6000, "reward": "500000000000000000" },
+    { "name": "Spotted hatchling", "chanceBps": 2500, "reward": "1000000000000000000" },
+    { "name": "Mutant hatchling", "chanceBps": 1250, "reward": "1500000000000000000" },
+    { "name": "Prismatic hatchling", "chanceBps": 250, "reward": "6000000000000000000" }
+  ]
+}
