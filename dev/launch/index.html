@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Same restrictions as the game sandbox: no network, no external images or fonts. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'">
+  <title>Moon Slingshot flight harness</title>
+  <style>
+    html, body { margin: 0; background: #1b1b1b; color: #f4f1ea; font: 13px/1.4 ui-monospace, monospace; }
+    /* Stands in for the game's full-area overlay (.rb-hatch): dark backdrop, canvas fills it (object-fit: contain). */
+    #frame { position: relative; width: 960px; max-width: 100vw; aspect-ratio: 3 / 2; margin: 0 auto; background: rgba(17, 17, 17, .86); overflow: hidden; }
+    #frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+    #controls { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 10px; }
+    #controls button { font: inherit; padding: 8px 10px; background: #111; color: #f4f1ea; border: 2px solid #f4f1ea; cursor: pointer; }
+    #controls button:focus-visible { outline: 3px solid #ccff00; outline-offset: 2px; }
+    #status { text-align: center; color: #8c877d; min-height: 1.4em; }
+    /* safe=1: the UI's reserved bands (top 60, bottom 110 logical px of 640) and the Skip button. */
+    .safe { position: absolute; left: 0; right: 0; pointer-events: none; background: rgba(255, 0, 80, .18); border: 1px dashed rgba(255, 0, 80, .7); }
+    .safe.top { top: 0; height: calc(60 / 640 * 100%); }
+    .safe.bottom { bottom: 0; height: calc(110 / 640 * 100%); }
+    .safe.skip { top: 1.5%; right: 1.5%; left: auto; width: 13%; height: 7%; background: rgba(17, 17, 17, .8); border-color: #f4f1ea; }
+    body.clean #controls, body.clean #status { display: none; }
+    body.clean #frame { margin: 0; }
+  </style>
+</head>
+<body>
+  <div id="frame"><canvas id="overlay"></canvas></div>
+  <div id="controls"></div>
+  <div id="status"></div>
+  <script type="module" src="./harness.js"></script>
+</body>
+</html>

@@ -10,7 +10,7 @@ import { runSteps } from "../lib/runtime.mjs";
 const FIND = { role: "button", name: /^Find a match/ };
 const BREED = { role: "button", name: /^(Buy egg & breed|Breed ·)/ };
 const REVEAL = { role: "dialog", name: "Your new baby" };
-// The intro tour opens on every game start (the sandbox has no storage): Next x3, then Start breeding, or Skip intro.
+// The intro tour opens on every game start (the sandbox has no storage): Next x5, then Start breeding, or Skip intro.
 const SKIP_INTRO = { role: "button", name: "Skip intro" };
 const NEXT = { role: "button", name: "Next" };
 const START = { role: "button", name: "Start breeding" };
@@ -31,7 +31,24 @@ const heartsAtLeast = (min, note) => ({ note, run: async ({ game }) => {
   }
   throw new Error(`Hearts counter shows ${value}, expected at least ${min}`);
 } });
-const INTRO_TITLES = ["Your Friend's pixels are its DNA", "Find a match, hatch an egg", "What can hatch", "Keep or Sanctuary"];
+// Same order as INTRO_TITLES in src/ui/intro.ts.
+const INTRO_TITLES = ["Your Friend's pixels are its DNA", "Your nursery", "Find a match, hatch an egg", "What can hatch", "What to do with a baby", "Your screen"];
+// Moon Slingshot: the launch trades the baby in first ("Redeem reward"), then draws the zone in the simulated side ledger.
+// The zone comes from browser randomness (the fixture pins it, but the steps only assert generically).
+const SLING_HINT = { role: "button", name: /^Moon Slingshot: x0 to x10$/ };
+const SLING_PANEL = { role: "dialog", name: "Shoot for the Moon" };
+const LAUNCH = { role: "button", name: /^Launch .+: / };
+const LAUNCH_CARD = { css: ".rb-launch-card" };
+/** A quick press (minimum pull): a click on desktop, a real tap (touch pointer) on the phone. */
+const pressLaunch = note => [{ click: LAUNCH, only: "desktop", note }, { tap: LAUNCH, only: "phone", note }];
+const SPOTTED_REDEEM = { title: "Redeem reward", description: "1 Spotted hatchling; simulated RF returns to this Friend.", amount: "1 RF" };
+/** Skip the flight if it is still running (reduced motion ends it in under a second), then wait for the result card. */
+const skipFlight = { note: "flight overlay, Skip", run: async ({ game }) => {
+  const skip = game.getByRole("button", { name: "Skip" }), card = game.locator(LAUNCH_CARD.css);
+  await skip.or(card).first().waitFor({ timeout: 15_000 });
+  if (await skip.isVisible()) await skip.click({ timeout: 2_000 }).catch(() => {});
+  await card.waitFor({ timeout: 10_000 });
+} };
 
 // nth 0: the intro tour draws its own sprite canvases after the world canvas.
 const smoke = [{ waitFor: { css: "canvas", nth: 0 }, note: "world canvas mounted" }];
@@ -45,17 +62,19 @@ const hatch = ({ buys = true, timeout = 20_000 } = {}) => [
   { waitFor: REVEAL, timeout, note: "hatch sequence finished" },
 ];
 
-/** Click through all four intro steps (each title must show), then start playing. */
-const introTour = (pause = 0) => INTRO_TITLES.flatMap((title, index) => [
+/** Click through all six intro steps (each title must show), then start playing. `shots`: step index -> screenshot name. */
+const introTour = (pause = 0, shots = {}) => INTRO_TITLES.flatMap((title, index) => [
   { waitFor: { role: "dialog", name: title }, note: `intro step ${index + 1}` },
   ...(pause ? [{ wait: pause }] : []),
+  ...(shots[index] ? [{ wait: 300 }, { screenshot: shots[index] }] : []),
   { click: index === INTRO_TITLES.length - 1 ? START : NEXT },
 ]);
 
 export const testSteps = [
   { waitFor: SKIP_INTRO, note: "intro tour opens on start" },
   { screenshot: "intro" },
-  ...introTour(),
+  // The room picture with the station markers and the HUD legend.
+  ...introTour(0, { 1: "intro-nursery", 5: "intro-screen" }),
   { waitFor: { role: "dialog" }, state: "detached", note: "intro closed" },
   { tiers: ["spotted", "prismatic"], note: "first hatch Spotted, second Prismatic" },
   heartsAtLeast(0, "Hearts start at 0"),
@@ -80,7 +99,31 @@ export const testSteps = [
   { click: { role: "button", name: /Prismatic.*Show details/ } },
   { click: { role: "button", name: /Sanctuary.*\+/ } },
   { confirm: "redeem", expect: { title: "Redeem reward", description: "1 Prismatic hatchling; simulated RF returns to this Friend.", amount: "6 RF" } },
-  { expect: { role: "group", name: "Your nursery" }, contains: "24", note: "20 - 1 - 1 + 6 simulated RF" },
+  { expect: { css: ".rb-hud-balance .rb-hud-num" }, matches: /^24 RF$/, note: "20 - 1 - 1 + 6 simulated RF" },
+  // Moon Slingshot with the kept Spotted baby (stake 1 RF). Desktop taps the station in the world; the phone uses the first-time hint.
+  { waitFor: { role: "button", name: "Brood, 1 baby" } },
+  { expect: SLING_HINT, note: "first-time hint: a kept baby and the slingshot never opened" },
+  { world: [594, 160], only: "desktop", note: "tap the Moon Slingshot: the Friend walks over and opens it" },
+  { tap: SLING_HINT, only: "phone" },
+  { waitFor: SLING_PANEL },
+  { screenshot: "slingshot" },
+  ...pressLaunch("a quick press launches with the minimum pull"),
+  { cancel: "redeem", expect: SPOTTED_REDEEM },
+  { expect: { css: ".rb-toast" }, contains: "Your baby stays with you", note: "cancelling the trade-in changes nothing" },
+  { expect: { css: ".rb-hud-balance .rb-hud-num" }, matches: /^24 RF$/ },
+  { waitFor: LAUNCH, note: "the panel stays open with the baby still in it" },
+  ...pressLaunch(),
+  { confirm: "redeem", expect: SPOTTED_REDEEM },
+  skipFlight,
+  { expect: { css: ".rb-launch-sums" }, matches: /Payout\d[\d.]* RF.*Stake1 RF.*Net[+-]?\d[\d.]* RF/, note: "result card: payout, stake, net" },
+  { expect: { css: ".rb-launch-money" }, matches: /^Your 1 RF trade-in is in your balance\. .*Slingshot net/, note: "result card: where the money went" },
+  { screenshot: "slingshot-result" },
+  { click: { role: "button", name: /nursery/i }, note: "back to the nursery" },
+  { waitFor: LAUNCH_CARD, state: "detached" },
+  { waitFor: { role: "button", name: "Brood, 0 babies" }, note: "the launched baby left the brood" },
+  { expect: { css: ".rb-hud-balance .rb-hud-num" }, matches: /^25 RF$/, note: "the 1 RF stake came back as the trade-in" },
+  { expect: { role: "button", name: /^Slingshot net, simulated RF: [+-]?\d[\d.]* RF\. Open the Moon Slingshot$/ }, note: "HUD slingshot net pill" },
+  { waitFor: SLING_HINT, state: "detached", note: "the hint is gone once the slingshot was opened" },
 ];
 
 export const videoSteps = [

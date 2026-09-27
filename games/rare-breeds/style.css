@@ -1795,3 +1795,671 @@
   .rb-eggshop-pack { min-height: 36px; padding: 4px; flex-direction: row; flex-wrap: wrap; gap: 3px 6px; }
   .rb-eggshop-eggs { display: none; }
 }
+
+/* ---------- Moon Slingshot: HUD net pill, station panel, launch overlay, rules ---------- */
+/* One block, overrides only through more specific selectors. */
+
+/* HUD: the net pill sits next to the stats pill and wraps under it when the row is full.
+   The stats pill never moves (the scene's heart particles fly to its first icon). */
+.rb-hud .rb-hud-left { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 8px; min-width: 0; pointer-events: none; }
+.rb-hud-left > * { pointer-events: auto; }
+.rb-hud-sling {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--rb-tap);
+  padding: 0 10px 0 12px;
+  border: 2px solid var(--rb-ink);
+  border-radius: 4px;
+  background: var(--rb-panel);
+  color: var(--rb-panel-text);
+  white-space: nowrap;
+}
+.rb-hud-sling .rb-icon, .rb-hud-sling .rb-hud-num { color: var(--rb-signal); }
+.rb-hud-sling.rb-hud-down .rb-hud-num { color: var(--rb-danger); }
+.rb-hud-sling-button { font: inherit; cursor: pointer; transition: background-color 120ms, color 120ms; }
+.rb-hud-sling-button:hover:not(:disabled) { background: var(--rb-signal); }
+.rb-hud-sling-button:hover:not(:disabled) :is(.rb-icon, .rb-hud-num) { color: var(--rb-ink); }
+.rb-hud-sling-button:hover:not(:disabled) .rb-hud-tag { background: var(--rb-ink); color: var(--rb-signal); }
+/* The pill says what it counts: "Slingshot" ("Net" when compact), so it never reads as the balance. */
+.rb-hud-sling-word { font: 700 13px/1 var(--rb-font); color: var(--rb-panel-text); }
+.rb-hud-sling-word .rb-short { display: none; }
+.rb-hud-sling-button:hover:not(:disabled) .rb-hud-sling-word { color: var(--rb-ink); }
+.rb-hud-sling-button:disabled { opacity: .45; cursor: not-allowed; }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-hud-sling { height: var(--rb-hud); padding: 0 6px 0 8px; gap: 5px; }
+  .rb-hud-sling-word { font-size: 12px; }
+  .rb-hud-sling-word .rb-long { display: none; }
+  .rb-hud-sling-word .rb-short { display: inline; }
+  /* A wrapped net pill takes the toast's usual spot, so the toast moves one strip down. */
+  .rb-world:has(.rb-hud-sling) .rb-toast { top: calc(var(--rb-edge) + 2 * var(--rb-hud) + 12px); }
+}
+
+/* Station panel: pick a baby, see its stake and where it can land, hold the button to pull. */
+/* Sized so everything, fine print included, fits a 960 x 640 frame without scrolling. */
+.rb-sling .rb-panel-body { gap: 10px; padding-bottom: 10px; }
+.rb-sling .rb-short, .rb-sling-tiny { display: none; }
+.rb-sling-lead { display: flex; align-items: flex-start; gap: 10px; flex: none; color: var(--rb-panel-text); font: 700 15px/1.35 var(--rb-font); }
+.rb-sling-lead strong { color: var(--rb-signal); white-space: nowrap; }
+.rb-sling-lead .rb-icon { flex: none; margin-top: 2px; color: var(--rb-signal); }
+.rb-sling-main {
+  display: grid;
+  grid-template-columns: minmax(170px, 210px) minmax(0, 1fr);
+  grid-template-areas: "stake stake" "pick pick" "stage ladder";
+  gap: 6px 16px;
+  align-items: start;
+  flex: none;
+}
+.rb-sling-stake {
+  grid-area: stake;
+  padding: 4px 10px;
+  border: 1px solid #4E5A1E;
+  border-radius: 4px;
+  background: #1C2112;
+  color: #D9D5CB;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.rb-sling-stake strong { color: var(--rb-panel-text); }
+.rb-sling-pickers { grid-area: pick; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.rb-sling-pickers .rb-section-label { flex: none; }
+/* Two rows at most; more babies scroll. The padding keeps focus rings inside the scroll box. */
+.rb-sling-picks {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  max-height: 104px;
+  margin: -5px;
+  padding: 5px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--rb-rule) transparent;
+}
+.rb-sling-pick { flex: 0 1 204px; min-width: 0; }
+.rb-sling-pick .rb-pick-body { min-height: 0; padding: 2px 10px 2px 2px; gap: 8px; }
+.rb-sling-pick .rb-slot { width: 36px; height: 36px; border-bottom: 3px solid var(--rb-tier-glow); }
+.rb-sling-pick .rb-pick-text { flex: 1; }
+.rb-sling-pick .rb-tier-dot { display: inline-block; margin-right: 5px; }
+
+/* The slingshot: the baby sits in the band; holding the button pulls it down (--rb-pull, 0 to 1). */
+.rb-sling-stage {
+  --rb-pull: 0;
+  grid-area: stage;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0;
+  border: 2px solid var(--rb-ink);
+  border-radius: 4px;
+  background-color: var(--rb-paper);
+  background-image:
+    linear-gradient(var(--rb-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rb-grid) 1px, transparent 1px);
+  background-size: 16px 16px;
+  background-position: -1px -1px;
+  color: var(--rb-ink);
+  overflow: hidden;
+}
+.rb-sling-sky { position: absolute; inset: 0; pointer-events: none; }
+.rb-sling-sky .rb-icon { position: absolute; }
+.rb-sling-sky .rb-icon:nth-child(1) { top: 10px; right: 12px; }
+.rb-sling-sky .rb-icon:nth-child(2) { top: 42px; right: 42px; color: var(--rb-muted); }
+.rb-sling-sky .rb-icon:nth-child(3) { top: 22px; left: 14px; color: var(--rb-muted); }
+.rb-sling-rig { position: relative; width: 77px; height: 118px; margin-top: 14px; }
+.rb-sling-fork { position: absolute; left: 0; bottom: 0; }
+/* The band wraps the baby's feet like a pouch, so it is drawn in front. */
+.rb-sling-band {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: var(--rb-ink);
+  clip-path: polygon(6px 43px, 12px 43px, 50% calc(51px + var(--rb-pull) * 34px), 65px 43px, 71px 43px, 50% calc(57px + var(--rb-pull) * 34px));
+}
+.rb-sling-baby { position: absolute; z-index: 2; left: 50%; top: 2px; margin-left: -27px; transform: translateY(calc(var(--rb-pull) * 34px)); }
+.rb-animate.rb-full .rb-sling-baby { animation: rb-sling-shake 140ms steps(2) infinite; }
+.rb-sling-caption {
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+  padding: 6px 8px 7px;
+  border-top: 2px solid var(--rb-ink);
+  background: rgba(17, 17, 17, .06);
+  text-align: center;
+}
+.rb-sling-caption strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 800 15px/1.2 var(--rb-font); }
+.rb-sling-worth { font: 700 12px/1.2 var(--rb-mono); color: #5E5A52; white-space: nowrap; }
+
+/* The ladder: farthest zone on top, a dashed flight path through the rungs, each row tinted by its chance. */
+.rb-sling-ladder { grid-area: ladder; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.rb-sling-zones { list-style: none; position: relative; display: flex; flex-direction: column; gap: 3px; }
+.rb-sling-zones::before { content: ""; position: absolute; left: 9px; top: 14px; bottom: 14px; border-left: 2px dashed var(--rb-rule); }
+.rb-sling-zone {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 48px minmax(64px, auto);
+  align-items: center;
+  gap: 8px;
+  min-height: 25px;
+  margin-left: 24px;
+  padding: 2px 10px;
+  border: 1px solid var(--rb-rule);
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(204, 255, 0, .11) calc(var(--rb-chance) * 100%), var(--rb-panel-2) 0);
+}
+.rb-sling-rung { position: absolute; left: -19px; top: 50%; width: 10px; height: 10px; transform: translateY(-50%); background: var(--rb-muted); box-shadow: 0 0 0 3px var(--rb-panel); }
+.rb-sling-zone-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; font-size: 14px; white-space: nowrap; }
+.rb-sling-zone-name > span:not(.rb-tag) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rb-sling-chance { font: 700 13px/1 var(--rb-mono); color: var(--rb-muted-2); text-align: right; font-variant-numeric: tabular-nums; }
+.rb-sling-mult {
+  justify-self: center;
+  min-width: 42px;
+  padding: 3px 4px 2px;
+  border: 1px solid var(--rb-rule);
+  border-radius: 2px;
+  font: 800 13px/1 var(--rb-mono);
+  text-align: center;
+}
+.rb-sling-pay { font: 800 14px/1 var(--rb-mono); color: var(--rb-signal); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rb-sling-zero { color: var(--rb-muted); }
+.rb-zone-pond .rb-sling-zone-name { color: var(--rb-muted-2); }
+.rb-zone-pond .rb-sling-rung { background: #9FE8FF; }
+.rb-zone-cloud .rb-sling-rung, .rb-zone-orbit .rb-sling-rung { background: var(--rb-signal); }
+.rb-sling-zone.rb-zone-orbit { border-color: #4E5A1E; }
+.rb-sling-zone.rb-zone-moon {
+  min-height: 32px;
+  border: 2px solid var(--rb-ink);
+  background: linear-gradient(90deg, #FFE27A, #FFB800, #FF8FD8, #FFE27A) 0 0 / 300% 100%;
+  color: var(--rb-ink);
+  box-shadow: 0 0 0 1px #FFE27A, 3px 3px 0 rgba(0, 0, 0, .5);
+}
+.rb-animate .rb-sling-zone.rb-zone-moon { animation: rb-shimmer 4s linear infinite; }
+.rb-zone-moon .rb-sling-zone-name { font: 850 17px/1.1 var(--rb-font); letter-spacing: -.01em; }
+.rb-zone-moon :is(.rb-sling-chance, .rb-sling-pay) { color: var(--rb-ink); }
+.rb-zone-moon .rb-sling-pay { font-size: 16px; }
+.rb-zone-moon .rb-sling-mult { border-color: var(--rb-ink); background: var(--rb-ink); color: #FFE27A; font-size: 16px; }
+.rb-zone-moon .rb-sling-rung { left: -23px; width: auto; height: auto; background: none; box-shadow: none; color: #FFE27A; }
+.rb-sling-jackpot { flex: none; background: var(--rb-ink); color: #FFE27A; }
+.rb-sling-ev { font: 12px/1.35 var(--rb-mono); color: var(--rb-muted-2); }
+.rb-sling-fine { list-style: none; display: flex; flex-direction: column; gap: 3px; flex: none; font: 11px/1.4 var(--rb-mono); color: var(--rb-muted); }
+
+.rb-sling-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rb-sling-status { display: flex; align-items: flex-start; gap: 7px; min-width: 0; color: #D9D5CB; font: 600 13px/1.35 var(--rb-font); }
+.rb-sling-status .rb-icon { flex: none; margin-top: 2px; color: var(--rb-signal); }
+.rb-sling-status.rb-warn { color: var(--rb-panel-text); }
+.rb-sling-status.rb-warn .rb-icon { color: var(--rb-danger); }
+/* Hold to pull: the stripes fill with the pull; the label says when to let go. */
+.rb-button.rb-sling-pull {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  flex: none;
+  min-width: 290px;
+  max-width: 62%;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, .45);
+}
+.rb-sling-pull > :not(.rb-sling-meter) { position: relative; z-index: 1; }
+.rb-sling-pull > .rb-sling-meter {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  transform: scaleX(var(--rb-pull, 0));
+  transform-origin: left center;
+  background: repeating-linear-gradient(-45deg, #A6D800 0 6px, #BCEB14 6px 12px);
+  border-right: 2px solid var(--rb-ink);
+}
+.rb-sling-pull > .rb-sr-only { position: absolute; }
+.rb-button.rb-sling-pull.rb-pulling { transform: translate(1px, 2px); box-shadow: 1px 1px 0 rgba(0, 0, 0, .45); }
+.rb-button.rb-sling-pull:disabled { box-shadow: none; }
+.rb-sling-empty .rb-empty-art .rb-icon { animation: none; }
+@container rb (max-height: 300px) { .rb-sling-more { display: none; } }
+@container rb (max-height: 250px) { .rb-sling-empty .rb-muted { display: block; } }
+
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-sling .rb-panel-body { gap: 8px; }
+  .rb-sling .rb-long { display: none; }
+  .rb-sling .rb-short { display: inline; }
+  .rb-sling-lead { gap: 8px; font-size: 13px; line-height: 1.3; }
+  .rb-sling-main { gap: 6px 8px; }
+  .rb-sling-stake { padding: 4px 7px; font-size: 12px; line-height: 1.3; }
+  .rb-sling-pickers { flex-direction: column; align-items: stretch; gap: 4px; }
+  .rb-sling-picks { gap: 4px; max-height: none; margin: 0; padding: 0; overflow: visible; }
+  .rb-sling-pick .rb-pick-body { padding: 2px 6px 2px 2px; gap: 6px; }
+  .rb-sling-pick .rb-slot { width: 34px; height: 34px; }
+  .rb-sling-pick .rb-pick-check { display: none !important; }
+  .rb-sling-pick .rb-pick-name { font-size: 12px; }
+  .rb-sling-pick .rb-pick-meta { font-size: 10px; }
+  .rb-sling-ladder { gap: 4px; }
+  .rb-sling-zones { gap: 3px; }
+  .rb-sling-zones::before { left: 5px; top: 10px; bottom: 10px; }
+  .rb-sling-zone { grid-template-columns: minmax(0, 1fr) 30px 34px minmax(44px, auto); gap: 5px; min-height: 22px; margin-left: 15px; padding: 2px 6px; }
+  .rb-sling-rung { left: -14px; width: 8px; height: 8px; box-shadow: 0 0 0 2px var(--rb-panel); }
+  .rb-sling-zone-name { font-size: 12px; gap: 5px; }
+  .rb-sling-chance { font-size: 11px; }
+  .rb-sling-mult { min-width: 0; padding: 2px 2px 1px; font-size: 11px; }
+  .rb-sling-pay { font-size: 11px; }
+  .rb-sling-zone.rb-zone-moon { min-height: 26px; box-shadow: 0 0 0 1px #FFE27A, 2px 2px 0 rgba(0, 0, 0, .5); }
+  .rb-zone-moon .rb-sling-zone-name { font-size: 13px; }
+  .rb-zone-moon :is(.rb-sling-mult, .rb-sling-pay) { font-size: 12px; }
+  .rb-zone-moon .rb-sling-rung { left: -17px; }
+  .rb-sling-jackpot { padding: 2px 3px 1px; font-size: 7px; }
+  .rb-sling-ev { font-size: 11px; }
+  .rb-sling-fine { font-size: 10px; }
+  .rb-sling-foot { gap: 8px; }
+  .rb-sling-status { font-size: 11px; line-height: 1.3; gap: 5px; }
+  .rb-sling-status .rb-icon { margin-top: 1px; }
+  .rb-button.rb-sling-pull { min-width: 136px; max-width: 58%; padding: 0 12px; }
+}
+/* Narrow and tall (portrait phones): one column, no slingshot art, babies in one row (name and value). */
+@container rb (max-width: 599px) {
+  .rb-sling-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stake" "pick" "ladder"; }
+  .rb-sling-stage { display: none; }
+  .rb-sling-pick { flex: 1 1 104px; }
+  .rb-sling-tier, .rb-sling-sep { display: none; }
+}
+/* Short landscape frames (640 x 427, 480 x 320): the stake and the babies sit beside the ladder.
+   Short portrait frames (328 x 437) keep the stacked layout above, so zone names never truncate. */
+@container rb (max-height: 479px) and (orientation: landscape) {
+  .rb-sling-main { grid-template-columns: minmax(104px, 34%) minmax(0, 1fr); grid-template-areas: "stake ladder" "pick ladder"; grid-template-rows: auto 1fr; }
+  .rb-sling-stage, .rb-sling-jackpot { display: none; }
+  .rb-sling-picks { flex-direction: column; flex-wrap: nowrap; }
+  .rb-sling-pick { flex: none; }
+  .rb-sling-tier, .rb-sling-sep { display: inline; }
+}
+/* Phone landscape (390 x 260, 360 x 240): a babies strip over a near-to-far strip of the six zones.
+   The stake moves into the footer line, so every zone stays in view without scrolling. */
+@container rb (max-height: 300px) {
+  .rb-sling .rb-panel-body { padding-block: 4px; gap: 4px; }
+  .rb-sling-lead, .rb-sling-stake, .rb-sling-gone, .rb-sling-ev, .rb-sling-zones::before, .rb-sling-rung { display: none; }
+  .rb-sling-tiny { display: inline; }
+  .rb-sling-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "pick" "ladder"; grid-template-rows: auto; gap: 4px; }
+  .rb-sling-pickers .rb-section-label, .rb-sling-ladder .rb-section-label { display: none; }
+  .rb-sling-picks { flex-direction: row; margin: -5px; padding: 5px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  .rb-sling-pick { flex: 0 0 auto; }
+  .rb-sling-pick .rb-pick-body { padding: 1px 8px 1px 1px; }
+  .rb-sling-pick .rb-slot { width: 32px; height: 32px; }
+  .rb-sling-tier, .rb-sling-sep, .rb-sling-pick .rb-tier-dot, .rb-sling-zone-name .rb-short { display: none !important; }
+  /* Near (pond) on the left to far (Moon) on the right; each zone reads name / multiplier and chance / payout. */
+  .rb-sling-zones { flex-direction: row-reverse; gap: 3px; }
+  .rb-sling-zone {
+    flex: 1 1 0;
+    grid-template-columns: auto auto;
+    grid-template-areas: "name name" "mult chance" "pay pay";
+    justify-content: center;
+    justify-items: center;
+    gap: 1px 3px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 2px 1px;
+    background: linear-gradient(0deg, rgba(204, 255, 0, .11) calc(var(--rb-chance) * 100%), var(--rb-panel-2) 0);
+  }
+  .rb-sling-zone.rb-zone-moon { min-height: 0; padding: 1px 0; box-shadow: 0 0 0 1px #FFE27A; }
+  .rb-sling-zone-name { grid-area: name; max-width: 100%; font-size: 11px; }
+  .rb-zone-moon .rb-sling-zone-name { font-size: 12px; }
+  .rb-sling-mult { grid-area: mult; border: 0; padding: 1px 2px 0; font-size: 11px; }
+  .rb-zone-moon .rb-sling-mult { font-size: 11px; }
+  .rb-sling-chance { grid-area: chance; font-size: 10px; }
+  .rb-sling-pay { grid-area: pay; font-size: 10px; }
+  .rb-zone-moon .rb-sling-pay { font-size: 11px; }
+}
+
+/* Launch overlay: the flight canvas, then the result card over the landed frame. */
+.rb-launch .rb-confetti { --rb-tier-accent: #FFB800; }
+.rb-launch-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 540px;
+  max-height: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px 18px 14px;
+  border: 3px solid var(--rb-paper);
+  border-radius: 6px;
+  background: var(--rb-panel);
+  color: var(--rb-panel-text);
+  box-shadow: 8px 8px 0 var(--rb-ink);
+  scrollbar-width: thin;
+  scrollbar-color: var(--rb-rule) transparent;
+}
+.rb-launch-card.rb-animate { animation: rb-card-in 420ms cubic-bezier(.2, 1.35, .4, 1) both; }
+.rb-launch-top { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.rb-launch-baby { width: 88px; height: 88px; }
+.rb-launch-head { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rb-launch-zone { font: 850 26px/1.05 var(--rb-font); letter-spacing: -.02em; overflow-wrap: anywhere; }
+.rb-launch-line { color: #D9D5CB; font-size: 14px; line-height: 1.35; }
+.rb-launch-stamp {
+  flex: none;
+  align-self: flex-start;
+  padding: 6px 10px 4px;
+  border: 3px solid currentColor;
+  border-radius: 4px;
+  color: var(--rb-signal);
+  font: 900 30px/1 var(--rb-mono);
+  transform: rotate(-8deg);
+}
+.rb-launch-card.rb-animate .rb-launch-stamp { animation: rb-stamp 380ms cubic-bezier(.3, 1.6, .5, 1) 260ms both; }
+.rb-launch-payout { display: flex; flex-direction: column; gap: 6px; }
+.rb-launch-sums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.rb-launch-sums > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 7px 10px; border: 1px solid var(--rb-rule); border-radius: 3px; background: var(--rb-panel-2); }
+.rb-launch-sums dt { font: 700 10px/1.2 var(--rb-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--rb-muted); }
+.rb-launch-sums dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 0; font: 800 18px/1.1 var(--rb-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rb-launch-sums .rb-launch-note { font: 11px/1.2 var(--rb-mono); color: var(--rb-muted-2); }
+.rb-launch-sums .rb-launch-net { border: 2px solid var(--rb-muted); }
+.rb-launch-net.rb-up { border-color: var(--rb-signal); }
+.rb-launch-net.rb-up dd { color: var(--rb-signal); }
+.rb-launch-net.rb-down dd { color: var(--rb-danger); }
+.rb-launch-sums dd .rb-launch-sim { padding: 2px 4px 1px; border-radius: 2px; background: var(--rb-signal); color: var(--rb-ink); font: 700 9px/1 var(--rb-mono); letter-spacing: .12em; text-transform: uppercase; }
+.rb-launch-math { font: 12px/1.4 var(--rb-mono); color: var(--rb-muted-2); }
+/* Where the money went: the trade-in is in the balance, the net is on the Slingshot net (same box as the panel's stake line). */
+.rb-launch-money { padding: 5px 10px; border: 1px solid #4E5A1E; border-radius: 4px; background: #1C2112; color: #D9D5CB; font-size: 13px; line-height: 1.4; }
+.rb-launch-buttons { display: flex; gap: 10px; }
+.rb-launch-buttons .rb-button { flex: 1 1 auto; }
+.rb-launch-card .rb-short { display: none; }
+.rb-launch-card.rb-zone-pond { border-color: var(--rb-muted); }
+.rb-zone-pond .rb-launch-stamp { color: #9FE8FF; }
+.rb-launch-card.rb-zone-orbit { border-color: var(--rb-signal); }
+.rb-launch-card.rb-zone-moon { border-color: #FFB800; box-shadow: 0 0 0 3px #FFE27A, 8px 8px 0 var(--rb-ink); }
+.rb-zone-moon .rb-launch-zone { color: #FFE27A; }
+.rb-zone-moon .rb-launch-stamp {
+  border-color: var(--rb-ink);
+  background: linear-gradient(90deg, #FFE27A, #FFB800, #FF8FD8, #FFE27A) 0 0 / 300% 100%;
+  color: var(--rb-ink);
+  box-shadow: 0 0 0 2px #FFE27A;
+}
+
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-launch-card { gap: 8px; padding: 10px 12px; border-width: 2px; box-shadow: 4px 4px 0 var(--rb-ink); }
+  .rb-launch-card.rb-zone-moon { box-shadow: 0 0 0 2px #FFE27A, 4px 4px 0 var(--rb-ink); }
+  .rb-launch-top { gap: 10px; }
+  .rb-launch-baby { width: 48px; height: 48px; }
+  .rb-launch-head { gap: 2px; }
+  .rb-launch-head .rb-eyebrow { font-size: 10px; }
+  .rb-launch-zone { font-size: 19px; }
+  .rb-launch-line { font-size: 12px; line-height: 1.3; }
+  .rb-launch-stamp { padding: 4px 6px 3px; border-width: 2px; font-size: 20px; }
+  .rb-launch-payout { gap: 4px; }
+  .rb-launch-sums { gap: 4px; }
+  .rb-launch-sums > div { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 4px; padding: 4px 6px; }
+  .rb-launch-sums dt { font-size: 9px; letter-spacing: .06em; }
+  .rb-launch-sums dd { font-size: 13px; }
+  .rb-launch-sums :is(.rb-launch-note, .rb-launch-sim) { display: none; }
+  .rb-launch-math { font-size: 11px; }
+  .rb-launch-money { padding: 4px 7px; font-size: 12px; line-height: 1.3; }
+  .rb-launch-buttons { gap: 6px; }
+  .rb-launch-buttons .rb-button { padding: 0 10px; font-size: 13px; }
+  .rb-launch-buttons .rb-launch-back:not(:only-child) { flex: none; }
+  .rb-launch-buttons .rb-launch-back:not(:only-child) .rb-long { display: none; }
+  .rb-launch-buttons .rb-launch-back:not(:only-child) .rb-short { display: inline; }
+}
+@container rb (max-height: 300px) {
+  .rb-launch-head .rb-eyebrow { display: none; }
+  .rb-launch-card { gap: 6px; padding: 8px 10px; }
+  /* Phone landscape: the stamp and the sums already say the math; the money line keeps its short form. */
+  .rb-launch-math { display: none; }
+  .rb-launch-money .rb-long { display: none; }
+  .rb-launch-money .rb-short { display: inline; }
+}
+
+/* Rules in the "?" panel and the intro's slingshot line. */
+.rb-sling-about { margin-top: -6px; color: #D9D5CB; font-size: 13px; line-height: 1.45; }
+.rb-sling-about strong { color: var(--rb-panel-text); }
+.rb-sling-odds tbody th { font-weight: 700; }
+.rb-sling-odds .rb-zone-moon :is(th, td) { color: #FFE27A; }
+.rb-intro-sling { display: flex; align-items: flex-start; gap: 8px; color: #D9D5CB; font-size: 13px; line-height: 1.4; }
+.rb-intro-sling strong { color: var(--rb-panel-text); }
+.rb-intro-sling .rb-icon { flex: none; margin-top: 1px; color: var(--rb-signal); }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-intro-sling { gap: 6px; font-size: 12px; line-height: 1.35; }
+  .rb-sling-about { font-size: 12px; }
+}
+
+@keyframes rb-sling-shake { 0% { transform: translate(-1px, calc(var(--rb-pull) * 34px)); } 100% { transform: translate(1px, calc(var(--rb-pull) * 34px + 1px)); } }
+@keyframes rb-stamp { 0% { opacity: 0; transform: scale(2.2) rotate(-18deg); } 100% { opacity: 1; transform: rotate(-8deg); } }
+
+/* ---------- Compact action bar: room for the station prompt ---------- */
+/* Overrides only (the base rules above stay as they are). The key cap never shrinks; portrait phones give
+   the prompt its own row above the buttons, narrow landscape phones use the prompt's short label. */
+.rb-actionbar .rb-prompt .rb-kbd { flex: none; }
+.rb-actionbar .rb-prompt .rb-short { display: none; }
+@container rb (max-width: 599px) and (orientation: portrait) {
+  .rb-stage .rb-actionbar { flex-direction: column; align-items: flex-end; }
+  /* The first-run coach bubble would sit on the prompt row; the prompt is the better pointer while it shows. */
+  .rb-actionbar:has(.rb-prompt) .rb-coach { display: none; }
+}
+@container rb (max-width: 459px) and (orientation: landscape) {
+  .rb-actionbar .rb-prompt .rb-long { display: none; }
+  .rb-actionbar .rb-prompt .rb-short { display: inline; }
+}
+
+/* ---------- Onboarding: six-step intro, room picture, stations and HUD legends (intro and "?") ---------- */
+/* One block, overrides only through later or more specific selectors. */
+
+/* Every intro step is a size container, so its layouts follow the panel width. */
+.rb-intro-step { container: rb-step / inline-size; }
+.rb-intro-step > .rb-intro-lead { margin-bottom: -2px; }
+
+/* Room picture: the scene's own art, markers placed in % of the picture so they stay on their stations at any size. */
+.rb-map { position: relative; box-sizing: content-box; margin: 0; border: 2px solid var(--rb-ink); border-radius: 4px; overflow: hidden; background: var(--rb-ink); }
+.rb-map-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.rb-map-pin {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--rb-ink);
+  border-radius: 50%;
+  background: var(--rb-signal);
+  color: var(--rb-ink);
+  font: 800 13px/1 var(--rb-mono);
+  box-shadow: 0 0 0 2px var(--rb-halo);
+}
+.rb-map-you { width: auto; height: auto; padding: 3px 5px 2px; border-radius: 3px; background: var(--rb-halo); font: 700 9px/1 var(--rb-mono); letter-spacing: .12em; text-transform: uppercase; box-shadow: none; }
+
+/* Stations: picture beside a numbered list (stacked on portrait phones), then how to use a station. */
+.rb-legend-stations { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); grid-template-areas: "map list" "how how"; align-items: center; gap: 12px 16px; }
+.rb-legend-stations .rb-map { grid-area: map; }
+.rb-legend-stations.rb-legend-nomap { grid-template-columns: minmax(0, 1fr); grid-template-areas: "list" "how"; }
+.rb-legend-list { grid-area: list; list-style: none; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rb-legend-list li { display: flex; align-items: flex-start; gap: 10px; }
+.rb-legend-num {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--rb-signal);
+  color: var(--rb-ink);
+  font: 800 12px/1 var(--rb-mono);
+}
+.rb-legend-text { min-width: 0; color: #D9D5CB; font-size: 13px; line-height: 1.35; }
+.rb-legend-text strong { display: block; color: var(--rb-panel-text); font-size: 14px; }
+.rb-legend-how { grid-area: how; color: var(--rb-muted-2); font-size: 12px; line-height: 1.7; }
+.rb-legend-how .rb-kbd { color: var(--rb-panel-text); }
+.rb-legend-nomap .rb-legend-text strong { display: inline; }
+/* The "?" panel's copy: an even split, names inline with their line. */
+.rb-legend-compact { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.rb-legend-compact .rb-legend-text strong { display: inline; }
+
+/* HUD legend: a copy of each chip, then what it is. One column; the intro's wide layout pairs them up. */
+.rb-legend-hud { list-style: none; display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; }
+.rb-legend-row { display: grid; grid-column: span 2; grid-template-columns: subgrid; align-items: center; }
+.rb-legend-row p { color: #D9D5CB; font-size: 13px; line-height: 1.35; }
+.rb-legend-row strong { color: var(--rb-panel-text); }
+/* Each chip sits on a strip of paper, like the HUD over the nursery floor. */
+.rb-legend-chip-slot {
+  display: flex;
+  justify-self: start;
+  align-items: center;
+  padding: 4px 5px;
+  border-radius: 3px;
+  background-color: var(--rb-paper);
+  background-image:
+    linear-gradient(var(--rb-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rb-grid) 1px, transparent 1px);
+  background-size: 8px 8px;
+  background-position: -1px -1px;
+}
+.rb-legend-chip { height: 32px; pointer-events: none; }
+.rb-legend-chip .rb-hud-stat { padding: 0 10px; }
+.rb-legend-tool { width: 32px; height: 32px; pointer-events: none; }
+.rb-legend-tools { display: flex; gap: 6px; }
+.rb-intro .rb-legend-hud { grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr); gap: 10px 14px; }
+
+/* The "?" panel's copies are smaller: a reference, not a lesson. */
+.rb-settings .rb-legend-hud { gap: 6px 12px; }
+.rb-settings .rb-legend-chip-slot { padding: 3px 4px; }
+.rb-settings .rb-legend-chip { height: 26px; }
+.rb-settings .rb-legend-chip .rb-hud-stat { gap: 5px; padding: 0 7px; }
+.rb-settings .rb-hud-sling.rb-legend-chip { gap: 5px; padding: 0 6px 0 8px; }
+.rb-settings .rb-legend-chip :is(.rb-hud-num, .rb-hud-sling-word) { font-size: 12px; }
+.rb-settings .rb-legend-chip .rb-hud-tag { padding: 2px 4px 1px; font-size: 8px; }
+.rb-settings .rb-legend-tool { width: 26px; height: 26px; }
+.rb-settings .rb-legend-row p { font-size: 12px; line-height: 1.35; }
+
+/* Step 5: Keep, Sanctuary, Moon Slingshot side by side; each payoff chip is pinned to the corner of its little scene. */
+.rb-intro-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.rb-intro-option { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "mini" "text"; align-content: start; }
+.rb-intro-option h3 { grid-area: title; font-size: 16px; white-space: nowrap; }
+.rb-intro-option .rb-intro-mini { grid-area: mini; align-items: center; min-height: 72px; }
+.rb-intro-option .rb-intro-value { grid-area: mini; z-index: 1; justify-self: end; align-self: start; margin: 5px; font-size: 13px; }
+.rb-intro-option p { grid-area: text; font-size: 13px; }
+.rb-intro-fork { color: var(--rb-ink); }
+
+/* Step 6: the goal and the first action, with a copy of the Find a match button. */
+.rb-intro-start { color: #D9D5CB; font-size: 14px; line-height: 1.6; }
+.rb-intro-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 2px;
+  padding: 3px 8px 2px;
+  border: 2px solid var(--rb-ink);
+  border-radius: 4px;
+  background: var(--rb-signal);
+  color: var(--rb-ink);
+  font: 700 13px/1.2 var(--rb-font);
+  white-space: nowrap;
+  vertical-align: 1px;
+  box-shadow: 0 0 0 1px var(--rb-panel-text);
+}
+
+/* Narrow intro steps: the three choices become rows (picture left, words right). */
+@container rb-step (max-width: 560px) {
+  .rb-intro-options { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .rb-intro-option { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "mini title chip" "mini text text"; align-items: center; gap: 4px 10px; }
+  .rb-intro-option .rb-intro-mini { align-self: stretch; min-width: 96px; min-height: 0; padding: 6px 8px; }
+  .rb-intro-option h3 { min-width: 0; white-space: normal; }
+  .rb-intro-option .rb-intro-value { grid-area: chip; align-self: center; margin: 0; }
+  .rb-intro .rb-legend-hud { grid-template-columns: max-content minmax(0, 1fr); gap: 8px 12px; }
+}
+
+/* Phone-width steps: the parents' names wrap inside their slot instead of running past it. */
+@container rb-step (max-width: 380px) {
+  .rb-intro-pair { gap: 4px; }
+  .rb-intro-figure { gap: 4px; }
+  .rb-intro-name { max-width: 100%; }
+  .rb-intro-name span { white-space: normal; overflow-wrap: anywhere; }
+}
+/* Very narrow steps: the payoff chip gets its own line under the title. */
+@container rb-step (max-width: 340px) {
+  .rb-intro-option { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "mini title" "mini chip" "mini text"; }
+  .rb-intro-option .rb-intro-value { justify-self: start; }
+}
+
+/* Compact frames: the HUD hides the families count, so its legend row goes too; smaller type everywhere. */
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-map-pin { width: 20px; height: 20px; font-size: 11px; }
+  .rb-map-you { width: auto; height: auto; font-size: 8px; padding: 2px 4px 1px; }
+  .rb-legend-stations { gap: 8px 12px; }
+  .rb-legend-list { gap: 6px; }
+  .rb-legend-list li { gap: 8px; }
+  .rb-legend-num { width: 20px; height: 20px; font-size: 11px; }
+  .rb-legend-text { font-size: 12px; line-height: 1.3; }
+  .rb-legend-text strong { display: inline; font-size: 13px; }
+  .rb-legend-how { font-size: 11px; line-height: 1.6; }
+  .rb-legend-wide { display: none; }
+  .rb-legend-hud, .rb-intro .rb-legend-hud { gap: 6px 10px; }
+  .rb-legend-row p { font-size: 12px; line-height: 1.3; }
+  .rb-legend-chip-slot { padding: 3px 4px; }
+  .rb-legend-chip { height: 26px; }
+  .rb-legend-chip .rb-hud-stat { padding: 0 7px; }
+  .rb-legend-tool { width: 26px; height: 26px; }
+  .rb-legend-tools { gap: 4px; }
+  .rb-intro-option h3 { font-size: 15px; }
+  .rb-intro-option p { font-size: 12px; }
+  .rb-intro-start { font-size: 13px; line-height: 1.55; }
+  .rb-intro-cta { font-size: 12px; padding: 2px 6px 1px; }
+}
+/* Portrait phones: the picture on top, the list under it (the title already says what the step is about). */
+@container rb (max-width: 599px) and (orientation: portrait) {
+  .rb-legend-stations { grid-template-columns: minmax(0, 1fr); grid-template-areas: "map" "list" "how"; row-gap: 6px; }
+  .rb-legend-list { gap: 5px; }
+  .rb-intro-step-2 > .rb-intro-lead { display: none; }
+  .rb-intro .rb-legend-hud { row-gap: 5px; }
+  .rb-intro-goal { gap: 4px; }
+}
+/* Wide frames: the odds rows are a touch slimmer, so step 4 fits the 960 x 640 reference without scrolling. */
+@container rb (min-width: 600px) and (min-height: 480px) {
+  .rb-intro-thumb { width: 58px; height: 58px; }
+}
+/* Narrow frames: the footer keeps Next / Start breeding whole (Back shows its arrow only, the dots shrink). */
+@container rb (max-width: 420px) {
+  .rb-intro-back { padding: 0 10px; }
+  .rb-intro-back span { display: none; }
+  .rb-intro-next { padding: 0 14px; }
+  .rb-intro-dots { gap: 4px; }
+  .rb-intro-dots li { width: 8px; height: 8px; }
+  .rb-intro-dots li.rb-on { width: 16px; }
+}
+/* Phone landscape: the room picture and the list stay side by side; tighter pins. */
+@container rb (max-height: 300px) {
+  .rb-legend-stations { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .rb-map-pin { width: 16px; height: 16px; border-width: 1px; font-size: 9px; box-shadow: 0 0 0 1px var(--rb-halo); }
+  .rb-map-you { display: none; }
+  .rb-intro-option .rb-intro-mini { min-width: 76px; }
+}
+
+/* ---------- Onboarding on phones: every intro step fits the portrait frame ---------- */
+.rb-intro-count { display: none; }
+.rb-legend-short { display: none; }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-intro-count { display: inline; color: #A8A396; font: 700 11px/1 var(--rb-font); letter-spacing: 0.04em; }
+  .rb-legend-long { display: none; }
+  .rb-legend-short { display: inline; }
+}
+@container rb (max-width: 599px) and (orientation: portrait) {
+  /* Step 5: the words carry the choice; the little scenes stay on wider frames. */
+  .rb-intro-option { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title chip" "text text"; gap: 2px 8px; padding: 8px 10px; }
+  .rb-intro-option .rb-intro-mini { display: none; }
+  /* Step 6: the title says what it is; the start line keeps only the button. */
+  .rb-intro-step-6 > .rb-intro-lead:first-child { display: none; }
+  .rb-intro-start-more { display: none; }
+}
+@container rb (max-width: 599px) and (orientation: portrait) {
+  /* Slingshot panel: the chips and the ladder explain themselves, so their labels go and all six rows plus the average fit. */
+  .rb-sling .rb-section-label { display: none; }
+  .rb-sling .rb-sling-zones { gap: 2px; }
+  .rb-sling .rb-sling-zone { min-height: 20px; padding-block: 1px; }
+}
+@container rb (max-width: 360px) {
+  /* Tiny frames: the dots alone show the step, so Next / Start breeding keeps its whole label. */
+  .rb-intro-count { display: none; }
+}

@@ -1,5 +1,5 @@
 // Dev-only: screenshots and behaviour checks for the scene harness (headless Chromium, fake clock).
-// Usage: node dev/scene/shoot.mjs [nursery] [small] [phone] [accessories] [hatch] [courtship] [release] [reduced] [checks]   (default: all)
+// Usage: node dev/scene/shoot.mjs [nursery] [small] [phone] [accessories] [hatch] [courtship] [release] [slingshot] [reduced] [checks]   (default: all)
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -317,6 +317,128 @@ try {
     await shot(page, "pop-in");
     check(typeof added === "string", "addBaby pops a new baby in");
     await context.close();
+  }
+
+  if (run("slingshot")) {
+    const nearLog = page => page.evaluate(() => window.__harness.log.filter(entry => entry.startsWith("near:")));
+    const { page, context } = await open("babies=4&eggs=2");
+    await page.clock.runFor(1500);
+    await shot(page, "slingshot-960");
+    // In front of the slingshot: the prompt names it and E activates it.
+    await page.mouse.click(594, 290);
+    await page.clock.runFor(2200);
+    check((await state(page)).near === "slingshot", `standing in front of the slingshot: near=${(await state(page)).near}`);
+    await shot(page, "slingshot-prompt");
+    await page.keyboard.press("KeyE");
+    await page.clock.runFor(60);
+    check((await state(page)).log.includes("activate:slingshot"), "E activates the slingshot");
+    // Neighbours never flicker: from the incubator's front-right corner to the slingshot and back switches once each way.
+    await page.mouse.click(480, 420); await page.clock.runFor(2000);
+    await page.mouse.click(470, 262); await page.clock.runFor(2200);
+    check((await state(page)).near === "incubator", `in front of the incubator: near=${(await state(page)).near}`);
+    await page.evaluate(() => { window.__harness.log.length = 0; });
+    await page.keyboard.down("ArrowRight"); await page.clock.runFor(700); await page.keyboard.up("ArrowRight");
+    await page.clock.runFor(200);
+    await page.keyboard.down("ArrowLeft"); await page.clock.runFor(350); await page.keyboard.up("ArrowLeft");
+    await page.clock.runFor(200);
+    const cornerNear = (await nearLog(page)).join(" ");
+    check(cornerNear === "near:slingshot near:incubator", `incubator -> slingshot -> incubator: ${cornerNear}`);
+    // And along the slingshot's front, right past it and back.
+    await page.keyboard.down("ArrowDown"); await page.clock.runFor(120); await page.keyboard.up("ArrowDown");
+    await page.clock.runFor(300);
+    await page.evaluate(() => { window.__harness.log.length = 0; });
+    await page.keyboard.down("ArrowRight"); await page.clock.runFor(1100); await page.keyboard.up("ArrowRight");
+    await page.clock.runFor(200);
+    await page.keyboard.down("ArrowLeft"); await page.clock.runFor(1100); await page.keyboard.up("ArrowLeft");
+    await page.clock.runFor(200);
+    const frontNear = (await nearLog(page)).join(" ");
+    check(frontNear === "near:slingshot near:null near:slingshot near:null", `along the slingshot's front and back: ${frontNear}`);
+    // Paths stay open: the Sanctuary stepping stones and the gap between the slingshot and the rug.
+    await page.mouse.click(648, 336); await page.clock.runFor(2500);
+    await page.mouse.click(756, 228); await page.clock.runFor(2500);
+    const stones = await state(page);
+    check(Math.hypot(stones.x - 756, stones.y - 228) < 14, `the stepping stones path to the Sanctuary is open (${stones.x}, ${stones.y})`);
+    await page.mouse.click(420, 250); await page.clock.runFor(3000);
+    const across = await state(page);
+    check(Math.hypot(across.x - 420, across.y - 250) < 14, `walking from the Sanctuary to the incubator passes the slingshot (${across.x}, ${across.y})`);
+    // Tapping the slingshot (its window) from afar walks there and activates it.
+    await page.evaluate(() => { window.__harness.log.length = 0; });
+    await page.mouse.click(606, 70);
+    await page.clock.runFor(2600);
+    check((await state(page)).log.includes("activate:slingshot"), `clicking the slingshot's window walks there and activates it (${(await state(page)).log.join(" ")})`);
+    // The launch, frame by frame.
+    const before = await page.evaluate(() => document.getElementById("world").dataset.brood);
+    await page.evaluate(() => { window.__launchDone = false; window.__harness.launch(window.__harness.brood()[2].key, 0.9).then(() => { window.__launchDone = true; }); });
+    let now = 0;
+    for (const at of [150, 420, 620, 800, 1000, 1100, 1180, 1260, 1360, 1500]) { await page.clock.runFor(at - now); now = at; await shot(page, `slingshot-launch-${String(at).padStart(4, "0")}`); }
+    await page.clock.runFor(700);
+    const entry = (await state(page)).log.find(item => item.startsWith("launch:done"));
+    check(await page.evaluate(() => window.__launchDone), `launch resolved (${entry})`);
+    check(entry && Number(entry.split(":")[2]) <= 1900, "launch takes at most 1.9 s");
+    const after = await page.evaluate(() => document.getElementById("world").dataset.brood);
+    check(Number(after) === Number(before) - 1, `the launched baby left the brood (${before} -> ${after})`);
+    await shot(page, "slingshot-after");
+    // A short pull still stretches the band; the brood update may also land first; unknown keys resolve.
+    await page.evaluate(() => { window.__launchDone = false; window.__harness.launch(window.__harness.brood()[0].key, 0, "brood-first").then(() => { window.__launchDone = true; }); });
+    await page.clock.runFor(900);
+    await shot(page, "slingshot-short-pull");
+    await page.clock.runFor(1200);
+    check(await page.evaluate(() => window.__launchDone), "launch after the brood update resolves");
+    const unknown = await page.evaluate(() => window.__harness.scene.playLaunch("baby:nope", 0.5).then(() => "resolved", error => `threw ${error}`));
+    check(unknown === "resolved", `launching an unknown key resolves (${unknown})`);
+    // Paused world (a panel open): the launch still plays and resolves.
+    await page.evaluate(() => { const h = window.__harness; h.pause(true); window.__launchDone = false; h.launch(h.brood()[0].key, 0.6).then(() => { window.__launchDone = true; }); });
+    await page.clock.runFor(2100);
+    check(await page.evaluate(() => window.__launchDone), "launch plays over a paused world");
+    await page.evaluate(() => window.__harness.pause(false));
+    await context.close();
+
+    // Reduced motion: a quick fade.
+    const calm = await open("babies=3&reduced=1");
+    await calm.page.evaluate(() => { window.__launchDone = false; window.__harness.launch(undefined, 1).then(() => { window.__launchDone = true; }); });
+    await calm.page.clock.runFor(320);
+    check(await calm.page.evaluate(() => window.__launchDone), "reduced motion launch resolves within 0.32 s");
+    await calm.context.close();
+
+    // Phone: walk over with taps, tap the part of the slingshot the camera shows (walks there, activates), the TAP bubble.
+    const phone = await open("babies=1&eggs=1&w=390&chrome=1", { width: 390, height: 260, scale: 3, touch: true });
+    await phone.page.clock.runFor(1400);
+    // Tap the floor just under the HUD, up towards the slingshot, until part of it shows in the band.
+    let spot = null;
+    for (let i = 0; i < 5 && !(spot = await visibleTarget(phone.page, [552, 54, 636, 261])); i++) {
+      const view = await camera(phone.page), scale = 390 / view.width;
+      const up = await toClient(phone.page, Math.min(Math.max(700, view.x + 12), view.x + view.width - 12), view.y + 44 / scale + 14);
+      await phone.page.touchscreen.tap(up.x, up.y);
+      await phone.page.clock.runFor(1500);
+    }
+    await shot(phone.page, "phone-slingshot-approach");
+    const view = await camera(phone.page), scale = 390 / view.width;
+    check(!!spot, `phone: after walking up, the slingshot shows in the band (${JSON.stringify(spot)})`);
+    const tap = await toClient(phone.page, spot?.x ?? 594, spot?.y ?? 200);
+    await phone.page.touchscreen.tap(tap.x, tap.y);
+    await phone.page.clock.runFor(1800);
+    check((await state(phone.page)).log.includes("activate:slingshot"), `phone: tapping the slingshot activates it (${(await state(phone.page)).log.slice(-2).join(" ")})`);
+    // Step in front of it (clear of the Friend and the babies gathered beside it): the TAP bubble shows.
+    const front = await toClient(phone.page, 575, 283);
+    await phone.page.touchscreen.tap(front.x, front.y);
+    await phone.page.clock.runFor(1500);
+    check((await state(phone.page)).near === "slingshot", `phone: near the slingshot (${(await state(phone.page)).near})`);
+    const visibleHit = await visibleTarget(phone.page, [552, 54, 636, 261]);
+    const hitCss = visibleHit ? await phone.page.evaluate(([x0, y0, x1, y1]) => {
+      const canvas = document.getElementById("world");
+      const [left, top, width, height] = canvas.dataset.view.split(",").map(Number);
+      const scale = canvas.getBoundingClientRect().height / height;
+      const a = Math.max(x0, left), b = Math.min(x1, left + width), c = Math.max(y0, top + 44 / scale), d = Math.min(y1, top + height - 88 / scale);
+      return { w: Math.round((b - a) * scale), h: Math.round((d - c) * scale) };
+    }, [552, 54, 636, 261]) : null;
+    check(!!hitCss && hitCss.w >= 44 && hitCss.h >= 40, `phone: the slingshot's tap target in the band is ${JSON.stringify(hitCss)} CSS px (scale ${scale.toFixed(2)})`);
+    await shot(phone.page, "phone-slingshot-prompt");
+    await phone.page.evaluate(() => { window.__launchDone = false; window.__harness.launch(undefined, 0.8).then(() => { window.__launchDone = true; }); });
+    now = 0;
+    for (const at of [300, 650, 900, 1120, 1250, 1400]) { await phone.page.clock.runFor(at - now); now = at; await shot(phone.page, `phone-slingshot-launch-${String(at).padStart(4, "0")}`); }
+    await phone.page.clock.runFor(800);
+    check(await phone.page.evaluate(() => window.__launchDone), "phone: launch resolves");
+    await phone.context.close();
   }
 
   if (run("reduced")) {

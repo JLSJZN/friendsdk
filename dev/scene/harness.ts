@@ -115,6 +115,15 @@ const api = {
     scene.setBrood(brood);
     return done;
   },
+  /** Moon Slingshot. order "brood-first": the brood update lands before playLaunch (the other order a UI may take). */
+  launch: (key = brood[0]?.key, pull = 0.8, order: "scene-first" | "brood-first" = "scene-first") => {
+    const started = performance.now();
+    const play = () => scene.playLaunch(key, pull).then(() => { log.push(`launch:done:${Math.round(performance.now() - started)}`); status(); });
+    const done = order === "scene-first" ? play() : null;
+    brood = brood.filter(baby => baby.key !== key);
+    scene.setBrood(brood);
+    return done ?? play();
+  },
   celebrate: (key = brood[brood.length - 1]?.key ?? player.key) => scene.celebrate(key),
   addBaby: (tier: TierId = "mutant") => { const baby = makeBaby(player, pool[(nextPlay * 5) % pool.length], nextPlay++, tier); brood = [...brood, baby]; scene.setBrood(brood); return baby.key; },
   hatch: startHatch,
@@ -135,6 +144,7 @@ function status() {
 const buttons: [string, () => unknown][] = [
   ["Courtship", () => api.courtship(Math.floor(Math.random() * 60))],
   ["Release first", () => api.release()],
+  ["Launch first", () => api.launch(undefined, Math.random())],
   ["Celebrate newest", () => api.celebrate()],
   ["Add baby", () => api.addBaby(TIER_ORDER[Math.floor(Math.random() * 4)])],
   ...TIER_ORDER.map(tier => [`Hatch ${tier}`, () => startHatch(tier, Math.floor(Math.random() * 60))] as [string, () => unknown]),

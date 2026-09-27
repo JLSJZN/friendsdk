@@ -12,7 +12,7 @@ Mocked wallets exist only inside the automated browser runs, never in a build.
 | Typecheck | `npx tsc -p games/rare-breeds/tsconfig.json` | Bundler resolution (JSON imports work), `.ts`/`.tsx` extension imports, `verbatimModuleSyntax` + `erasableSyntaxOnly` so pure modules also run under Node type stripping. SDK imports resolve through the package `exports` to `dist/*.d.ts`, like `examples/tsconfig.json`. `tests/` is excluded: the SDK has no `@types/node`. |
 | SDK game check | `node scripts/dev-game.mjs check games/rare-breeds` | Schema, README, import boundary. |
 | Browser test | `node tools/test-game.mjs` | SDK `testGame` at 960x800 and 390x844 (touch). Screenshots: `docs/media/test-desktop-960x800.png`, `test-phone-390x844.png`. Runs `export test` of `tools/scenarios/rare-breeds.mjs`. Flags: `--scenario file`, `--no-scenario`, `--viewport desktop\|phone`, `--media dir`, `--timeout ms`. |
-| Economy report | `node tools/economy-report.mjs` | Exact table and math, then a Monte Carlo on the SDK's own `createGamePreview` ledger. `--sessions 5000 --seed 7730`. |
+| Economy report | `node tools/economy-report.mjs` | Exact table and math, then a Monte Carlo on the SDK's own `createGamePreview` ledger. Games with `src/slingshot.ts` add a Moon Slingshot section (zone and payout tables, Moon Fund rule, a trade-in-flow Monte Carlo next to the exact identity E[net] = -0.1 x E[staked]). `--sessions 5000 --seed 7730`. |
 | Gameplay video | `node tools/record-video.mjs` | 960x640, reduced motion off. Writes `docs/media/gameplay.mp4`, `gameplay.gif` (640 px, 12 fps), `gameplay-poster.png`. Runs `export video` of the scenario. Flags: `--name`, `--scenario`, `--keep-intro`, `--keep-webm`, `--no-mp4`, `--no-gif`, `--gif-width`, `--gif-fps`. |
 | GitHub Pages folder | `node tools/build-pages.mjs --smoke` | CLI `check` + `build`, copies the output to `.friendsdk/site/` (already gitignored), adds `.nojekyll`, verifies `./` relative paths and the child CSP. `--smoke` serves it under `/rare-breeds/` with plain static headers and boots it with the test fixture. `--out dir`, `--base repo-name`. |
 | Local play (real wallet) | `node scripts/dev-game.mjs dev games/rare-breeds` | `npm run dev:game` would rebuild the SDK first. |
@@ -42,6 +42,38 @@ Egg price 1 RF (`1000000000000000000`). outcomeId = index + 1 = `TIER_ORDER` pos
   at the start 12 fit in one bulk `buy(12n)`, or 11 bought one at a time.
 - Hatches from 20 RF: keep everything = exactly 20; sell only Commons = at least 20, mean 28.1; sell everything =
   at least 39 (all Common), mean 173.7 (5000 simulated sessions each). P(at least one Prismatic in 20 hatches) = 39.7%.
+
+### Moon Slingshot (`games/rare-breeds/src/slingshot.ts`, simulated side ledger)
+
+A launch first trades the baby in through the SDK (`client.redeem(outcomeId, 1n)`, runtime-confirmed: tier token burned,
+its fixed value lands in the spendable RF balance). That value is the stake. One roll in 0-9999 then picks the landing zone,
+which multiplies the stake; the simulated side ledger books only payout minus stake (the net, `slingshotNet`), which is not
+spendable. Proven exactly in `games/rare-breeds/tests/slingshot.test.ts`.
+
+| Zone | Rolls | bps | Multiplier | Common 0.5 | Spotted 1 | Mutant 1.5 | Prismatic 6 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| pond | 0-3999 | 4000 | x0 | 0 | 0 | 0 | 0 |
+| haystack | 4000-6399 | 2400 | x0.5 | 0.25 | 0.5 | 0.75 | 3 |
+| rooftop | 6400-8199 | 1800 | x1 | 0.5 | 1 | 1.5 | 6 |
+| cloud | 8200-9399 | 1200 | x2 | 1 | 2 | 3 | 12 |
+| orbit | 9400-9799 | 400 | x4 | 2 | 4 | 6 | 24 |
+| moon | 9800-9999 | 200 | x10 | 5 | 10 | 15 | 60 |
+| | | | **Payout EV** | 0.45 | 0.9 | 1.35 | 5.4 |
+| | | | **Net EV** | -0.05 | -0.1 | -0.15 | -0.6 |
+
+- Expected multiplier = (0.5 x 2400 + 1 x 1800 + 2 x 1200 + 4 x 400 + 10 x 200) / 10000 = **x0.9** (9000 bps, exact over all
+  10000 rolls), so the expected net per launch is -0.1 x stake.
+- Launch every baby: trade-in 0.8875 RF (spendable) + net -0.08875 RF (side ledger) = **0.79875 RF per egg** in total
+  (exact over all 10^8 egg and launch roll pairs).
+- Moon Fund starts at 10 x the top Moon payout (6 RF x10 = 60 RF) = **600 RF**, the preview-stake convention. A baby worth v
+  flies only while fund >= 10 v. The stake joins the fund: fund' = fund + v - payout >= v, so the fund never goes negative,
+  and fund = 600 RF - net at all times. The largest drain is 54 RF (Prismatic on the Moon), so the first 11 launches can
+  never be blocked; 11 Prismatic Moon landings in a row leave 6 RF (only Commons still fly).
+- Monte Carlo, 5000 sessions from 20 RF (breed while the runtime sells an egg, trade in and launch every baby): hatches and
+  launches equal the "sell every baby" strategy (min 49, median 143, mean 173.7, max 1019). P(at least one Moon landing) = 92.5%.
+  Slingshot net per session: mean -15.58 RF, p5 -61.25 / median -14.5 / p95 +28 RF, P(net > 0) = 24.0%. Moon Fund at the end:
+  mean 615.6 RF, lowest point seen 421 RF; it never blocked a launch (0 of 5000). Exact identity: E[net] = -0.1 x E[staked]
+  (simulated mean staked 154.24 RF, so -15.42 RF expected against -15.58 RF simulated).
 
 ## Runtime confirmations (preview mode)
 
@@ -97,7 +129,8 @@ A scenario exports `test` and/or `video`: an array of steps or `async ctx => {}`
 `{ confirm: "buy", expect: { description, amount } }` `{ cancel }` `{ tiers: [...] }` `{ rolls: [...] }`
 `{ screenshot: "name" }` `{ run: async ctx => {} }` `{ log }`; any step may add `only: "desktop" | "phone"`.
 `tools/scenarios/rare-breeds.mjs` runs a smoke check until the `Find a match` button exists, then two full
-hatch loops (Spotted kept, Prismatic sent to the Sanctuary, HUD shows 24 RF).
+hatch loops (Spotted kept, Prismatic sent to the Sanctuary, HUD shows 24 RF), the Hearts shop and a hat, and a
+Moon Slingshot launch of the kept baby (one cancelled trade-in, then a confirmed one; Skip, result card; HUD shows 25 RF).
 
 ## GitHub Pages (manual)
 

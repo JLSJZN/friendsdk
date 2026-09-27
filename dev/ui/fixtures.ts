@@ -1,5 +1,7 @@
 // Dev-only fixture data for the Rare Breeds UI harness. Real Friend art, made-up babies.
 import wildData from "../../games/rare-breeds/data/wild-friends.json";
+import gameJson from "../../games/rare-breeds/game.json";
+import { describeTiers, type TierRow } from "../../games/rare-breeds/src/economy.ts";
 import { creatureFromRecord, type WildFriendRecord } from "../../games/rare-breeds/src/sprites.ts";
 import { FACINGS, FRAME_SIZE, TIER_ORDER, type Creature, type Dna, type Frame, type SpriteSheet, type TierId } from "../../games/rare-breeds/src/types.ts";
 import type { TierInfo } from "../../games/rare-breeds/src/ui/index.ts";
@@ -85,3 +87,9 @@ export const tiers: TierInfo[] = TIER_ORDER.map((tier, index) => ({
   tier, chance: ["62%", "25%", "10%", "3%"][index], value: ["0.25 RF", "1 RF", "2.5 RF", "8 RF"][index],
 }));
 export const tierInfo = (tier: TierId) => tiers.find(row => row.tier === tier)!;
+
+/** Tier rows from the real game.json (Common 0.5 / Spotted 1 / Mutant 1.5 / Prismatic 6 RF), as describeTiers(definition) returns them. */
+export const tierRows: readonly TierRow[] = describeTiers({
+  ...gameJson, price: BigInt(gameJson.price), outcomes: gameJson.outcomes.map(outcome => ({ ...outcome, reward: BigInt(outcome.reward) })),
+} as unknown as Parameters<typeof describeTiers>[0]);
+export const tierValue = (tier: TierId | undefined) => tierRows.find(row => row.tier === (tier ?? "common"))!.reward;

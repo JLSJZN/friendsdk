@@ -71,4 +71,8 @@ export const TIER_STYLE: Readonly<Record<TierId, Readonly<{ label: string; accen
 export const PARENT_TINT = ["#CCFF00", "#F4F1EA"] as const;
 
 /** World stations the player can walk to (scene) or open from the HUD (ui). */
-export type StationId = "matchmaker" | "incubator" | "sanctuary";
+export type StationId = "matchmaker" | "incubator" | "sanctuary" | "slingshot";
+
+/** Moon Slingshot landing zones, nearest first. Odds and multipliers live in src/slingshot.ts. */
+export type LaunchZoneId = "pond" | "haystack" | "rooftop" | "cloud" | "orbit" | "moon";
+export const LAUNCH_ZONE_ORDER: readonly LaunchZoneId[] = ["pond", "haystack", "rooftop", "cloud", "orbit", "moon"];

@@ -1,7 +1,12 @@
-// Example babies for the intro tour. Presentation only: they are never kept, sold or counted, and the
-// real hatch tier always comes from the SDK. Same genetics as a real hatch, with a fixed example seed.
+// The intro tour's step titles and example babies. Examples are presentation only: they are never kept, sold or
+// counted, and the real hatch tier always comes from the SDK. Same genetics as a real hatch, with a fixed example seed.
 import { breed, breedSeed } from "../genetics.ts";
 import { TIER_ORDER, type Creature, type Dna, type TierId } from "../types.ts";
+
+/** The intro tour's step titles, in order (tools/scenarios/rare-breeds.mjs clicks through them). */
+export const INTRO_TITLES = [
+  "Your Friend's pixels are its DNA", "Your nursery", "Find a match, hatch an egg", "What can hatch", "What to do with a baby", "Your screen",
+] as const;
 
 /** Play id reserved for examples. Real SDK play ids start at 1, so an example never matches a real baby. */
 export const EXAMPLE_PLAY = 0n;

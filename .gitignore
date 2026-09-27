@@ -10,3 +10,4 @@ contracts/deployments/
 # Rare Breeds dev harness output
 dev/scene/shots/
 dev/ui/shots/
+dev/launch/shots/

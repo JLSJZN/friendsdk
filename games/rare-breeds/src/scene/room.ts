@@ -4,7 +4,7 @@
 // bigger (4 logical pixels per sprite pixel).
 import type { Creature, StationId } from "../types.ts";
 import {
-  GREEN, GRID, INK, MOSS, MUTED, PAPER, SHADE, WHITE, bitmap, box, dither, ditherEllipse, ellipse, ellipseBox,
+  GREEN, GRID, INK, MOSS, MUTED, PAPER, SHADE, WHITE, bitmap, box, clamp, dither, ditherEllipse, ellipse, ellipseBox,
   makeCanvas, rect, rng,
 } from "./art.ts";
 import { BOX_X, BOX_Y, creatureFrame } from "./creatures.ts";
@@ -23,6 +23,10 @@ const PORTRAIT = { x: 26, y: 16, w: 24, h: 24 };
 const ARCH = { cx: 254, open: { x: 234, y: 18, w: 40, h: 36 } };
 const KIOSK = { x: 12, y: 56, w: 45, h: 53 };
 const INCUBATOR = { x: 136, y: 12, w: 48, h: 61 };
+/** The Moon Slingshot stands on the floor in front of Window 2 and shoots through it. */
+const SLING = { x: 184, y: 37, w: 28, h: 48 };
+/** Pouch seat row at rest (local art row) and the longest pull back (art px). */
+const POUCH_ROW = 7, POUCH_PULL = 17;
 
 const art = (r: Rect): Rect => [r[0] * A, r[1] * A, r[2] * A, r[3] * A];
 
@@ -43,6 +47,7 @@ export const OBSTACLES: readonly Rect[] = [
   art([277, WALL, 296, 67]), // sanctuary planter right
   art([298, WALL, ART_W - SIDE, 72]), // corner plant
   art([104, WALL, 121, 60]), // fern by the door
+  art([SLING.x + 1, WALL, SLING.x + SLING.w - 1, SLING.y + SLING.h]), // moon slingshot
   // The runtime overlays its wallet and menu controls in the bottom corners: keep feet out from under them.
   [SIDE * A, 591, 214, ART_H * A], [(ART_W - SIDE) * A - 190, 591, (ART_W - SIDE) * A, ART_H * A],
 ];
@@ -52,6 +57,8 @@ export const STATIONS: readonly StationSpec[] = [
   { id: "matchmaker", label: "Matchmaker", footprint: art([SIDE, WALL, 57, 109]), hit: art([KIOSK.x, KIOSK.y, KIOSK.x + KIOSK.w, KIOSK.y + KIOSK.h]), reach: 46 },
   { id: "incubator", label: "Incubator", footprint: art([137, WALL, 183, 73]), hit: art([INCUBATOR.x, INCUBATOR.y, INCUBATOR.x + INCUBATOR.w, INCUBATOR.y + INCUBATOR.h]), reach: 46 },
   { id: "sanctuary", label: "Sanctuary", footprint: art([231, WALL - 2, 277, WALL]), hit: art([222, 10, 286, 66]), reach: 52 },
+  // The hit reaches up over Window 2, the shot's target.
+  { id: "slingshot", label: "Moon Slingshot", footprint: art([SLING.x + 1, WALL, SLING.x + SLING.w - 1, SLING.y + SLING.h]), hit: art([SLING.x, 18, SLING.x + SLING.w, SLING.y + SLING.h + 2]), reach: 44 },
 ];
 
 export const SPAWN = { x: 480, y: 402 };
@@ -63,6 +70,36 @@ export const DOOR_CLIP: Rect = art([DOOR_PANEL.x, DOOR_PANEL.y, DOOR_PANEL.x + D
 export const GATE_FRONT = { x: ARCH.cx * A, y: WALL * A + 22 };
 export const GATE_INSIDE = { x: ARCH.cx * A, y: (ARCH.open.y + 26) * A };
 export const GATE_CLIP: Rect = art([ARCH.open.x, ARCH.open.y - 12, ARCH.open.x + ARCH.open.w, WALL + 1]);
+/**
+ * Moon Slingshot. A launched baby lines up at SLING_FRONT, sits in the pouch (SLING_SEAT: its feet line at rest,
+ * pulled back by up to SLING_PULL) and flies out through the glass of Window 2 (WINDOW_CLIP) towards MOON_AT.
+ */
+export const SLING_BASE_Y = (SLING.y + SLING.h) * A;
+export const SLING_FRONT = { x: (SLING.x + SLING.w / 2) * A, y: SLING_BASE_Y + 22 };
+export const SLING_SEAT = { x: (SLING.x + SLING.w / 2) * A, y: (SLING.y + POUCH_ROW + 1) * A };
+export const SLING_PULL = POUCH_PULL * A;
+export const WINDOW_CLIP: Rect = art([WINDOWS[1].x + 1, WINDOWS[1].y + 2, WINDOWS[1].x + WINDOWS[1].w - 1, WINDOWS[1].y + WINDOWS[1].h - 1]);
+export const MOON_AT = { x: (WINDOWS[1].x + WINDOWS[1].w - 6) * A, y: (WINDOWS[1].y + 6) * A };
+
+/** The slingshot band: pull 0 to 1 (cosmetic), the last snap (time and pull), and whether a baby sits in the pouch. */
+export type SlingPose = Readonly<{ pull: number; snapAt: number; snapPull: number; loaded: boolean }>;
+
+/**
+ * Pouch offset from rest (art px): pulled back (down, towards the viewer) with a tremble, the twang after a snap,
+ * and a little come-hither tug while the Friend stands near an empty slingshot.
+ */
+export function pouchOffset(sling: SlingPose, time: number, awake: boolean, reducedMotion: boolean) {
+  const pulled = Math.round(clamp(sling.pull) * POUCH_PULL);
+  if (reducedMotion) return { dx: 0, dy: pulled };
+  const since = time - sling.snapAt;
+  if (since >= 0 && since < 560) return { dx: 0, dy: Math.round(Math.max(-10, sling.snapPull * POUCH_PULL * Math.cos(since / 24) * Math.exp(-since / 130))) };
+  if (sling.pull > 0) return { dx: sling.pull > 0.15 ? (Math.floor(time / 45) % 2 ? 1 : -1) : 0, dy: pulled };
+  if (!awake || sling.loaded) return { dx: 0, dy: 0 };
+  const cycle = time % 1800;
+  if (cycle < 260) return { dx: 0, dy: Math.round(3 * Math.sin((cycle / 260) * Math.PI / 2)) };
+  if (cycle < 640) return { dx: 0, dy: Math.round(3 * Math.cos((cycle - 260) / 30) * Math.exp(-(cycle - 260) / 110)) };
+  return { dx: 0, dy: 0 };
+}
 
 // ---------------------------------------------------------------------------------------------
 // Foliage
@@ -265,19 +302,28 @@ function paintFrame(ctx: CanvasRenderingContext2D) {
   dither(ctx, ART_W - SIDE - 1, WALL, 1, FRONT - WALL, INK, 2);
 }
 
-function paintWindow(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, seed: number) {
+/** A daytime crescent moon hangs in the Moon Slingshot's window. */
+const MOON = bitmap([".###.", "#GG#.", "#G#..", "#G#..", "#G#..", "#GG#.", ".###."]);
+
+/** The view through a window: sky, a cloud, far hills (and the moon for the slingshot's window). */
+function paintView(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, seed: number, moon: boolean) {
   const random = rng(seed);
-  box(ctx, x, y, w, h, WHITE);
-  rect(ctx, x + 1, y + 1, w - 2, 1, INK);
-  // Sky: a cloud, far hills, a hint of green.
+  rect(ctx, x + 1, y + 2, w - 2, h - 3, WHITE);
   const cx = x + 5 + Math.floor(random() * 8);
   rect(ctx, cx, y + 6, 7, 2, GRID); rect(ctx, cx + 2, y + 5, 3, 1, GRID); rect(ctx, cx + 1, y + 8, 6, 1, SHADE);
+  if (moon) ctx.drawImage(MOON, x + w - 8, y + 3);
   for (let i = 1; i < w - 1; i++) {
     const hill = y + h - 6 - Math.round(2 + 2 * Math.sin((i + seed) / 3.2));
     rect(ctx, x + i, hill, 1, 1, INK);
     rect(ctx, x + i, hill + 1, 1, y + h - 1 - hill - 1, GREEN);
     if ((i + seed) % 3 === 0) rect(ctx, x + i, hill + 2, 1, 1, MOSS);
   }
+}
+
+function paintWindow(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, seed: number, moon: boolean) {
+  box(ctx, x, y, w, h, WHITE);
+  rect(ctx, x + 1, y + 1, w - 2, 1, INK);
+  paintView(ctx, x, y, w, h, seed, moon);
   // Muntins and frame.
   rect(ctx, x + Math.floor(w / 2), y + 1, 1, h - 2, INK);
   rect(ctx, x + 1, y + Math.floor(h / 2), w - 2, 1, INK);
@@ -430,7 +476,7 @@ export function paintRoom(player: Creature) {
   paintFloor(ctx);
   paintDecals(ctx);
   paintRug(ctx);
-  WINDOWS.forEach((win, index) => paintWindow(ctx, win.x, win.y, win.w, win.h, index * 7 + 3));
+  WINDOWS.forEach((win, index) => paintWindow(ctx, win.x, win.y, win.w, win.h, index * 7 + 3, index === 1));
   paintPortrait(ctx, player);
   paintDoorFrame(ctx);
   paintArch(ctx);
@@ -507,6 +553,46 @@ function incubatorBody() {
   return canvas;
 }
 
+/** Plate crescent on the slingshot's crate (lit per frame). */
+const PLATE_MOON = ["..##.", ".##..", "###..", "###..", "###..", ".##..", "..##."], PLATE_Y = 38;
+
+function slingshotBody() {
+  const { canvas, ctx } = makeCanvas(SLING.w, SLING.h);
+  const { w } = SLING;
+  // Launch pad: a wooden crate, the fork planted in its lid, the Moon plate on its front.
+  box(ctx, 0, 29, w, 8, WHITE);
+  rect(ctx, 1, 31, w - 2, 1, GRID); rect(ctx, 1, 34, w - 2, 1, GRID);
+  box(ctx, 0, 36, w, 12, PAPER);
+  rect(ctx, 1, 37, w - 2, 9, INK);
+  PLATE_MOON.forEach((row, j) => { for (let i = 0; i < row.length; i++) if (row[i] === "#") rect(ctx, 2 + i, PLATE_Y + j, 1, 1, MOSS); });
+  drawText(ctx, "×10", 9, PLATE_Y, { scale: 1, color: GREEN });
+  rect(ctx, 1, 46, w - 2, 1, SHADE);
+  ditherEllipse(ctx, 15, 33, 6, 1, INK, 2);
+  // The Y fork: one round branch, lit from the left. Arms rise straight from the tips, then curve into the trunk.
+  const span = (y: number): readonly [number, number] => {
+    if (y >= 30) return [9, 18];
+    if (y >= 19) return [10, 17];
+    if (y === 0) return [2, 4];
+    const outer = Math.round(1 + 9 * Math.pow((y - 1) / 18, 2));
+    return [outer, outer + 4];
+  };
+  const wood = (x: number, y: number) => {
+    if (y < 0 || y > 32 || x < 0 || x >= w) return false;
+    const [a, b] = span(y), mirrored = w - 1 - x;
+    return (x >= a && x <= b) || (mirrored >= a && mirrored <= b);
+  };
+  for (let y = 0; y <= 32; y++) for (let x = 0; x < w; x++) {
+    if (!wood(x, y)) continue;
+    const edge = !wood(x - 1, y) || !wood(x + 1, y) || !wood(x, y - 1) || !wood(x, y + 1);
+    rect(ctx, x, y, 1, 1, edge ? INK : !wood(x - 2, y) ? WHITE : !wood(x + 2, y) || !wood(x + 3, y) ? MUTED : SHADE);
+  }
+  // Grain and a knot on the trunk.
+  rect(ctx, 13, 22, 1, 3, MUTED); rect(ctx, 12, 27, 1, 2, MUTED); ellipseBox(ctx, 14, 25, 1, 1, MUTED);
+  // Rubber band tied round each tip.
+  for (const x of [2, w - 5]) { rect(ctx, x, 3, 3, 1, GREEN); rect(ctx, x, 4, 3, 1, MOSS); }
+  return canvas;
+}
+
 export type RoomState = Readonly<{
   time: number;
   eggs: number;
@@ -517,6 +603,9 @@ export type RoomState = Readonly<{
   pressedAt: Record<StationId, number>;
   doorOpen: number;
   gateOpen: number;
+  /** Window 2 swings open for a launch (0 shut, 1 open). */
+  windowOpen: number;
+  sling: SlingPose;
   reducedMotion: boolean;
 }>;
 
@@ -530,12 +619,15 @@ const EGG = bitmap([
   ".#www#.",
   "..###..",
 ]);
+/** The egg on the incubator's counter: digit height, with the HUD egg icon's shine. */
+const COUNTER_EGG = ["..#..", ".###.", "#.###", "#####", "#####", "#####", ".###."];
 
 export function createRoom(player: Creature) {
   const base = paintRoom(player);
   const props = buildProps();
   const kiosk = kioskBody();
   const incubator = incubatorBody();
+  const slingshot = slingshotBody();
 
   const press = (state: RoomState, id: StationId) => {
     const since = state.time - (state.pressedAt[id] ?? -1e9);
@@ -611,12 +703,12 @@ export function createRoom(player: Creature) {
       const shift = wobbling ? (Math.floor(time / 90) % 2 ? 1 : -1) : 0;
       ctx.drawImage(EGG, cx + slots[i] - 3 + shift, oy + 26 - lift + (i === 1 && visible === 3 ? -2 : 0));
     }
-    // Counter display.
+    // Counter display: an egg and the number of eggs waiting (no "x", so it never reads like the slingshot's multiplier).
     const dx = ox + 10, dy = oy + 44;
     const count = eggs > 99 ? "99+" : String(eggs);
-    const iconColor = eggs > 0 ? GREEN : MUTED;
-    rect(ctx, dx + 2, dy + 2, 2, 1, iconColor); rect(ctx, dx + 1, dy + 3, 4, 3, iconColor); rect(ctx, dx + 2, dy + 6, 2, 1, iconColor);
-    drawText(ctx, "×" + count, dx + 7, dy + 1, { scale: 1, color: eggs > 0 ? GREEN : MUTED, spacing: 1 });
+    const color = eggs > 0 ? GREEN : MUTED;
+    COUNTER_EGG.forEach((row, j) => { for (let i = 0; i < row.length; i++) if (row[i] === "#") rect(ctx, dx + 1 + i, dy + 1 + j, 1, 1, color); });
+    drawText(ctx, count, dx + 8, dy + 1, { scale: 1, color, spacing: 1 });
     // Status lights.
     for (let i = 0; i < 3; i++) {
       const lit = eggs > 0 && (reducedMotion || awake || Math.floor(time / 380) % 3 === i);
@@ -624,6 +716,81 @@ export function createRoom(player: Creature) {
     }
     // Cap light.
     rect(ctx, cx - 1, oy + 1, 2, 1, eggs > 0 && (reducedMotion || Math.floor(time / 500) % 2 === 0) ? GREEN : INK);
+  }
+
+  /** Band strand: green rubber two pixels thick (the second towards `side`), edged in ink. */
+  function strand(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, side: -1 | 1) {
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+    const steep = Math.abs(y1 - y0) >= Math.abs(x1 - x0);
+    const [ex, ey] = steep ? [side, 0] : [0, 1];
+    const run = (color: string, from: number, to: number) => {
+      for (let i = 0; i <= steps; i++) {
+        const x = Math.round(x0 + ((x1 - x0) * i) / steps), y = Math.round(y0 + ((y1 - y0) * i) / steps);
+        for (let k = from; k <= to; k++) rect(ctx, x + ex * k, y + ey * k, 1, 1, color);
+      }
+    };
+    run(INK, -1, 2);
+    run(GREEN, 0, 1);
+  }
+
+  /** The leather pouch, 16 art px wide, seat row at y. front: only the lip that covers a rider's feet. */
+  function pouch(ctx: CanvasRenderingContext2D, x: number, y: number, front: boolean) {
+    if (!front) rect(ctx, x + 7, y - 1, 14, 1, INK);
+    rect(ctx, x + 6, y, 16, 2, INK);
+    rect(ctx, x + 7, y + 2, 14, 1, INK);
+    for (let i = 8; i < 20; i += 2) rect(ctx, x + i, y + 1, 1, 1, MUTED);
+  }
+
+  const slingAt = (state: RoomState) => {
+    const oy = SLING.y + Math.round(press(state, "slingshot"));
+    const awake = state.near === "slingshot" || state.hover === "slingshot";
+    const { dx, dy } = pouchOffset(state.sling, state.time, awake, state.reducedMotion);
+    return { ox: SLING.x, oy, awake, px: SLING.x + dx, py: oy + POUCH_ROW + dy };
+  };
+
+  function drawSlingshot(ctx: CanvasRenderingContext2D, state: RoomState) {
+    const { time, reducedMotion, sling } = state;
+    const { ox, oy, awake, px, py } = slingAt(state);
+    ditherEllipse(ctx, ox + SLING.w / 2, SLING.y + SLING.h, 16, 2, INK, 2);
+    ctx.drawImage(slingshot, ox, oy);
+    // Plate moon: lit while the slingshot is awake or loaded, otherwise it glimmers now and then.
+    const lit = awake || sling.loaded || reducedMotion || Math.floor(time / 700) % 4 === 0;
+    if (lit) PLATE_MOON.forEach((row, j) => { for (let i = 0; i < row.length; i++) if (row[i] === "#") rect(ctx, ox + 2 + i, oy + PLATE_Y + j, 1, 1, GREEN); });
+    // Band from the tips to the pouch, behind a rider.
+    strand(ctx, ox + 6, oy + 3, px + 7, py, 1);
+    strand(ctx, ox + SLING.w - 7, oy + 3, px + SLING.w - 8, py, -1);
+    pouch(ctx, px, py, false);
+    // Twang: motion ticks by the tips just after a snap.
+    const since = time - sling.snapAt;
+    if (!reducedMotion && since >= 0 && since < 260) {
+      const jitter = Math.floor(since / 50) % 2;
+      for (let i = 0; i < 3; i++) {
+        const out = (i === 1 ? 3 : 2) + jitter;
+        rect(ctx, ox - out, oy + i * 3, 2, 1, INK);
+        rect(ctx, ox + SLING.w - 2 + out, oy + i * 3, 2, 1, INK);
+      }
+    }
+  }
+
+  /** The pouch lip, drawn over the feet of a baby sitting in it (depth sorted just in front of the rider). */
+  function drawSlingshotFront(ctx: CanvasRenderingContext2D, state: RoomState) {
+    if (!state.sling.loaded) return;
+    const { px, py } = slingAt(state);
+    pouch(ctx, px, py, true);
+  }
+
+  /** Window 2 swung open: the view without glass, casements folded back on their hinges. */
+  function drawWindow(ctx: CanvasRenderingContext2D, open: number) {
+    if (open <= 0.01) return;
+    const { x, y, w, h } = WINDOWS[1];
+    paintView(ctx, x, y, w, h, 10, true);
+    const half = (w - 2) / 2;
+    for (const side of [0, 1] as const) {
+      const width = Math.max(2, Math.round(half * (1 - open * 0.8)));
+      const left = side === 0 ? x + 1 : x + w - 1 - width;
+      box(ctx, left, y + 1, width, h - 1, GRID);
+      if (width > 4) rect(ctx, left + (side === 0 ? 1 : width - 2), y + 3, 1, h - 6, WHITE);
+    }
   }
 
   function drawDoor(ctx: CanvasRenderingContext2D, open: number) {
@@ -663,6 +830,9 @@ export function createRoom(player: Creature) {
     }
   }
 
-  return { base, props, drawKiosk, drawIncubator, drawDoor, drawGate, kioskBaseY: (KIOSK.y + KIOSK.h) * A, incubatorBaseY: (INCUBATOR.y + INCUBATOR.h) * A };
+  return {
+    base, props, drawKiosk, drawIncubator, drawSlingshot, drawSlingshotFront, drawDoor, drawGate, drawWindow,
+    kioskBaseY: (KIOSK.y + KIOSK.h) * A, incubatorBaseY: (INCUBATOR.y + INCUBATOR.h) * A, slingshotBaseY: SLING_BASE_Y,
+  };
 }
 

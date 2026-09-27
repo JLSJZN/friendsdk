@@ -9,23 +9,33 @@ import { KEEP_BONUS, WISH_PRICE, heartsPerMinute, useHearts, wishFamilies } from
 import { describeTiers, expectedValueLabel, formatRF, purchaseBlocker } from "./src/economy.ts";
 import { createNurseryScene } from "./src/scene/nursery.ts";
 import { createHatchSequence } from "./src/scene/hatch.ts";
-import type { HatchSequence, NurseryScene } from "./src/api.ts";
-import { TIER_ORDER, type Creature, type StationId, type TierId } from "./src/types.ts";
+import { createLaunchSequence } from "./src/scene/launch.ts";
+import { slingshotNet, useSlingshot, zoneInfo, type LaunchResult } from "./src/slingshot.ts";
+import type { HatchSequence, LaunchSequence, NurseryScene } from "./src/api.ts";
+import { TIER_ORDER, type Creature, type LaunchZoneId, type StationId, type TierId } from "./src/types.ts";
 import {
-  ActionBar, BabyCard, BroodPanel, EggShopPanel, ErrorScreen, GameRoot, HatchOverlay, HeartShopPanel, Hud, IntroPanel, LoadingScreen,
-  MatchmakerPanel, SettingsPanel, Toast, WorldLayer, buildCollection, discoveriesOf, type ShopTab, type TierInfo,
+  ActionBar, BabyCard, BroodPanel, EggShopPanel, ErrorScreen, GameRoot, HatchOverlay, HeartShopPanel, Hud, IntroPanel, LaunchOverlay, LoadingScreen,
+  MatchmakerPanel, SettingsPanel, SlingshotPanel, Toast, WorldLayer, buildCollection, discoveriesOf, signedRF, type ShopTab, type TierInfo,
 } from "./src/ui/index.ts";
 import "./style.css";
 
-type PanelId = "match" | "brood" | "settings" | "eggs" | "shop";
+type PanelId = "match" | "brood" | "settings" | "eggs" | "shop" | "sling";
 type Note = Readonly<{ message: string; tone: "info" | "success" | "error"; id: number }>;
+/** A launched baby (traded in, out of the brood) and its booked result: the scene shot, then the flight overlay. */
+type Flight = Readonly<{ baby: Creature; result: LaunchResult; pull: number; stage: "shot" | "flying" | "result" }>;
 
-const STATION_LABEL: Record<StationId, string> = { matchmaker: "Open Matchmaker", incubator: "Buy eggs", sanctuary: "Visit Sanctuary" };
+const STATION_LABEL: Record<StationId, string> = { matchmaker: "Open Matchmaker", incubator: "Buy eggs", sanctuary: "Visit Sanctuary", slingshot: "Load the slingshot" };
+const STATION_SHORT: Record<StationId, string> = { matchmaker: "Matchmaker", incubator: "Buy eggs", sanctuary: "Sanctuary", slingshot: "Slingshot" };
 const COACH = { title: "Start here", detail: "Find a mate for your Friend, or walk to the MATCH terminal." } as const;
 const BUSY_LABEL = { buying: "Buying egg…", laying: "Laying egg…", hatching: "Hatching…", releasing: "Trading in…" } as const;
 const REVEAL_CUE: Record<TierId, FriendSoundCue> = {
   common: "reveal-common", spotted: "reveal-common", mutant: "reveal-rare", prismatic: "reveal-legendary",
 };
+const LANDING_CUE: Record<LaunchZoneId, FriendSoundCue> = {
+  pond: "reveal-common", haystack: "reveal-common", rooftop: "reveal-rare", cloud: "reveal-rare", orbit: "reveal-legendary", moon: "reveal-legendary",
+};
+/** Once the player has a kept baby and has never opened the slingshot: a tappable pointer to it in the prompt slot. */
+const SLING_HINT = "Moon Slingshot: x0 to x10", SLING_HINT_SHORT = "Slingshot x0-x10";
 const EGG_PACKS = [1n, 3n, 5n] as const;
 
 /** Rare Breeds: the SDK runtime supplies the verified Friend, the simulated ledger and every confirmation. */
@@ -41,19 +51,23 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
   const [note, setNote] = useState<Note | null>(null);
   const [hatchCanvas, setHatchCanvas] = useState<HTMLCanvasElement | null>(null);
   const [worldCanvas, setWorldCanvas] = useState<HTMLCanvasElement | null>(null);
-  const scene = useRef<NurseryScene | null>(null), sequence = useRef<HatchSequence | null>(null);
+  const [launchCanvas, setLaunchCanvas] = useState<HTMLCanvasElement | null>(null);
+  const scene = useRef<NurseryScene | null>(null), sequence = useRef<HatchSequence | null>(null), launchSeq = useRef<LaunchSequence | null>(null);
   const sound = useRef<FriendSoundKit | null>(null);
   // First-run help (session only: the sandbox has no storage). The intro opens on every game start.
   const [intro, setIntro] = useState(true);
-  const [firstTime, setFirstTime] = useState({ match: true, breed: true, card: true });
+  const [firstTime, setFirstTime] = useState({ match: true, breed: true, card: true, sling: true });
   const [sanctuary, setSanctuary] = useState(false);
   const startBalance = useRef<bigint | null>(null);
   if (snapshot && startBalance.current === null) startBalance.current = snapshot.rfBalance;
   // The intro's example mate: a real wild Friend on offer, from another family when possible. Fixed per Friend.
   const introMate = useMemo(() => game.candidates.find(mate => mate.familyId !== player?.familyId) ?? game.candidates[0], [player]);
   const showIntro = intro && !!introMate;
-  // Hearts: game points kept babies earn (never RF). Income pauses with the runtime, the intro and a hatch.
-  const hearts = useHearts({ brood, active: !paused && !showIntro && !hatch, onEarn: (key, amount) => scene.current?.emitHearts(key, amount) });
+  // Moon Slingshot: the simulated side ledger and the launch on screen.
+  const sling = useSlingshot();
+  const [flight, setFlight] = useState<Flight | null>(null);
+  // Hearts: game points kept babies earn (never RF). Income pauses with the runtime, the intro, a hatch and a flight.
+  const hearts = useHearts({ brood, active: !paused && !showIntro && !hatch && !flight, onEarn: (key, amount) => scene.current?.emitHearts(key, amount) });
   const [shopTab, setShopTab] = useState<ShopTab>("hats");
   // Everyone shown anywhere wears their equipped accessory.
   const dressedPlayer = useMemo(() => player && hearts.dress(player), [player, hearts.dress]);
@@ -63,8 +77,8 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
     return found && hearts.dress(found);
   }, [hearts.dress]);
 
-  const tiers: readonly TierInfo[] = useMemo(() => describeTiers(definition)
-    .map(row => ({ tier: row.tier, chance: row.chancePercent, value: row.rewardLabel })), [definition]);
+  const tierRows = useMemo(() => describeTiers(definition), [definition]);
+  const tiers: readonly TierInfo[] = useMemo(() => tierRows.map(row => ({ tier: row.tier, chance: row.chancePercent, value: row.rewardLabel })), [tierRows]);
   const tierInfo = (tier: TierId | undefined) => tiers.find(row => row.tier === (tier ?? "common")) ?? tiers[0];
   // Collection goal: families and tiers of every baby hatched this session, kept or sent to the Sanctuary.
   // The baby on the reveal card joins once the card closes, so the card can show what it adds.
@@ -109,12 +123,17 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
     setParentAKey(parentA); openPanel("match");
     setFirstTime(seen => seen.match ? { ...seen, match: false } : seen);
   }, [openPanel]);
+  const openSling = useCallback(() => {
+    openPanel("sling");
+    setFirstTime(seen => seen.sling ? { ...seen, sling: false } : seen);
+  }, [openPanel]);
 
   // The nursery world. Callbacks go through a ref so the scene is created once per Friend.
   const handlers = useRef({ station: (_: StationId) => {}, creature: (_: string) => {} });
   handlers.current = {
     station: station => {
       if (station === "matchmaker") openMatch();
+      else if (station === "slingshot") openSling();
       else { openPanel(station === "incubator" ? "eggs" : "brood"); setSanctuary(station === "sanctuary"); }
     },
     creature: key => { setBroodFocus(key); openPanel("brood"); },
@@ -134,7 +153,8 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
   useEffect(() => { if (dressedPlayer) scene.current?.setPlayer(dressedPlayer); }, [dressedPlayer, worldCanvas]);
   useEffect(() => { scene.current?.setEggCount(Number(snapshot?.consumables ?? 0n)); }, [snapshot, worldCanvas, player]);
   useEffect(() => { scene.current?.setReducedMotion(reducedMotion); }, [reducedMotion]);
-  const worldPaused = paused || panel !== null || hatch !== null || showIntro;
+  // The scene shot plays in the live world; the flight overlay pauses it.
+  const worldPaused = paused || panel !== null || hatch !== null || showIntro || (flight !== null && flight.stage !== "shot");
   useEffect(() => { scene.current?.setPaused(worldPaused); }, [worldPaused, worldCanvas, player]);
 
   // The hatch overlay: the outcome is already settled; this only presents it.
@@ -154,6 +174,26 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
     void created.play().then(() => { if (sequence.current === created) game.finishHatch(); });
     return () => { created.destroy(); if (sequence.current === created) sequence.current = null; };
   }, [hatch?.baby.key, hatch?.stage === "hatching", hatchCanvas]);
+
+  // The flight overlay: the zone is already booked; this only presents it. It stays alive behind the result card.
+  const land = useCallback(() => setFlight(current => current && current.stage === "flying" ? { ...current, stage: "result" } : current), []);
+  useEffect(() => {
+    if (!flight || flight.stage === "shot" || !launchCanvas) return;
+    const { baby, result, pull } = flight;
+    const created = createLaunchSequence({
+      canvas: launchCanvas, baby, zone: result.zone, pull, reducedMotion,
+      onBeat: beat => {
+        if (beat === "launch") cue("action-start");
+        else if (beat === "apex") cue("anticipation");
+        else { cue("impact"); cue(LANDING_CUE[result.zone]); }
+      },
+    });
+    launchSeq.current = created;
+    if (flight.stage === "result") created.skip();
+    void created.play().then(() => { if (launchSeq.current === created) land(); });
+    return () => { created.destroy(); if (launchSeq.current === created) launchSeq.current = null; };
+  }, [flight?.result, flight?.stage === "shot", launchCanvas]);
+  useEffect(() => { if (flight?.stage === "result" && flight.result.payout > 0n) cue("reward"); }, [flight?.result, flight?.stage]);
 
   useEffect(() => { if (game.error) notify(game.error, "error"); }, [game.error]);
 
@@ -188,6 +228,40 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
     void scene.current?.playRelease(baby.key);
   }
 
+  /**
+   * Moon Slingshot: trade the baby in first (runtime "Redeem reward" confirmation; its value is the stake), and only
+   * then draw the zone. Cancelling changes nothing. Then the scene shot, then the flight overlay.
+   */
+  async function launch(key: string, pull: number) {
+    const baby = dressedBrood.find(item => item.key === key);
+    const value = tierRows.find(row => row.tier === (baby?.tier ?? "common"))?.reward ?? 0n;
+    if (!baby || sling.blocker(value)) return;
+    if (!(await game.release(baby))) return;
+    setNote(null);
+    const result = sling.launch(baby.key, value);
+    // Its hat goes back to the wardrobe.
+    if (hearts.equipped.has(baby.key)) hearts.equip(baby.key, null);
+    setPanel(null);
+    if (!result) {
+      notify(`${baby.name} was traded in at the Sanctuary. +${formatRF(value)} (simulated)`, "success");
+      void scene.current?.playRelease(baby.key);
+      return;
+    }
+    setFlight({ baby, result, pull, stage: "shot" });
+    try { await scene.current?.playLaunch(baby.key, pull); }
+    finally { setFlight(current => current?.result === result ? { ...current, stage: "flying" } : current); }
+  }
+
+  function closeFlight(again: boolean) {
+    const done = flight;
+    setFlight(null);
+    if (again) { openSling(); return; }
+    if (done?.stage === "result") {
+      const net = done.result.payout - done.result.value;
+      notify(`${done.baby.name}: ${zoneInfo(done.result.zone).label}. Slingshot net ${signedRF(net)} (simulated)`, net > 0n ? "success" : "info");
+    }
+  }
+
   function openShop(tab: ShopTab) { setShopTab(tab); openPanel("shop"); }
 
   function wish(familyId: number) {
@@ -219,21 +293,30 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
   const busyLabel = busy ? BUSY_LABEL[busy] : undefined;
   const eggs = Number(snapshot.consumables);
   const price = formatRF(definition.price);
-  const modalOpen = panel !== null || hatch !== null || showIntro;
+  const modalOpen = panel !== null || hatch !== null || showIntro || flight !== null;
+  // The HUD counts a launch once it has landed on screen, so it never gives the zone away early.
+  const inAir = flight && flight.stage !== "result" ? flight.result : null;
   const hatchParents = hatch ? [hearts.dress(hatch.parentA), hearts.dress(hatch.parentB)] : [];
   const shopBlocker = panel === "eggs" ? purchaseBlocker(snapshot, definition) : null;
+  // What the HUD shows right now, for the intro's and the help panel's HUD legend.
+  // The HUD counts a new baby only once it is kept: during the hatch and its reveal card it is not decided yet.
+  const keptCount = brood.length - (hatch && brood.some(baby => baby.key === hatch.baby.key) ? 1 : 0);
+  const hudSample = { hearts: hearts.hearts, balance: formatRF(snapshot.rfBalance), eggs, brood: keptCount, families: collection.families.length, net: slingshotNet(sling.ledger) };
 
   return <GameRoot reducedMotion={reducedMotion} busy={!!busy}>
     <WorldLayer inert={modalOpen || paused}>
       <canvas ref={setWorldCanvas} className="rb-world-canvas" aria-label={`Nursery. ${player.name} and ${brood.length} babies. Use WASD or arrow keys, or tap to walk.`} />
-      <Hud balance={formatRF(snapshot.rfBalance)} eggs={eggs} broodCount={brood.length} muted={muted}
+      <Hud balance={formatRF(snapshot.rfBalance)} eggs={eggs} broodCount={keptCount} muted={muted}
         onToggleSound={() => setMuted(value => !value)} onOpenSettings={() => openPanel("settings")}
         onOpenBrood={() => openPanel("brood")} disabled={paused || !!busy} collection={collection}
-        hearts={hearts.hearts} onOpenShop={() => openShop("hats")} />
+        hearts={hearts.hearts} onOpenShop={() => openShop("hats")}
+        slingshot={{ net: slingshotNet(sling.ledger) - (inAir ? inAir.payout - inAir.value : 0n), launches: sling.ledger.launches - (inAir ? 1 : 0) }}
+        onOpenSlingshot={openSling} />
       {note && <Toast key={note.id} message={note.message} tone={note.tone} onDismiss={() => { setNote(null); game.clearError(); }} />}
       {!modalOpen && <ActionBar onFindMatch={() => openMatch()} broodCount={brood.length} onOpenBrood={() => openPanel("brood")}
         primaryLabel={game.pendingPlay ? "Finish hatching" : busy ? busyLabel : undefined} disabled={paused || !!busy}
-        prompt={near ? { label: STATION_LABEL[near], keyHint: "E", onActivate: () => handlers.current.station(near) } : null}
+        prompt={near ? { label: STATION_LABEL[near], short: STATION_SHORT[near], keyHint: "E", onActivate: () => handlers.current.station(near) }
+          : firstTime.sling && !firstTime.match && brood.length > 0 ? { label: SLING_HINT, short: SLING_HINT_SHORT, keyHint: "!", onActivate: openSling } : null}
         coach={firstTime.match ? COACH : null} />}
     </WorldLayer>
 
@@ -257,15 +340,25 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
 
     {panel === "settings" && <SettingsPanel muted={muted} onToggleSound={() => setMuted(value => !value)} reducedMotion={reducedMotion}
       onToggleReducedMotion={() => setReducedMotion(value => !value)} odds={tiers} price={price} onClose={() => openPanel(null)}
-      note={<>Expected Sanctuary value: {expectedValueLabel(definition)}.</>} onReplayIntro={() => { setPanel(null); setIntro(true); }} />}
+      note={<>Expected Sanctuary value: {expectedValueLabel(definition)}.</>} onReplayIntro={() => { setPanel(null); setIntro(true); }}
+      moonFund={formatRF(sling.ledger.fund)} player={dressedPlayer ?? player} hud={hudSample} />}
 
     {panel === "shop" && <HeartShopPanel hearts={hearts.hearts} perMinute={hearts.perMinute} wearers={[dressedPlayer ?? player, ...dressedBrood]}
       catalog={ACCESSORIES} owned={hearts.owned} equipped={hearts.equipped} initialTab={shopTab} reducedMotion={reducedMotion}
       onBuy={id => { if (hearts.buy(id)) cue("purchase"); }} onEquip={(key, id) => { hearts.equip(key, id); cue("select"); }}
       families={wishFamilies} wishPrice={WISH_PRICE} collectedFamilies={collection.families} onWish={wish} onClose={() => openPanel(null)} />}
 
+    {/* The runtime also pauses the game while its "Redeem reward" dialog is open: busy wins, so the panel says what to confirm. */}
+    {panel === "sling" && <SlingshotPanel brood={dressedBrood} tiers={tierRows} blocker={sling.blocker} fund={sling.ledger.fund} busy={!!busy}
+      disabledReason={paused && !busy ? "The game is paused." : undefined} onLaunch={(key, pull) => void launch(key, pull)} onFindMatch={() => openMatch()}
+      onClose={busy ? undefined : () => openPanel(null)} reducedMotion={reducedMotion} />}
+
+    {flight && flight.stage !== "shot" && <LaunchOverlay stage={flight.stage} canvasRef={setLaunchCanvas} onSkip={() => { launchSeq.current?.skip(); land(); }}
+      result={flight.result} baby={flight.baby} canLaunchAgain={brood.length > 0} onLaunchAgain={() => closeFlight(true)}
+      onClose={() => closeFlight(false)} reducedMotion={reducedMotion} />}
+
     {showIntro && introMate && <IntroPanel keepHeartsPerMinute={heartsPerMinute("common")} player={player} mate={introMate} tiers={tiers} price={price}
-      startBalance={formatRF(startBalance.current ?? snapshot.rfBalance)} collection={collection} reducedMotion={reducedMotion}
+      startBalance={formatRF(startBalance.current ?? snapshot.rfBalance)} hud={hudSample} reducedMotion={reducedMotion}
       onStepChange={() => cue("select")} onClose={() => { setIntro(false); cue("select"); }} />}
 
     {hatch && <HatchOverlay stage={hatch.stage} canvasRef={setHatchCanvas} onSkip={() => sequence.current?.skip()}

@@ -1,13 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { formatChance } from "../economy.ts";
+import { LAUNCH_ZONES, multiplierLabel } from "../slingshot.ts";
 import type { Creature } from "../types.ts";
 import { DnaRail } from "./BabyCard.tsx";
-import { CollectionMeter } from "./Collection.tsx";
-import { EMPTY_COLLECTION, familyOf, type Collection } from "./collection.ts";
-import { exampleBabies, singleParentDna } from "./intro.ts";
+import { ALL_FAMILIES, familyOf } from "./collection.ts";
+import { INTRO_TITLES, exampleBabies, singleParentDna } from "./intro.ts";
+import { HudLegend, MULTIPLIER_RANGE, StationLegend, type HudSample } from "./Legend.tsx";
 import { Panel } from "./Panel.tsx";
 import { PixelIcon } from "./PixelIcon.tsx";
 import { SpriteThumb } from "./SpriteThumb.tsx";
 import { cx, pixelMetrics, tierLabel, tierVars, useDevicePixelRatio, useReducedMotion, useRootSize, type TierInfo } from "./shared.ts";
+
+/** "x0 (the pond, 40%)" and "x10 (the Moon, 2%)" for the slingshot choice card. */
+const zoneSummary = (index: number) => {
+  const zone = LAUNCH_ZONES[index];
+  return { label: multiplierLabel(zone.multiplierBps), chance: `(${zone.id === "moon" ? "the Moon" : `the ${zone.id}`}, ${formatChance(zone.chanceBps)})` };
+};
+const NEAREST = zoneSummary(0), FARTHEST = zoneSummary(LAUNCH_ZONES.length - 1);
 
 export type IntroPanelProps = Readonly<{
   /** The player's verified Friend. */
@@ -20,27 +29,27 @@ export type IntroPanelProps = Readonly<{
   price: string;
   /** Preformatted simulated balance the session started with, e.g. "20 RF". */
   startBalance: string;
-  /** Current collection progress for the goal on the last step. */
-  collection?: Collection;
-  /** Hearts a kept Common baby earns per minute (shown on the Keep card). Omit to hide Hearts. */
-  keepHeartsPerMinute?: number;
+  /** Live HUD values for the "Your screen" legend. */
+  hud: HudSample;
+  /** Hearts a kept Common baby earns per minute (shown on the Keep card). */
+  keepHeartsPerMinute: number;
   /** Skip, Escape or "Start breeding". */
   onClose: () => void;
   /** Called when the visible step changes (e.g. to play a sound). */
   onStepChange?: (step: number) => void;
-  /** Start on another step (0-3), e.g. for screenshots. */
+  /** Start on another step (0-5), e.g. for screenshots. */
   initialStep?: number;
   reducedMotion?: boolean;
 }>;
 
-const TITLES = ["Your Friend's pixels are its DNA", "Find a match, hatch an egg", "What can hatch", "Keep or Sanctuary"] as const;
+const TITLES = INTRO_TITLES;
 const PARENT_A_DNA = singleParentDna(0), PARENT_B_DNA = singleParentDna(1);
 
 /** Sprite scales per step for the current game area: big on desktop, still readable in a 360 x 240 frame. */
 function scalesFor({ width, height }: { width: number; height: number }) {
   if (width >= 600 && height >= 560) return { hero: 9, pair: 6, row: 3, mini: 3 };
   if (width >= 600 && height >= 400) return { hero: 6, pair: 4, row: 2, mini: 2 };
-  if (height >= 440) return { hero: 7, pair: width >= 380 ? 4 : 3, row: 2, mini: 3 };
+  if (height >= 440) return { hero: height >= 560 ? 7 : 6, pair: width >= 380 ? 4 : 3, row: 2, mini: 3 };
   return { hero: 4, pair: 2, row: 2, mini: 2 };
 }
 
@@ -56,12 +65,23 @@ function Figure({ creature, dna, scale, clip = "walk", facing = "down", tag }: {
   </span>;
 }
 
+/** One of the three things to do with a baby: title, a small scene with its payoff, one line. */
+function Choice({ icon, title, value, scene, children }: { icon: "heart" | "sprout" | "moon"; title: string; value: ReactNode; scene: ReactNode; children: ReactNode }) {
+  return <section className="rb-intro-choice rb-intro-option">
+    <h3><PixelIcon name={icon} />{title}</h3>
+    <span className="rb-intro-mini" aria-hidden="true">{scene}</span>
+    <span className="rb-intro-value">{value}</span>
+    <p>{children}</p>
+  </section>;
+}
+
 /**
- * First-run tour in four short steps: pixels are DNA, how breeding works (with an example baby of the
- * player's Friend and a real wild mate), the exact odds, and Keep vs Sanctuary plus the collection goal.
+ * First-run tour in six short steps: what the game is (pixels are DNA), the nursery and its four stations on a
+ * picture of the real room, how breeding works (the player's Friend and a real wild mate), the exact odds, what to do
+ * with a baby (Keep, Sanctuary, Moon Slingshot) and what every HUD chip means, ending on the goal and the first action.
  * "Skip intro" on every step and Escape close it. Example babies are presentation only.
  */
-export function IntroPanel({ player, mate, tiers, price, startBalance, collection = EMPTY_COLLECTION, keepHeartsPerMinute, onClose, onStepChange, initialStep = 0, reducedMotion }: IntroPanelProps) {
+export function IntroPanel({ player, mate, tiers, price, startBalance, hud, keepHeartsPerMinute, onClose, onStepChange, initialStep = 0, reducedMotion }: IntroPanelProps) {
   const [step, setStep] = useState(() => Math.max(0, Math.min(TITLES.length - 1, initialStep)));
   const node = useRef<HTMLDivElement>(null);
   const size = useRootSize(node);
@@ -76,6 +96,9 @@ export function IntroPanel({ player, mate, tiers, price, startBalance, collectio
     setStep(clamped);
     onStepChange?.(clamped);
   };
+
+  // Every step starts at its top, however far the previous one was scrolled (the panel body is shared).
+  useLayoutEffect(() => { node.current?.parentElement?.scrollTo(0, 0); }, [step]);
 
   // Arrow keys page through the tour (the world behind is paused, so they never move the Friend).
   const keys = useRef({ step, go });
@@ -94,8 +117,9 @@ export function IntroPanel({ player, mate, tiers, price, startBalance, collectio
     <ol className="rb-intro-dots" aria-label={`Step ${step + 1} of ${TITLES.length}`}>
       {TITLES.map((title, index) => <li key={title} className={cx(index === step && "rb-on", index < step && "rb-done")} aria-hidden="true" />)}
     </ol>
+    <span className="rb-intro-count" aria-hidden="true">{step + 1}/{TITLES.length}</span>
     <div className="rb-intro-nav">
-      {step > 0 && <button type="button" className="rb-button rb-button-ghost rb-button-lg rb-intro-back" onClick={() => go(step - 1)}>
+      {step > 0 && <button type="button" className="rb-button rb-button-ghost rb-button-lg rb-intro-back" onClick={() => go(step - 1)} aria-label="Back">
         <PixelIcon name="back" /><span>Back</span></button>}
       {last
         ? <button type="button" className="rb-button rb-button-primary rb-button-lg rb-intro-next" onClick={onClose} data-autofocus>
@@ -106,8 +130,9 @@ export function IntroPanel({ player, mate, tiers, price, startBalance, collectio
   </div>;
 
   const mateLabel = `${mate.name} · ${familyOf(mate)}`;
+  const mutant = tiers.find(row => row.tier === "mutant");
   const steps: ReactNode[] = [
-    // 1. Pixels are DNA
+    // 1. What this is: pixels are DNA
     <>
       <figure className="rb-intro-stage rb-intro-hero">
         <Figure creature={player} dna={PARENT_A_DNA} scale={scale.hero} />
@@ -118,11 +143,16 @@ export function IntroPanel({ player, mate, tiers, price, startBalance, collectio
         </figcaption>
       </figure>
       <div className="rb-intro-copy">
-        <p className="rb-intro-lead">Every Rare Friend is 256 pixels stored on-chain. Here, those pixels are its DNA.</p>
-        <p>Each of its 16 pixel rows is a gene your Friend can pass on to a baby.</p>
+        <p className="rb-intro-lead">Rare Breeds: pair your Friend with other Rare Friends and hatch one-of-a-kind babies.</p>
+        <p>Every Rare Friend is 256 on-chain pixels. Here they are its DNA: each of its 16 rows is a gene it can pass on.</p>
       </div>
     </>,
-    // 2. Find a match, hatch an egg
+    // 2. The nursery and its stations, on the real room
+    <>
+      <p className="rb-intro-lead">Four stations, one room.</p>
+      <StationLegend player={player} price={price} />
+    </>,
+    // 3. Find a match, hatch an egg
     <>
       <figure className="rb-intro-stage rb-intro-pair">
         <span className="rb-intro-slot">
@@ -147,10 +177,11 @@ export function IntroPanel({ player, mate, tiers, price, startBalance, collectio
       </ul>
       <div className="rb-intro-copy">
         <p className="rb-intro-lead">Pick a mate from three real Rare Friends. New faces are free.</p>
-        <p>The baby inherits whole pixel rows from both parents, walk cycle included. Every egg hatches a one-of-a-kind mix.</p>
+        <p>Each breed uses one egg. The baby inherits whole pixel rows from both parents, walk cycle included, so every egg hatches a one-of-a-kind mix.</p>
+        <p>Spend Hearts on a Wish to choose a mate's family.</p>
       </div>
     </>,
-    // 3. Odds
+    // 4. Odds
     <>
       <table className="rb-intro-odds">
         <caption className="rb-sr-only">Hatch odds per egg</caption>
@@ -166,35 +197,32 @@ export function IntroPanel({ player, mate, tiers, price, startBalance, collectio
       </table>
       <div className="rb-intro-copy">
         <p className="rb-intro-lead">Same odds for every pair. Parents only decide the look.</p>
-        <p>An egg costs {price} and you start with {startBalance}. RF means $RAREFRIENDS, and here it is all simulated: no real money, no transactions.</p>
+        <p>An egg costs {price} and you start with {startBalance}. RF means $RAREFRIENDS, and here it is all simulated: no real money, no transactions, and a reload starts over.</p>
       </div>
     </>,
-    // 4. Keep or Sanctuary, and the goal
+    // 5. What to do with a baby
     <>
-      <div className="rb-intro-choices">
-        <section className="rb-intro-choice">
-          <h3><PixelIcon name="heart" />Keep
-            {keepHeartsPerMinute !== undefined && <span className="rb-intro-value"><PixelIcon name="heart" />{keepHeartsPerMinute}/min</span>}</h3>
-          <span className="rb-intro-mini rb-intro-follow" aria-hidden="true">
-            <SpriteThumb creature={player} scale={scale.mini} clip="walk" facing="right" label="" />
-            <SpriteThumb creature={examples.common} scale={Math.max(2, scale.mini - 1)} clip="walk" facing="right" label="" />
-          </span>
-          <p>{keepHeartsPerMinute !== undefined
-            ? "It follows your Friend, earns Hearts for hats and wish matches, and can become a parent: F2 and F3 grandbabies."
-            : "It follows your Friend and can become a parent too: F2 and F3 grandbabies."}</p>
-        </section>
-        <section className="rb-intro-choice">
-          <h3><PixelIcon name="sprout" />Sanctuary<span className="rb-intro-value">+{tiers.find(row => row.tier === "mutant")?.value ?? "RF"}</span></h3>
-          <span className="rb-intro-mini" aria-hidden="true">
-            <SpriteThumb creature={examples.mutant} scale={scale.mini} label="" />
-          </span>
-          <p>Trade it in for its fixed simulated RF value. Rarer tiers pay more.</p>
-        </section>
+      <p className="rb-intro-lead">After the hatch you pick Keep or Sanctuary. A kept baby can ride the Moon Slingshot later.</p>
+      <div className="rb-intro-options">
+        <Choice icon="heart" title="Keep" value={<><PixelIcon name="heart" />{keepHeartsPerMinute}/min</>} scene={<>
+          <SpriteThumb creature={player} scale={scale.mini} clip="walk" facing="right" label="" />
+          <SpriteThumb creature={examples.common} scale={Math.max(2, scale.mini - 1)} clip="walk" facing="right" label="" />
+        </>}>It follows your Friend, earns Hearts and can breed again. Each generation counts up: F1, F2, F3...</Choice>
+        <Choice icon="sprout" title="Sanctuary" value={`+${mutant?.value ?? "RF"}`} scene={<SpriteThumb creature={examples.mutant} scale={scale.mini} label="" />}>
+          Trade it in for its tier's fixed value in simulated RF. Rarer pays more.</Choice>
+        <Choice icon="moon" title="Moon Slingshot" value={MULTIPLIER_RANGE.replace(" to ", "-")} scene={<>
+          <PixelIcon name="slingshotBig" pixel={scale.mini} className="rb-intro-fork" />
+          <SpriteThumb creature={examples.spotted} scale={Math.max(2, scale.mini - 1)} clip="idle" label="" />
+        </>}>Bet its value on the landing: {NEAREST.label} {NEAREST.chance} to {FARTHEST.label} {FARTHEST.chance}. Wins and losses go to a separate Slingshot net, not your balance. Gone either way.</Choice>
       </div>
+    </>,
+    // 6. The HUD, the goal and the first action
+    <>
+      <p className="rb-intro-lead">The bar at the top of the screen, part by part.</p>
+      <HudLegend sample={hud} />
       <div className="rb-intro-goal">
-        <p className="rb-intro-lead"><PixelIcon name="sparkle" />Goal: collect all 9 families and all 4 tiers.</p>
-        {keepHeartsPerMinute !== undefined && <p className="rb-intro-note">Hearts are game points: never RF, never traded in. Spend them in the shop (tap the heart counter).</p>}
-        <CollectionMeter collection={collection} hint={false} />
+        <p className="rb-intro-lead"><PixelIcon name="sparkle" />Goal: collect all {ALL_FAMILIES.length} families and all {tiers.length} tiers. Brood shows your set.</p>
+        <p className="rb-intro-start">Start: tap <span className="rb-intro-cta"><PixelIcon name="heart" />Find a match</span><span className="rb-intro-start-more"> at the bottom, or walk to the Matchmaker</span>.</p>
       </div>
     </>,
   ];

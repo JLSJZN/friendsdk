@@ -3,14 +3,14 @@
 // camera zooms in on it and keeps it centred in the band the UI leaves uncovered.
 import { WORLD_HEIGHT, WORLD_WIDTH, type NurseryScene, type NurserySceneOptions } from "../api.ts";
 import { TIER_STYLE, type Clip, type Creature, type Facing, type StationId } from "../types.ts";
-import { GREEN, HEART, INK, MUTED, PAPER, WHITE, clamp, easeInCubic, easeOutCubic, ellipse, rect } from "./art.ts";
+import { GREEN, HEART, INK, MUTED, PAPER, WHITE, clamp, easeInCubic, easeOutCubic, ellipse, lerp, rect } from "./art.ts";
 import { feetRow, headroom, inkSpan, paintCreature } from "./creatures.ts";
 import { drawText, textWidth } from "./font.ts";
 import { createParticles } from "./fx.ts";
 import { createNavigator, pathLength, type Point } from "./nav.ts";
 import {
-  A, ART_H, ART_W, DOOR_CLIP, DOOR_INSIDE, DOOR_OUTSIDE, GATE_CLIP, GATE_FRONT, GATE_INSIDE, HERO_WALK, OBSTACLES, SPAWN, STATIONS, WALK,
-  createRoom, type Rect,
+  A, ART_H, ART_W, DOOR_CLIP, DOOR_INSIDE, DOOR_OUTSIDE, GATE_CLIP, GATE_FRONT, GATE_INSIDE, HERO_WALK, MOON_AT, OBSTACLES, SLING_BASE_Y,
+  SLING_FRONT, SLING_PULL, SLING_SEAT, SPAWN, STATIONS, WALK, WINDOW_CLIP, createRoom, pouchOffset, type Rect,
 } from "./room.ts";
 import { createPixelView } from "./view.ts";
 
@@ -74,6 +74,8 @@ type Entity = {
   hopStart: number; hopHeight: number; hopDuration: number;
   bornAt: number;
   clipRect: Rect | null;
+  /** Scripted: drawn this far above its feet line (logical px), and squash / stretch multipliers (1 = none). */
+  lift: number; sx: number; sy: number;
   path: Point[]; pathSpeed: number; onArrive: (() => void) | null; bouncy: boolean;
   lookUntil: number; nextIdleAt: number;
   shadowSpan: number; feetOffset: number;
@@ -127,8 +129,13 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   let time = 0, last = 0, raf = 0;
   let eggs = 0, eggChangedAt = -1e9;
   let near: StationId | null = null, hover: StationId | null = null;
-  const pressedAt: Record<StationId, number> = { matchmaker: -1e9, incubator: -1e9, sanctuary: -1e9 };
-  let doorOpen = 0, doorWant = 0, gateOpen = 0, gateWant = 0;
+  // The station last used stays "near" while the Friend stands at it, even where a neighbour is closer
+  // (tapped Incubator and Sanctuary standing spots can be nearer to the slingshot).
+  let chosen: StationId | null = null;
+  const pressedAt: Record<StationId, number> = { matchmaker: -1e9, incubator: -1e9, sanctuary: -1e9, slingshot: -1e9 };
+  let doorOpen = 0, doorWant = 0, gateOpen = 0, gateWant = 0, windowOpen = 0, windowWant = 0;
+  /** The Moon Slingshot's band (see SlingPose). */
+  const sling = { pull: 0, snapAt: -1e9, snapPull: 0, loaded: false };
   let inputLock = 0, scripts = 0;
   let pointerKind: "mouse" | "touch" | "pen" | "keyboard" = matchMedia?.("(pointer: coarse)").matches ? "touch" : "keyboard";
   const held = new Map<string, readonly [number, number]>();
@@ -152,13 +159,18 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
 
   const timers: { at: number; resolve: () => void }[] = [];
   const wait = (ms: number) => new Promise<void>(resolve => { if (destroyed) resolve(); else timers.push({ at: time + ms, resolve }); });
+  /** Calls step(t) every running frame, t from 0 to 1 over `ms`, then resolves. */
+  const tweens: { start: number; duration: number; step: (t: number) => void; resolve: () => void }[] = [];
+  const tween = (ms: number, step: (t: number) => void) => new Promise<void>(resolve => {
+    if (destroyed) resolve(); else tweens.push({ start: time, duration: Math.max(1, ms), step, resolve });
+  });
 
   const makeEntity = (creature: Creature, x: number, y: number, scale: number): Entity => {
     const span = inkSpan(creature);
     return {
       creature, x, y, vx: 0, vy: 0, facing: "down", clip: "idle", frame: 0, scale,
       walkDistance: 0, idleTime: Math.random() * 1000, lastStepFrame: -1, alpha: 1, fade: null,
-      hopStart: -1e9, hopHeight: 0, hopDuration: 1, bornAt: -1e9, clipRect: null,
+      hopStart: -1e9, hopHeight: 0, hopDuration: 1, bornAt: -1e9, clipRect: null, lift: 0, sx: 1, sy: 1,
       path: [], pathSpeed: 0, onArrive: null, bouncy: false, lookUntil: 0, nextIdleAt: 1500 + Math.random() * 3000,
       shadowSpan: Math.max(4, (span.max - span.min + 1) / 2), feetOffset: (15 - feetRow(creature)) * scale,
       popped: true, holdUntil: 0,
@@ -170,6 +182,8 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   const player = makeEntity(firstPlayer, SPAWN.x, SPAWN.y, PLAYER_SCALE);
   let brood: Entity[] = [];
   const departing = new Map<string, { entity: Entity; since: number }>();
+  /** A baby about to be launched: a "!" pops over its head. */
+  let alarmed: Entity | null = null;
   const released = new Set<string>();
   const actors: Entity[] = [];
   const pendingCelebrations = new Map<string, number>();
@@ -216,7 +230,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   };
 
   const activate = (station: StationId) => {
-    pressedAt[station] = time;
+    pressedAt[station] = time; chosen = station;
     guided = true;
     held.clear(); route = []; routeGoal = null; pendingStation = null;
     player.vx = 0; player.vy = 0;
@@ -708,7 +722,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   function updateBall(dt: number) {
     const seconds = dt / 1000;
     for (const entity of [player, ...brood, ...actors]) {
-      if (entity.alpha < 0.5 || entity.clipRect) continue;
+      if (entity.alpha < 0.5 || entity.clipRect || entity.lift > 0) continue;
       const dx = ball.x - entity.x, dy = ball.y - (entity.y - 4), distance = Math.hypot(dx, dy);
       const reach = ball.r + (entity.scale >= PLAYER_SCALE ? 17 : 12);
       if (distance < reach && distance > 0.01) {
@@ -731,11 +745,17 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   }
 
   function updateNear() {
+    // The current station keeps a 14 px lead in reach and in distance, so neighbours (incubator, slingshot) never flicker.
+    if (chosen) {
+      const station = stationById(chosen);
+      if (rectDistance(player.x, player.y, station.footprint) <= station.reach + 24) { setNear(chosen); return; }
+      chosen = null;
+    }
     let best: StationId | null = null, bestDistance = Infinity;
     for (const station of STATIONS) {
+      const sticky = station.id === near ? 14 : 0;
       const distance = rectDistance(player.x, player.y, station.footprint);
-      const reach = station.reach + (station.id === near ? 14 : 0);
-      if (distance <= reach && distance < bestDistance) { best = station.id; bestDistance = distance; }
+      if (distance <= station.reach + sticky && distance - sticky < bestDistance) { best = station.id; bestDistance = distance - sticky; }
     }
     setNear(best);
   }
@@ -746,10 +766,17 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
       fx.ring(player.x, player.y - 4, 74, INK, 3, 320);
     }
     for (let i = timers.length - 1; i >= 0; i--) if (timers[i].at <= time) { const { resolve } = timers[i]; timers.splice(i, 1); resolve(); }
+    for (let i = tweens.length - 1; i >= 0; i--) {
+      const item = tweens[i], t = clamp((time - item.start) / item.duration);
+      item.step(t);
+      if (t >= 1) { tweens.splice(i, 1); item.resolve(); }
+    }
     const doorStep = dt / (reducedMotion ? 1 : 160);
     doorOpen = doorWant > doorOpen ? Math.min(doorWant, doorOpen + doorStep) : Math.max(doorWant, doorOpen - doorStep);
     const gateStep = dt / (reducedMotion ? 1 : 260);
     gateOpen = gateWant > gateOpen ? Math.min(gateWant, gateOpen + gateStep) : Math.max(gateWant, gateOpen - gateStep);
+    const windowStep = dt / (reducedMotion ? 1 : 130);
+    windowOpen = windowWant > windowOpen ? Math.min(windowWant, windowOpen + windowStep) : Math.max(windowWant, windowOpen - windowStep);
     updatePlayer(dt);
     updateBrood(dt);
     updateActors(dt);
@@ -789,8 +816,8 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   };
 
   function drawShadow(entity: Entity, visible: boolean) {
-    if (!visible || entity.alpha < 0.05 || entity.clipRect) return;
-    const lift = Math.min(40, hopOffset(entity) + dropOffset(entity) * 0.15);
+    if (!visible || entity.alpha < 0.05 || entity.clipRect || entity.lift > 60) return;
+    const lift = Math.min(40, hopOffset(entity) + dropOffset(entity) * 0.15 + entity.lift);
     const span = (entity.shadowSpan * entity.scale) / A;
     const rx = Math.max(3, Math.round(span * (1 - lift / 50) + 1));
     ctx.save();
@@ -816,14 +843,14 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     let bob = 0;
     if (!reducedMotion && entity.clip === "walk" && entity !== player) bob = Math.abs(Math.sin((entity.walkDistance / BABY_STRIDE) * Math.PI)) * (entity.bouncy ? 9 : 3);
     if (!reducedMotion && entity.clip === "walk" && entity.bouncy && entity.scale >= PLAYER_SCALE) bob = Math.abs(Math.sin((entity.walkDistance / 30) * Math.PI)) * 11;
-    const y = Math.round(entity.y - hopOffset(entity) - bob - dropOffset(entity));
+    const y = Math.round(entity.y - hopOffset(entity) - bob - dropOffset(entity) - entity.lift);
     if (entity.clipRect) {
       const [x0, y0, x1, y1] = entity.clipRect;
       ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip();
     }
     paintCreature(ctx, entity.creature, {
       clip: entity.clip, facing: entity.facing, frame: entity.frame, x: Math.round(entity.x), y, scale: entity.scale,
-      alpha: entity.alpha, sx: pop.sx * land.sx, sy: pop.sy * land.sy, time,
+      alpha: entity.alpha, sx: pop.sx * land.sx * entity.sx, sy: pop.sy * land.sy * entity.sy, time,
     });
     if (entity.clipRect) ctx.restore();
   }
@@ -1092,6 +1119,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     ctx.save(); ctx.scale(A, A);
     room.drawDoor(ctx, doorOpen);
     room.drawGate(ctx, gateOpen);
+    room.drawWindow(ctx, windowOpen);
     ctx.restore();
     drawMotes();
     drawMarker();
@@ -1101,16 +1129,27 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     const pops = new Map(entities.map(entity => [entity, entity === player ? true : popScale(entity).visible]));
     for (const entity of entities) drawShadow(entity, pops.get(entity)!);
 
-    const roomState = { time, eggs, eggChangedAt, near, hover, pressedAt, doorOpen, gateOpen, reducedMotion };
+    const roomState = { time, eggs, eggChangedAt, near, hover, pressedAt, doorOpen, gateOpen, windowOpen, sling, reducedMotion };
     const layers: { y: number; draw: () => void }[] = [];
     for (const prop of room.props) layers.push({ y: prop.baseY, draw: () => ctx.drawImage(prop.sprite, prop.x * A, prop.y * A, prop.sprite.width * A, prop.sprite.height * A) });
     layers.push({ y: room.kioskBaseY, draw: () => { ctx.save(); ctx.scale(A, A); room.drawKiosk(ctx, roomState); ctx.restore(); } });
     layers.push({ y: room.incubatorBaseY, draw: () => { ctx.save(); ctx.scale(A, A); room.drawIncubator(ctx, roomState); ctx.restore(); } });
+    // A baby in the pouch stands on SLING_BASE_Y + 1: between the slingshot and the pouch lip.
+    layers.push({ y: room.slingshotBaseY, draw: () => { ctx.save(); ctx.scale(A, A); room.drawSlingshot(ctx, roomState); ctx.restore(); } });
+    layers.push({ y: room.slingshotBaseY + 2, draw: () => { ctx.save(); ctx.scale(A, A); room.drawSlingshotFront(ctx, roomState); ctx.restore(); } });
     layers.push({ y: ball.y + 6, draw: drawBall });
     for (const entity of entities) layers.push({ y: entity.y + (entity.clipRect ? -200 : 0), draw: () => drawEntity(entity) });
     layers.sort((a, b) => a.y - b.y);
     for (const layer of layers) layer.draw();
 
+    if (alarmed && alarmed.alpha > 0.5) {
+      // A bold "!" (2 x 6 art px, white edged) just over the head, jittering with the band.
+      const head = alarmed.y - alarmed.lift - 16 * alarmed.scale * alarmed.sy;
+      const x = Math.round(alarmed.x / A) * A + 4 * A, y = Math.round(head / A) * A - 9 * A;
+      rect(ctx, x - A, y - A, 4 * A, 8 * A, WHITE);
+      rect(ctx, x, y, 2 * A, 4 * A, INK);
+      rect(ctx, x, y + 5 * A, 2 * A, A, INK);
+    }
     drawButterfly();
     fx.draw(ctx, "top");
     drawIncome();
@@ -1227,15 +1266,25 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     }
   }
 
-  async function release(key: string) {
+  /**
+   * Hands a baby over to a leaving scene: out of the brood, or out of the babies waiting to leave (setBrood may
+   * run before or after the scene starts), into the actors. Marked released either way, so it never returns.
+   */
+  function takeBaby(key: string) {
     let entity: Entity | undefined;
     const index = brood.findIndex(baby => baby.creature.key === key);
     if (index >= 0) { entity = brood[index]; brood.splice(index, 1); }
     else if (departing.has(key)) { entity = departing.get(key)!.entity; departing.delete(key); }
-    if (!entity || destroyed) { released.add(key); return; }
     released.add(key);
+    if (!entity || destroyed) return null;
     actors.push(entity);
     entity.bornAt = -1e9;
+    return entity;
+  }
+
+  async function release(key: string) {
+    const entity = takeBaby(key);
+    if (!entity) return;
     const leaving = entity;
     // Follow the baby to the gate, leaning towards the Friend sideways only (the band is short).
     const framer = () => frameBoth(focusOf(leaving), focusOf(player), 0.3, 0.06);
@@ -1267,6 +1316,111 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
       if (at >= 0) actors.splice(at, 1);
       dropFramer(framer);
       if (!actors.some(actor => actor.clipRect === GATE_CLIP)) gateWant = 0;
+    }
+  }
+
+  let launchQueue: Promise<void> = Promise.resolve();
+
+  /** Keeps a baby sitting in the pouch as the band moves (feet on the seat row). */
+  function seat(entity: Entity) {
+    const { dx, dy } = pouchOffset(sling, time, false, reducedMotion);
+    entity.x = SLING_SEAT.x + dx * A;
+    entity.lift = entity.y - (SLING_SEAT.y + dy * A + entity.feetOffset);
+  }
+
+  /**
+   * Moon Slingshot: the baby scampers over and hops into the pouch, the band pulls back (at least a little) and
+   * trembles, then snaps: the baby shoots up through Window 2, tumbling smaller towards the moon, and twinkles out.
+   */
+  async function launch(entity: Entity | null, pull: number) {
+    if (!entity || destroyed) return;
+    const flyer = entity;
+    if (reducedMotion) {
+      // A quick fade where it stands: no camera move, no input lock.
+      fadeTo(flyer, 0, 250);
+      await wait(260);
+      const at = actors.indexOf(flyer);
+      if (at >= 0) actors.splice(at, 1);
+      return;
+    }
+    const stretch = clamp(Number.isFinite(pull) ? pull : 0.6, 0.2, 1);
+    inputLock++;
+    held.clear(); route = []; routeGoal = null; pendingStation = null; player.vx = 0; player.vy = 0;
+    // Phones: follow the baby over, then frame the window (the target) down to the fully pulled pouch.
+    const aim = { x: SLING_SEAT.x, y: (WINDOW_CLIP[1] + SLING_SEAT.y + SLING_PULL) / 2 };
+    const framer = () => flyer.lift > 0 || flyer.clipRect ? aim : frameBoth(focusOf(flyer), aim, 0.3, 0.2);
+    framers.push(framer);
+    try {
+      const watch = () => {
+        player.facing = facingFrom(SLING_SEAT.x - player.x, SLING_BASE_Y - player.y, player.facing);
+        for (const baby of brood) { baby.facing = facingFrom(SLING_SEAT.x - baby.x, SLING_BASE_Y - baby.y, baby.facing); baby.lookUntil = time + 2600; }
+      };
+      watch();
+      hop(flyer, 12, 220);
+      await wait(100);
+      const path = nav.route(flyer, SLING_FRONT) ?? [{ ...SLING_FRONT }];
+      const length = pathLength(flyer, path);
+      if (length > 2) await walkPath(flyer, path, length / clamp(length / 560, 0.18, 0.4), true);
+      // Up into the pouch, stretched on the way up.
+      watch();
+      flyer.facing = "down";
+      const from = { x: flyer.x, y: flyer.y }, ground = SLING_BASE_Y + 1;
+      const seatLift = ground - (SLING_SEAT.y + flyer.feetOffset);
+      await tween(230, t => {
+        flyer.x = lerp(from.x, SLING_SEAT.x, t); flyer.y = lerp(from.y, ground, t);
+        flyer.lift = seatLift * t + Math.sin(t * Math.PI) * 40;
+        flyer.sx = t < 0.75 ? 0.88 : 1; flyer.sy = t < 0.75 ? 1.14 : 1;
+      });
+      // Plop: the pouch sags under the weight.
+      sling.loaded = true;
+      await tween(90, t => { sling.pull = Math.sin(t * Math.PI) * 0.12; seat(flyer); flyer.sx = t < 0.6 ? 1.2 : 1; flyer.sy = t < 0.6 ? 0.82 : 1; });
+      // Pull back, then hold it, trembling (the baby has second thoughts).
+      windowWant = 1;
+      await tween(480, t => {
+        sling.pull = stretch * easeOutCubic(t / 0.6);
+        seat(flyer);
+        flyer.sx = 1 + sling.pull * 0.1; flyer.sy = 1 - sling.pull * 0.12;
+        alarmed = t >= 0.6 ? flyer : null;
+      });
+      alarmed = null;
+      // Snap.
+      sling.snapAt = time; sling.snapPull = sling.pull; sling.pull = 0; sling.loaded = false;
+      pressedAt.slingshot = time;
+      const start = { x: flyer.x, y: flyer.y - flyer.lift - 8 * flyer.scale };
+      fx.ring(start.x, start.y + 12, 44, INK, 3, 260);
+      fx.sparkles(start.x, start.y, 3, 26, GREEN, 3, 30);
+      fx.puff(SLING_SEAT.x, SLING_BASE_Y + 4, 8, 30);
+      hop(player, 18, 320, 80);
+      brood.forEach((baby, index) => hop(baby, 12, 280, 140 + index * 60));
+      /** Centre of the 16-row box at c, sized k, stretched sx / sy. */
+      const place = (c: Point, k: number, sx: number, sy: number) => {
+        flyer.x = c.x; flyer.sx = k * sx; flyer.sy = k * sy;
+        flyer.lift = flyer.y - (c.y + 8 * flyer.scale * k * sy);
+      };
+      const mouth = { x: (start.x + MOON_AT.x) / 2 - 6, y: WINDOW_CLIP[3] - 20 };
+      await tween(80, t => place({ x: lerp(start.x, mouth.x, t), y: lerp(start.y, mouth.y, t) }, lerp(1, 0.8, t), 0.7, 1.5));
+      // Out through the window, tumbling away.
+      flyer.clipRect = WINDOW_CLIP;
+      const spin: Facing[] = ["down", "left", "up", "right"];
+      await tween(300, t => {
+        const u = easeOutCubic(t);
+        place({ x: lerp(mouth.x, MOON_AT.x, u), y: lerp(mouth.y, MOON_AT.y, u) - Math.sin(t * Math.PI) * 8 }, lerp(0.8, 0.08, u), 1, 1);
+        flyer.facing = spin[Math.floor(t * 7) % 4];
+      });
+      flyer.alpha = 0;
+      // Ding!
+      fx.sparkles(MOON_AT.x, MOON_AT.y, 1, 0, GREEN, 3, 0);
+      fx.ring(MOON_AT.x, MOON_AT.y, 16, INK, 3, 220);
+      windowWant = 0;
+      await wait(120);
+    } finally {
+      const at = actors.indexOf(flyer);
+      if (at >= 0) actors.splice(at, 1);
+      dropFramer(framer);
+      inputLock--;
+      if (alarmed === flyer) alarmed = null;
+      sling.pull = 0; sling.loaded = false;
+      windowWant = 0;
     }
   }
 
@@ -1410,6 +1564,13 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     playRelease(babyKey) {
       return runScript(() => release(babyKey));
     },
+    playLaunch(babyKey, pull) {
+      // Taken at once (same hand-off as playRelease); launches queue for the one pouch.
+      const entity = takeBaby(babyKey);
+      const run = launchQueue.then(() => runScript(() => launch(entity, pull)));
+      launchQueue = run.catch(() => {});
+      return run;
+    },
     celebrate(key) {
       if (destroyed) return;
       const entity = findEntity(key);
@@ -1433,6 +1594,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
       canvas.removeEventListener("lostpointercapture", onPointerUp);
       view.destroy();
       for (const timer of timers.splice(0)) timer.resolve();
+      for (const item of tweens.splice(0)) item.resolve();
       for (const entity of [player, ...brood, ...actors]) { const done = entity.onArrive; entity.onArrive = null; done?.(); }
       fx.clear();
       incomes.length = 0;

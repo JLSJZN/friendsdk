@@ -15,7 +15,7 @@ and fill the checklist. New features go into "Features" as one more bullet.
 Rare Breeds
 
 **Builder / contact**
-[@JLSJZN](https://github.com/JLSJZN) · contact TBD
+[@JLSJZN](https://github.com/JLSJZN) · X [@JLSJZN](https://x.com/JLSJZN) · Telegram [@JLSJZN](https://t.me/JLSJZN)
 
 **Category**
 Character Spotlight (primary) · Economy Potential (secondary)
@@ -49,7 +49,7 @@ Open the printed URL, connect the wallet and select your Friend. Add `--host 0.0
 
 ## How to play
 
-Walk with **WASD** / arrow keys, or tap and drag on the floor. Press **E** (or Enter, Space, or tap the station) at a station. A four-step intro explains the game on start; **?** replays it and shows the odds, mute and reduced motion.
+Walk with **WASD** / arrow keys, or tap and drag on the floor. Press **E** (or Enter, Space, or tap the station) at a station. A six-step intro explains the game on start (what it is, the four stations on a picture of the room, breeding, the odds, what to do with a baby, every HUD chip); **?** replays it and shows the stations and HUD legends, the odds, mute and reduced motion.
 
 1. **Matchmaker:** parent A is your Friend (or a kept baby); parent B is one of three real wild Friends (free reroll, or a 15-Heart **Wish** for a family you pick) or another kept baby.
 2. **Breed:** uses one Egg. With none waiting, **Buy egg & breed · 1 RF** buys one first. The runtime asks you to confirm **Buy egg**, then **Use egg**.
@@ -57,7 +57,7 @@ Walk with **WASD** / arrow keys, or tap and drag on the floor. Press **E** (or E
 4. **Keep or trade in:** **Keep** adds the baby to your brood (+5 Hearts, then Hearts every 10 s); it follows you around the nursery in a line. **Trade in at the Sanctuary** redeems it for its fixed value (runtime confirmation **Redeem reward**).
 5. **Spend Hearts and breed again:** tap the heart counter for hats and wishes. Kept babies are parents too: F1 babies make F2, F2 make F3. Goal: babies from all 9 families and all 4 tiers.
 
-The Egg incubator sells 1, 3 or 5 eggs in one confirmation. Everything stays inside the SDK's container; on portrait phones the frame is 3:4 with a follow camera.
+The Egg incubator sells 1, 3 or 5 eggs in one confirmation. The **Moon Slingshot** (in front of the back window, between the incubator and the Sanctuary) launches a kept baby: pick one, hold to pull the band (Space or Enter held on the keyboard; a tap works too), let go and confirm **Redeem reward**. The baby is traded in for its fixed value (into the balance as usual), shot out through the window, and where it lands multiplies that value from x0 to x10 (simulated); a result card shows payout, stake and net and where each went, and the HUD keeps the session's Slingshot net in its own pill (simulated, not spendable in the preview). The baby is gone afterwards, even in the pond. Everything stays inside the SDK's container; on portrait phones the frame is 3:4 with a follow camera.
 
 ## Features
 
@@ -66,7 +66,8 @@ The Egg incubator sells 1, 3 or 5 eggs in one confirmation. Everything stays ins
 - **Hearts:** session game points that only kept babies earn (6 to 60 a minute by tier, +5 per Keep). Never RF, never redeemable.
 - **Hearts shop:** 8 hats from 20 to 250 Hearts that sit on each Friend's own head, frame by frame, and a Wish match for 15 Hearts.
 - **Collection goal:** all 9 Friend families and all 4 tiers, tracked on the reveal card and in the brood.
-- **Onboarding:** a four-step intro with your own Friend, first-time hints, a "What can hatch" odds strip in the Matchmaker, and **Replay intro**.
+- **Moon Slingshot:** a fourth station that turns a kept baby into a jackpot shot. Hold to pull, let go: the SDK trades the baby in (runtime-confirmed `redeem`, its fixed value becomes the stake), the baby flies out through the window, and six landing zones from a belly flop in the pond (x0) to the Moon (x10) multiply the stake, 0.9x on average. The multiplier is a clearly labelled simulated side ledger backed by a 600 RF Moon Fund; how hard you pull is cosmetic.
+- **Onboarding:** a six-step intro with your own Friend: what the game is, your nursery (the real room art with the four stations numbered), breeding, the odds, Keep / Sanctuary / Moon Slingshot, and a legend of every HUD chip ending on the goal and the first tap. Plus first-time hints, a "What can hatch" odds strip in the Matchmaker, and **Replay intro**.
 - **Phone layout:** a 3:4 portrait frame (`host.css`) and a follow camera on small frames.
 
 ## Costs, odds and rewards
@@ -87,7 +88,23 @@ The Egg incubator sells 1, 3 or 5 eggs in one confirmation. Everything stays ins
 
 **Hearts (game points, not RF).** Earned by kept babies once per 10 s cycle (Common 1, Spotted 2, Mutant 4, Prismatic 10), +5 on every Keep; an average kept baby earns 0.6 x 6 + 0.25 x 12 + 0.125 x 24 + 0.025 x 60 = 11.1 a minute. Spent on hats (Party hat 20, Bow 20, Flower 25, Beanie 35, Headphones 50, Top hat 80, Crown 150, Halo 250; 630 for all) and the Wish match (15). Hearts cannot be bought with RF, traded in or redeemed, so they back no payout and need no prize reserve. They last for the session.
 
-Full tables, base units and the Monte Carlo: [Rules and rewards](https://github.com/JLSJZN/friendsdk/blob/rare-breeds/games/rare-breeds/README.md#rules-and-rewards-rf-simulated) · `node tools/economy-report.mjs`.
+**Moon Slingshot (simulated side ledger).** A launch first trades the baby in through the SDK (`redeem(outcomeId, 1)`, runtime confirmation **Redeem reward**): the tier token is burned and its fixed value, the stake, lands in the simulated RF balance. Then one roll in 0-9999 picks the landing zone, and the side ledger books only the difference, payout minus stake, as **Slingshot net** (can be negative).
+
+| Zone | Rolls | Weight | Chance | Multiplier | Prismatic (6 RF stake) pays |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Belly flop in the pond | 0-3999 | 4,000 bps | 40% | x0 | 0 RF |
+| Haystack | 4000-6399 | 2,400 bps | 24% | x0.5 | 3 RF |
+| Rooftop | 6400-8199 | 1,800 bps | 18% | x1 | 6 RF |
+| Cloud nine | 8200-9399 | 1,200 bps | 12% | x2 | 12 RF |
+| Orbit | 9400-9799 | 400 bps | 4% | x4 | 24 RF |
+| The Moon | 9800-9999 | 200 bps | 2% | x10 | 60 RF |
+
+- Expected payout: (0.5 x 2400 + 1 x 1800 + 2 x 1200 + 4 x 400 + 10 x 200) / 10000 = **x0.9 of the stake** (10% edge, the same as the SDK fishing reference), exact over all 10,000 rolls: 0.45 / 0.9 / 1.35 / 5.4 RF per launch for Common / Spotted / Mutant / Prismatic. Launching every baby returns 0.8875 x 0.9 = **0.79875 RF per 1 RF egg** (`798750000000000000` base units).
+- Backing mirrors the SDK rule: the simulated Moon Fund starts at **600 RF** (10 x the 60 RF top payout, the SDK preview-stake convention), and a baby worth v flies only while the fund covers its x10 payout. The fund takes the stake and pays the payout (fund' = fund + v - payout >= v), so it never goes negative; the first 11 launches of a session can never be blocked, and in 5,000 simulated sessions that launch every baby it never blocked a launch (lowest point 421 RF).
+- The zone is drawn once, after the trade-in is confirmed; no reroll, every result final. How hard you pull is cosmetic. Cancelling the confirmation changes nothing.
+- A session that launches every baby (5,000 simulated sessions from 20 RF, the trade-ins paying for new eggs): 173.7 launches on average, P(at least one Moon landing) = 92.5%, mean Slingshot net -15.578 RF on a mean stake of 154.236 RF (the exact identity is E[net] = -0.1 x E[staked]), P(net > 0) = 24.0%.
+
+Full tables, base units and the Monte Carlo: [Rules and rewards](https://github.com/JLSJZN/friendsdk/blob/rare-breeds/games/rare-breeds/README.md#rules-and-rewards-rf-simulated) · [Moon Slingshot](https://github.com/JLSJZN/friendsdk/blob/rare-breeds/games/rare-breeds/README.md#moon-slingshot-simulated-side-ledger) · `node tools/economy-report.mjs`.
 
 ## How the NFT is the main character
 
@@ -104,7 +121,7 @@ Full tables, base units and the Monte Carlo: [Rules and rewards](https://github.
 
 ## What would be on-chain
 
-Nothing in this build; no transaction is ever sent. **Going live needs no new contract:** it is a deployment of the SDK's existing `ChanceGame` with this `game.json` (consumable Egg, four outcomes), used through the SDK's live runtime from the Friend's canonical wallet.
+Nothing in this build; no transaction is ever sent and no contract is deployed. **The egg loop needs no new contract:** it is a deployment of the SDK's existing `ChanceGame` with this `game.json` (consumable Egg, four outcomes), used through the SDK's live runtime from the Friend's canonical wallet. **The Moon Slingshot needs one more contract** (future work, below).
 
 | In the game | SDK action | Existing `ChanceGame` effect |
 | --- | --- | --- |
@@ -114,11 +131,19 @@ Nothing in this build; no transaction is ever sent. **Going live needs no new co
 | Keep | none | The tier token stays in the Friend wallet, backed, no expiry |
 | Trade in at the Sanctuary | `redeem(outcomeId, 1)` | Burns one tier token and pays its fixed RF to the Friend's canonical wallet |
 
-On-chain: RF, Eggs, tier tokens, backing and every tier. Off-chain: the baby's pixels (derived deterministically from Friend ID, parent A, parent B and play ID; genetics receives the settled tier as an input and cannot choose or change it), Hearts, hats and the collection.
+**Moon Slingshot: a separate `Slingshot` contract next to the `ChanceGame` (future work, not built, not deployed).** It needs the SDK support listed below.
+
+| In the game | Preview today | Future `Slingshot` contract |
+| --- | --- | --- |
+| Launch | `redeem(outcomeId, 1)` (runtime-confirmed; tier token burned, fixed value to the simulated balance as the stake) | `launch(outcomeId)`: burns one tier token from the Friend's canonical wallet (or accepts it as the stake); its reserved value moves from the `ChanceGame` reward liability into the slingshot stake; reserves 10 x the value of free slingshot stake at launch time; requests one Dice random word. No outcome exists yet |
+| Land | One browser roll (`samplePreviewRoll`); the simulated side ledger books payout minus stake | `settle(launchId)`: `roll = keccak256(word, game, chainId, launchId) % 10000` against the cumulative zone weights; pays value x multiplier in RF to the Friend's canonical wallet from the slingshot stake and releases the reservation |
+| Pending launch | none (the roll follows the confirmation immediately) | Resumes by its launch ID; never burns another token, never rerolls |
+
+On-chain: RF, Eggs, tier tokens, backing and every tier; live, also every slingshot launch, zone and payout. Off-chain: the baby's pixels (derived deterministically from Friend ID, parent A, parent B and play ID; genetics receives the settled tier as an input and cannot choose or change it), Hearts, hats, the collection and the flight animation. In the preview, the slingshot multiplier is a simulated local side ledger.
 
 ## How randomness is used
 
-Only the tier is a paid random outcome. In the preview the SDK ledger draws one roll per settle; live, it comes from Dice as above: the Egg is burned before any randomness exists, there is no reroll, and an unsettled play resumes as **Finish hatching** without using another egg. The baby's rows, pattern, mutation and name come from a seeded generator, so the same pair and play always give the same baby. The three wild Friends offered (also after a Wish) and idle animations are browser-random with no RF value; the "chemistry" hearts are flavour ("Same odds for every pair").
+Two random outcomes carry RF value: the tier and the slingshot's landing zone. For the tier, the preview's SDK ledger draws one roll per settle; live, it comes from Dice as above: the Egg is burned before any randomness exists, there is no reroll, and an unsettled play resumes as **Finish hatching** without using another egg. The slingshot zone is drawn once, after the trade-in is confirmed. In the preview that roll is browser randomness: the SDK's own `samplePreviewRoll` (Web Crypto, rejection sampling to 0-9999), the same draw the preview ledger uses for eggs, and its result is a simulated local balance, which the SDK rules treat as presentation only. Live, it would come from the `Slingshot` contract's Dice request: the tier token is burned before any randomness exists, no reroll, and a pending launch resumes by its ID. How hard you pull the band only changes the animation. The baby's rows, pattern, mutation and name come from a seeded generator, so the same pair and play always give the same baby. The three wild Friends offered (also after a Wish) and idle animations are browser-random with no RF value; the "chemistry" hearts are flavour ("Same odds for every pair").
 
 ## Economy Potential
 
@@ -128,6 +153,8 @@ Only the tier is a paid random outcome. In the preview the SDK ledger draws one 
 - **Hearts, unbacked game points:** earned only by holding babies, spent only on hats and Wish matches. Nothing Hearts buy is redeemable, so they create no RF liability and need no reserve.
 
 The two connect at the reveal card: fixed RF now, or Hearts over time plus a parent for the next generation. Rarer babies are worth more both ways (0.5 to 6 RF, or 6 to 60 Hearts a minute). Hearts never replace RF: a Wish picks a better mate, but the hatch still needs an egg.
+
+**A second RF loop on bred babies: the Moon Slingshot (simulated multiplier).** Breed, keep, launch: every kept baby is also a stake. The trade-in runs through the SDK unchanged (`redeem`, backed, no expiry), and the slingshot puts that value back at risk on six zones from x0 to x10. Every launch returns on average 0.9x its stake; the 10% edge stays in the Moon Fund, which is always funded for the next x10 payout. It turns every hatch into a jackpot ticket: a Prismatic on the Moon pays 60 RF from a 1 RF egg (1 in 2,000 eggs: 2.5% x 2%; in the preview that is the 6 RF trade-in into the balance plus 54 RF of simulated net booked as **Slingshot net**), and a session that launches every baby lands on the Moon at least once 92.5% of the time. Live, each launch would be its own on-chain RF action (tier token burn, Dice request, RF payout to the Friend's canonical wallet), a spending loop that keeps bred babies moving RF after the hatch; no Token Activity metrics are claimed.
 
 **Why breeding.** Breeding is one of the longest-running NFT spending loops: CryptoKitties (2017) charged a fee for every breed and let owners rent out Kitties as sires. Rare Breeds uses each Friend's own on-chain art as its genome, so every Friend brings genes no other Friend has.
 
@@ -150,16 +177,19 @@ A sire market would turn every holder's Friend into an RF-earning asset: its art
 - **Sire market:** opt-in sire listings, RF payment to another Friend's canonical wallet, and runtime sprite reads of listed Friends. SDK v0.1.2 has no trading, revenue-share or creator-fee actions.
 - **More consumables and RF sinks:** generation-priced eggs, a burn share at purchase, and RF purchases of cosmetics (one consumable, no upgrade or cosmetic action and no burn path today).
 - **Unique baby tokens:** today's tier tokens are fungible per tier; minting each baby as its own NFT needs a minting API.
+- **Moon Slingshot:** a second outcome table whose stake is a reward token (or reward-token-as-stake actions over the bridge, e.g. `launch(outcomeId)` and its settle), its own Dice request and pending-launch recovery, a way to move a kept reward's reserved value from the `ChanceGame` liability into the slingshot stake, and runtime confirmations for a launch. SDK v0.1.2 has one consumable and one outcome table, so the preview uses `redeem` plus a simulated side ledger for the multiplier.
 
 ## Checks
 
 <!--
-Verified in this session on the working tree: 34/34 unit tests (14 economy, 12 genetics, 8 accessories), tsc clean,
-dev-game check valid. Reported by the lead: tools/test-game.mjs PASS desktop and phone (full scenario incl. Hearts and hat),
-preview live (to be rebuilt from the final commit). Re-run everything on the final commit and fill the TBDs.
+Verified on the working tree with the Moon Slingshot wired in (uncommitted): 50/50 unit tests (14 economy, 12 genetics,
+8 accessories, 16 slingshot), tsc clean, dev-game check and check:games valid (4 games), tools/test-game.mjs PASS desktop
+960 x 800 and phone 390 x 844 (full scenario incl. Hearts, hat, trade-in and a slingshot launch with a cancelled and a
+confirmed Redeem reward), build-pages --smoke PASS, dev/scene/shoot.mjs 72 checks passed, dev/ui/shots.mjs no problems.
+Preview live (to be rebuilt from the final commit). Re-run everything on the final commit and fill the TBDs.
 -->
 
-- [ ] Unit tests `node --test "games/rare-breeds/tests/*.test.ts"`: TBD of TBD pass (economy: schema, weights, exact EV, roll boundaries, backing and pause limits, hatch budget; genetics: determinism, 500 random pairs x 4 tiers give one connected body in all 64 frames, inherited rows never removed, symmetry, Side-walker through F2, tier effects, F2/F3, speed; accessories: every hat on every pool Friend and bred baby in all 64 frames stays in bounds, never on ink, follows the head, stays symmetric)
+- [ ] Unit tests `node --test "games/rare-breeds/tests/*.test.ts"`: TBD of TBD pass (economy: schema, weights, exact EV, roll boundaries, backing and pause limits, hatch budget; genetics: determinism, 500 random pairs x 4 tiers give one connected body in all 64 frames, inherited rows never removed, symmetry, Side-walker through F2, tier effects, F2/F3, speed; accessories: every hat on every pool Friend and bred baby in all 64 frames stays in bounds, never on ink, follows the head, stays symmetric; slingshot: zone odds over all 10,000 rolls, exact payouts per tier, x0.9 per launch, 0.79875 RF per egg, the 600 RF Moon Fund and its backing rule, a fund that never goes negative, the same verdicts as the SDK's own preview ledger)
 - [ ] Typecheck `npx tsc -p games/rare-breeds/tsconfig.json`: TBD
 - [ ] Game validation `node scripts/dev-game.mjs check games/rare-breeds` and `npm run check:games`: TBD
 - [ ] Browser test `node tools/test-game.mjs`, 960 x 800 desktop: TBD
@@ -168,17 +198,22 @@ preview live (to be rebuilt from the final commit). Re-run everything on the fin
 - [ ] Hosted preview reaches the SDK wallet gate with no errors: TBD
 - [ ] Real-wallet playthrough with an owned Friend (desktop TBD, phone TBD): TBD
 
-The browser test drives the real sandboxed runtime and its confirmations: the four intro steps, two full hatch loops (Spotted and Prismatic kept, +5 Hearts each), buying the Party hat once the brood has earned 20 Hearts and putting it on the Friend, then trading in the Prismatic (balance 20 - 1 - 1 + 6 = 24 RF). It uses the SDK's mock wallet and sample Friend #7730; mocks are never in a build.
+The browser test drives the real sandboxed runtime and its confirmations: the six intro steps, two full hatch loops (Spotted and Prismatic kept, +5 Hearts each), buying the Party hat once the brood has earned 20 Hearts and putting it on the Friend, then trading in the Prismatic (balance 20 - 1 - 1 + 6 = 24 RF). Then the Moon Slingshot with the kept Spotted (desktop taps the station in the world, the phone uses the first-time prompt): a cancelled **Redeem reward** changes nothing, a confirmed one (1 RF) starts the flight, **Skip**, the result card shows payout, stake and net, and afterwards the brood is empty, the balance is 25 RF and the HUD shows the Slingshot net. It uses the SDK's mock wallet and sample Friend #7730; mocks are never in a build.
 
-| Intro | Hearts shop | Phone |
+| Intro: your nursery | Hearts shop | Phone |
 | --- | --- | --- |
-| ![Intro step 1 at 960 x 800](https://raw.githubusercontent.com/JLSJZN/friendsdk/rare-breeds/games/rare-breeds/docs/media/test-intro-desktop.png) | ![Friend wearing the Party hat in the Hearts shop](https://raw.githubusercontent.com/JLSJZN/friendsdk/rare-breeds/games/rare-breeds/docs/media/test-shop-hat-desktop.png) | ![Nursery on a 390 x 844 phone, 3:4 frame](https://raw.githubusercontent.com/JLSJZN/friendsdk/rare-breeds/games/rare-breeds/docs/media/test-phone-390x844.png) |
+| ![Intro step 2 at 960 x 800: the real room with the four stations numbered, and what each one does](https://raw.githubusercontent.com/JLSJZN/friendsdk/rare-breeds/games/rare-breeds/docs/media/test-intro-nursery-desktop.png) | ![Friend wearing the Party hat in the Hearts shop](https://raw.githubusercontent.com/JLSJZN/friendsdk/rare-breeds/games/rare-breeds/docs/media/test-shop-hat-desktop.png) | ![Nursery on a 390 x 844 phone, 3:4 frame](https://raw.githubusercontent.com/JLSJZN/friendsdk/rare-breeds/games/rare-breeds/docs/media/test-phone-390x844.png) |
+
+| Moon Slingshot | Launch result | Phone slingshot |
+| --- | --- | --- |
+| ![Moon Slingshot panel at 960 x 800: baby picker, zone ladder with exact payouts, hold-to-pull button](https://raw.githubusercontent.com/JLSJZN/friendsdk/rare-breeds/games/rare-breeds/docs/media/test-slingshot-desktop.png) | ![Launch result card over the landed frame: payout, stake and net](https://raw.githubusercontent.com/JLSJZN/friendsdk/rare-breeds/games/rare-breeds/docs/media/test-slingshot-result-desktop.png) | ![Moon Slingshot panel on a 390 x 844 phone](https://raw.githubusercontent.com/JLSJZN/friendsdk/rare-breeds/games/rare-breeds/docs/media/test-slingshot-phone.png) |
 
 ## Known limitations and risks
 
 - **Session-local:** reloading starts a new session (20 RF, 0 Hearts, no hats, empty brood and collection). If only the game frame reloads, kept babies are rebuilt from the ledger with a deterministic stand-in mate, so their look and generation can change.
 - **Wild mates are a fixed snapshot** of 73 Friends. Their holders are not involved and earn nothing in this build.
 - **On-chain, the baby is a tier token.** Its pixels are presentation until the pair is recorded with the play. Hearts and hats are local game state.
+- **Moon Slingshot multiplier is simulated:** a browser roll and a local side ledger (Moon Fund, Slingshot net), labelled simulated in the game. It resets when the game frame remounts (for example after switching Friends and back); the traded-in stakes stay in the runtime ledger like any Sanctuary redemption. Live play needs the `Slingshot` contract above, which is not built.
 - **Wallets and funds:** game code never receives a wallet, signer or RF; the SDK runtime owns connection, eligibility and every confirmation. The preview sends no transactions. Live mode has never run and no contract is deployed.
 - Every buy, use and redeem opens a runtime confirmation by design; on a phone it covers most of the frame.
 - No trading, wearable NFTs, creator fees or live economy. No Token Activity metrics are claimed. Production publication needs separate Rare Friends review.

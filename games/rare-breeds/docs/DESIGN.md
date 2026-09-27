@@ -21,6 +21,9 @@ Judges test solo, quickly, with a real holder wallet, on desktop and phone. Firs
 4. **Result card**: baby name, tier, parents, DNA strip (16 rows coloured by parent), traits.
    Keep it (joins the brood) or send it to the **Sanctuary** (SDK `redeem(outcomeId, 1)` for the fixed RF value).
 5. Kept babies can be parents again: F1, F2, F3 lineage.
+6. **Moon Slingshot** station (optional): pick a kept baby, hold to pull the band, let go. The baby is traded in
+   first (SDK `redeem(outcomeId, 1)`, runtime confirmation), then the zone is drawn and the baby flies out through
+   the window; the landing zone multiplies its value (x0 to x10). The baby is gone afterwards, even in the pond.
 
 Every SDK buy/play/redeem shows a trusted runtime confirmation inside the frame. That is expected.
 
@@ -30,6 +33,10 @@ Every SDK buy/play/redeem shows a trusted runtime confirmation inside the frame.
 - Outcomes (tiers) in `game.json`, outcomeId = index + 1, order = `TIER_ORDER` in `src/types.ts`:
   common, spotted, mutant, prismatic. Exact weights/rewards are owned by the economy module; EV below 1 RF.
 - Kept babies are the "hold" choice; the Sanctuary is the fixed-price "redeem" choice.
+- The Moon Slingshot is the "gamble" choice: a Sanctuary redeem (the stake, through the SDK) plus a simulated
+  multiplier side ledger in `src/slingshot.ts` (six zones, x0.9 on average, 600 RF simulated Moon Fund, one draw
+  after the confirmation, no reroll). The HUD shows its payout minus stake as "Slingshot net", never mixed into the
+  runtime RF balance.
 - Everything is labelled "Simulated RF". Never call the house edge a burn.
 
 ## Art direction
@@ -53,10 +60,14 @@ Match the Rare Friends brand: crisp 1-bit pixel art, monochrome, one signal acce
 - The world canvas fills the whole game area (logical 960 x 640, CSS scaled to fit, pixel crisp).
 - The SDK runtime overlays a wallet/Friend control **bottom-left** and a menu button **bottom-right**:
   keep both corners free (about 200 x 64 px each at 960 wide).
-- HUD: top-left pill (Simulated RF balance, eggs, brood count), top-right icon buttons (sound, settings/how to play).
+- HUD: top-left pill (Simulated RF balance, eggs, brood count) and, from the first launch, the Slingshot net pill;
+  top-right icon buttons (sound, settings/how to play).
 - Primary action: bottom-centre button "Find a match" (also reachable by walking to the Matchmaker station).
 - Stations in the world: Matchmaker (terminal with heart screen, left), Incubator (egg machine, centre-top),
-  Sanctuary (gate with plants, right). Walking near shows a prompt; E/Enter/Space or tap activates.
+  Moon Slingshot (in front of the back-wall window, between the Incubator and the Sanctuary; it shoots through
+  that window), Sanctuary (gate with plants, right). Walking near shows a prompt; E/Enter/Space or tap activates.
+- Moon Slingshot flight: a full-area overlay with its own canvas (side view past the zones), **Skip**, then a
+  result card; reduced motion fades to the landing.
 - Panels open as centred cards over the world; the world pauses while a panel is open.
 
 ## Module ownership
@@ -68,6 +79,9 @@ Match the Rare Friends brand: crisp 1-bit pixel art, monochrome, one signal acce
 | `src/scene/**` | renderer agent | implements `NurseryScene`, `HatchSequence` |
 | `src/ui/**`, `style.css` | UI agent | React 19 components, props only |
 | `game.json`, `src/economy.ts`, `tests/economy.test.ts`, `tools/**`, test/video scripts | infra agent | |
+| `src/slingshot.ts`, `tests/slingshot.test.ts` | lead | Moon Slingshot zones, odds, payouts, Moon Fund and backing rule; simulated side ledger (`useSlingshot`) |
+| `src/scene/launch.ts` | renderer agent | `createLaunchSequence` (`LaunchSequence` in `src/api.ts`): the flight overlay; `NurseryScene.playLaunch` lives in `src/scene/nursery.ts` |
+| `src/ui/SlingshotPanel.tsx`, `src/ui/LaunchOverlay.tsx` | UI agent | Station panel (baby picker, zone ladder, hold-to-pull button) and the flight overlay with the result card |
 | `index.tsx`, `README.md` | lead | integration |
 
 Relative imports inside the game use explicit `.ts`/`.tsx` extensions (esbuild bundles them; node

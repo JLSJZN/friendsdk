@@ -4,6 +4,8 @@ import { cx } from "./shared.ts";
 export type StationPrompt = Readonly<{
   /** What happens, e.g. "Open the Matchmaker". */
   label: string;
+  /** Shorter text for narrow phone-landscape frames, e.g. "Matchmaker". Default: the label. */
+  short?: string;
   /** Key hint, default "E". Hidden on touch-sized layouts. */
   keyHint?: string;
   onActivate: () => void;
@@ -26,14 +28,17 @@ export type ActionBarProps = Readonly<{
 
 /**
  * Bottom actions. Wide layouts centre them; compact (phone) layouts shrink them into one slim row in the
- * bottom-right corner so the middle of the world stays visible. Always above the runtime toolbar band
- * (wallet/Friend controls bottom-left, menu bottom-right), so it never collides with them at any frame size.
+ * bottom-right corner so the middle of the world stays visible (portrait phones put the station prompt on its
+ * own row above it). Always above the runtime toolbar band (wallet/Friend controls bottom-left, menu
+ * bottom-right), so it never collides with them at any frame size.
  */
 export function ActionBar({ onFindMatch, broodCount, onOpenBrood, primaryLabel = "Find a match", disabled, prompt, hint, coach }: ActionBarProps) {
   return <div className="rb-actionbar">
     {prompt ? <button type="button" className="rb-prompt" onClick={prompt.onActivate} disabled={disabled}>
       <kbd className="rb-kbd" aria-hidden="true">{prompt.keyHint ?? "E"}</kbd>
-      <span>{prompt.label}</span>
+      {prompt.short && prompt.short !== prompt.label
+        ? <span><span className="rb-long">{prompt.label}</span><span className="rb-short">{prompt.short}</span></span>
+        : <span>{prompt.label}</span>}
     </button> : hint ? <p className="rb-actionbar-hint">{hint}</p> : null}
     <div className="rb-actionbar-row">
       <span className="rb-find-wrap">
