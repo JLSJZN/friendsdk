@@ -69,7 +69,7 @@ export function BroodPanel({ babies, tiers, creature, initialSelectedKey, onRele
     const tier = info(selected);
     const back = <button type="button" className="rb-icon-button rb-panel-back" onClick={() => setSelectedKey(null)} disabled={busy}
       aria-label="Back to your brood"><PixelIcon name="back" /></button>;
-    return <Panel eyebrow="Nursery" title={`Your brood · ${babies.length}`} onClose={busy ? undefined : onClose} headerStart={back} size="lg"
+    return <Panel eyebrow="Nursery" title={sanctuary ? "Sanctuary: pick a baby to trade in" : `Your brood · ${babies.length}`} onClose={busy ? undefined : onClose} headerStart={back} size="lg"
       focusKey={selected.key} className="rb-brood rb-brood-detail">
       <BabyCard baby={selected} mode="detail" chance={tier?.chance ?? "?"} value={tier?.value ?? "?"} creature={creature}
         parentA={selected.parents && creature ? creature(selected.parents[0]) : null}
@@ -108,7 +108,7 @@ export function BroodPanel({ babies, tiers, creature, initialSelectedKey, onRele
     <div className={cx(friend && "rb-brood-pane")} role={friend ? "tabpanel" : undefined} id={friend ? `${id}-brood-panel` : undefined}
       aria-labelledby={friend ? `${id}-brood` : undefined} style={friend ? undefined : { display: "contents" }}>
     {sanctuary && <p className="rb-match-guide" role="note"><PixelIcon name="sprout" />
-      <span><strong>The Sanctuary</strong> takes babies you trade in and pays their fixed simulated RF value. Tap a baby to see its value.</span></p>}
+      <span><strong>The Sanctuary</strong> takes babies you trade in and pays their fixed simulated RF value. Tap a baby, then Trade in.</span></p>}
     {collection && <CollectionMeter collection={collection} />}
     {(heartsRate || onOpenShop) && babies.length > 0 && <div className="rb-brood-income">
       {heartsRate && <p><PixelIcon name="heart" /><span>Your brood earns <strong>{income} Hearts</strong> a minute.</span></p>}

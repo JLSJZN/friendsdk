@@ -12,8 +12,8 @@ export const SHADE = "#DAD4C7";
 /** Deep green used only as an ink companion to the signal green (leaf veins, grass tufts). */
 export const MOSS = "#7FA300";
 
-/** Parent row tints: parent A glows signal green, parent B glows paper white. */
-export const SOURCE_TINT = [GREEN, PAPER] as const;
+/** Parent row tints, matching PARENT_TINT: parent A (your Friend) glows paper white, parent B (the mate) signal green. */
+export const SOURCE_TINT = [PAPER, GREEN] as const;
 
 export function makeCanvas(width: number, height: number) {
   const canvas = document.createElement("canvas");

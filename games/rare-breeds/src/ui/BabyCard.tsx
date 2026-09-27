@@ -138,7 +138,7 @@ export function BabyCard({ baby, parentA, parentB, creature, chance, value, mode
 
         <div className="rb-card-facts">
           <section className="rb-card-traits" aria-label="Traits">
-            {traits.length ? <ul className="rb-chips">{traits.map(trait => <li key={trait} className="rb-chip"><PixelIcon name="sparkle" />{trait}</li>)}</ul>
+            {traits.length ? <p className="rb-trait-line"><span className="rb-trait-label">{tierLabel(tier)} traits:</span> {traits.join(" · ")}</p>
               : <p className="rb-muted rb-small">No mutations. A timeless classic.</p>}
           </section>
           <dl className={cx("rb-card-stats-row", hasRate && "rb-stats-3")}>
@@ -161,12 +161,12 @@ export function BabyCard({ baby, parentA, parentB, creature, chance, value, mode
         <div className="rb-card-buttons">
           {reveal && onKeep && <button type="button" className="rb-button rb-button-primary rb-button-lg rb-keep" onClick={onKeep}
             disabled={busy} data-autofocus><PixelIcon name="heart" /><span>Keep</span>
-            {keepBonus ? <span className="rb-keep-bonus">+{keepBonus}<span className="rb-sr-only"> Hearts</span></span> : null}</button>}
+            {keepBonus ? <span className="rb-keep-bonus">+{keepBonus} Hearts</span> : null}</button>}
           {!reveal && onUseAsParent && <button type="button" className="rb-button rb-button-primary rb-button-lg" onClick={onUseAsParent}
             disabled={busy} data-autofocus><PixelIcon name="heart" /><span><span className="rb-long">Breed with {baby.name}</span><span className="rb-short">Breed</span></span></button>}
           {releaseButton}
         </div>
-        {!choice && <p className="rb-card-fine rb-muted">{reveal ? "Keep: it follows your Friend and can breed again. " : "Kept babies can breed again. "}Sanctuary: trade it in for a fixed simulated RF value that never expires.</p>}
+        {!choice && <p className="rb-card-fine rb-muted">{reveal ? "Keep: it follows your Friend and can breed again. " : "Kept babies can breed again. "}Sanctuary: trade it in now or any time later for its fixed simulated value.</p>}
       </footer>
     </div>
   </article>;

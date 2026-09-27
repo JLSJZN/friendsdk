@@ -67,8 +67,9 @@ export const TIER_STYLE: Readonly<Record<TierId, Readonly<{ label: string; accen
   prismatic: { label: "Prismatic", accent: "#FFB800", glow: "#FFE27A" },
 };
 
-/** DNA source colours (parent A, parent B), shared by the hatch sequence and the DNA strip. */
-export const PARENT_TINT = ["#CCFF00", "#F4F1EA"] as const;
+/** DNA source colours (parent A = your Friend paper white, parent B = the mate signal green), shared by the intro,
+ * the hatch sequence and the DNA cards. On paper backgrounds draw parent A rows with an ink edge. */
+export const PARENT_TINT = ["#F4F1EA", "#CCFF00"] as const;
 
 /** World stations the player can walk to (scene) or open from the HUD (ui). */
 export type StationId = "matchmaker" | "incubator" | "sanctuary";

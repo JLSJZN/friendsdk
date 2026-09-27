@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { drawCreature } from "../draw.ts";
 import { isSideWalker } from "../genetics.ts";
 import { FRAME_SIZE, PARENT_TINT, type Creature, type Facing } from "../types.ts";
+/** Parent A's tint is paper white, invisible on the paper portraits: its row highlight there is a darker paper band. */
+const A_ROW_ON_PAPER = "#D6CFBF";
 import { PixelIcon } from "./PixelIcon.tsx";
 import { cx, pixelMetrics, subscribeTick, useDevicePixelRatio, useReducedMotion, useRootSize } from "./shared.ts";
 
@@ -102,7 +104,7 @@ function RowSprite({ creature, device, css, facing, faded, highlight, animate, l
 
 /**
  * Parent A, the baby and Parent B side by side at the same scale, rows aligned on one 16 row grid.
- * The links between them light up the rows each parent gave (PARENT_TINT: A signal green, B paper);
+ * The links between them light up the rows each parent gave (PARENT_TINT: A paper white, B signal green);
  * rows a parent did not give are washed out in its portrait. Hover, tap or use the arrow keys on a row
  * to trace it across all three.
  */
@@ -203,7 +205,7 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, babyExtra, revea
   const slot = (side: Side, creature: Creature | null | undefined, faded: readonly boolean[] | null, label?: string) =>
     <span className={cx("rb-trio-slot", `rb-trio-slot-${side}`)} onPointerMove={hover(side)} onPointerLeave={leave} onPointerDown={tap(side)}>
       {creature ? <RowSprite creature={creature} device={device} css={css} facing={facing} faded={faded} animate={animate} label={label}
-        highlight={active && source[active.row] === 0 && side !== "b" ? { row: active.row, color: PARENT_TINT[0] } : null} />
+        highlight={active && source[active.row] === 0 && side !== "b" ? { row: active.row, color: A_ROW_ON_PAPER } : null} />
         : <span className="rb-trio-missing" style={{ width: BOX * css, height: BOX * css }}><PixelIcon name="help" /></span>}
       {rowsLayer(side)}
       {side === "baby" && babyExtra}

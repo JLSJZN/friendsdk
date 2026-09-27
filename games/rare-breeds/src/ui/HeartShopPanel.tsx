@@ -103,7 +103,10 @@ export function HeartShopPanel({ hearts, perMinute, wearers, catalog, owned, equ
         onClick={() => setTab(value)}>{value === "hats" ? <PixelIcon name="sparkle" /> : <PixelIcon name="heart" />}{label}</button>)}
     </div>
 
-    {tab === "hats" && wearer && preview && <div className="rb-shop-hats rb-shop-v2" role="tabpanel" id={`${id}-hats-panel`} aria-labelledby={`${id}-hats`}>
+    {/* Both tabs stay mounted in one grid cell, so the panel keeps the taller tab's height when switching. */}
+    <div className="rb-shop-stack">
+    {wearer && preview && <div className={cx("rb-shop-hats rb-shop-v2", tab !== "hats" && "rb-shop-away")} role="tabpanel" id={`${id}-hats-panel`}
+      aria-labelledby={`${id}-hats`} inert={tab !== "hats" || undefined} aria-hidden={tab !== "hats" || undefined}>
       <figure className="rb-shop-stage">
         <SpriteThumb key={`${preview.key}|${hat.id}`} creature={preview} scale={compact ? 4 : 6} clip="walk" reducedMotion={reducedMotion}
           label={`${wearer.name} wearing the ${hat.name}`} />
@@ -143,7 +146,8 @@ export function HeartShopPanel({ hearts, perMinute, wearers, catalog, owned, equ
       </div>
     </div>}
 
-    {tab === "wish" && <div className="rb-shop-wish" role="tabpanel" id={`${id}-wish-panel`} aria-labelledby={`${id}-wish`}>
+    <div className={cx("rb-shop-wish", tab !== "wish" && "rb-shop-away")} role="tabpanel" id={`${id}-wish-panel`} aria-labelledby={`${id}-wish`}
+      inert={tab !== "wish" || undefined} aria-hidden={tab !== "wish" || undefined}>
       <p className="rb-shop-wish-lead">Pick a family and the Matchmaker offers three mates from it: the fastest way to fill your collection.
         Costs {wishPrice} Hearts; the hatch odds stay the same.</p>
       <div className="rb-shop-families" role="radiogroup" aria-label="Family">
@@ -159,6 +163,7 @@ export function HeartShopPanel({ hearts, perMinute, wearers, catalog, owned, equ
           </label>;
         })}
       </div>
-    </div>}
+    </div>
+    </div>
   </Panel>;
 }
