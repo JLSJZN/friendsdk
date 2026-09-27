@@ -222,11 +222,62 @@ test("F2 and F3 babies breed like wild Friends", () => {
     const f2 = hatch(left, right, TIER_ORDER[(k + 2) % 4]);
     assert.equal(f2.result.lineage, 2);
     assertHealthy(f2.result, `F2 ${k}`);
-    assert.equal(f2.result.family, `${FAMILY_NAMES[left.familyId]} × ${FAMILY_NAMES[right.familyId]}`);
+    const founders = new Set<string>([a, b, c, d].map(creature => FAMILY_NAMES[creature.familyId]));
+    const sides = labelSides(f2.result.family);
+    assert.ok(sides.every(name => founders.has(name)), `F2 label ${f2.result.family} names grandparent families`);
     const f3 = hatch(f2.baby, k % 2 ? pinned : left, TIER_ORDER[(k + 3) % 4]);
     assert.equal(f3.result.lineage, 3);
     assertHealthy(f3.result, `F3 ${k}`);
+    founders.add(FAMILY_NAMES[pinned.familyId]);
+    assert.ok(labelSides(f3.result.family).every(name => founders.has(name)), `F3 label ${f3.result.family} names lineage families`);
   }
+});
+
+// Family labels. Oracle helpers trace F2 rows by hand: baby row y is row y of parent rowSource[y].
+const labelSides = (label: string) => {
+  const parts = label.split(" × ");
+  assert.equal(parts.length, 2, `two-name label: ${label}`);
+  assert.ok(parts.every(name => (FAMILY_NAMES as readonly string[]).includes(name)), `known families: ${label}`);
+  return parts;
+};
+/** Family of row y of an F0 or F1 creature, traced through its parents (exact for F1). */
+const rowFamily = (creature: Creature, parents: readonly Creature[] | null, y: number) =>
+  parents ? FAMILY_NAMES[parents[creature.dna!.rowSource[y]].familyId] : FAMILY_NAMES[creature.familyId];
+const rowHasInk = (frame: Frame, y: number) => frame.subarray(y * 16, y * 16 + 16).some(Boolean);
+
+test("F2 labels name the family line each side passes on, never 'Cellular × Cellular' for a mixed line", () => {
+  // The judge case: two babies of one Cellular Friend, with a Mask and a Sparkling mate.
+  const mask = pool.find(c => c.familyId === 1 && c !== pinned)!, sparkling = pool.find(c => c.familyId === 7 && c !== pinned)!;
+  const fapu = hatch(pinned, mask, "common", 1n).baby, sibo = hatch(pinned, sparkling, "common", 2n).baby;
+  assert.equal(fapu.family, "Cellular × Mask");
+  assert.equal(sibo.family, "Cellular × Sparkling");
+  assert.equal(hatch(fapu, sibo, "common", 3n).baby.family, "Mask × Sparkling");
+
+  // Property check over many F2s bred the way the game does (every baby descends from the player's Friend).
+  const friendLine = pool.filter(c => c !== pinned);
+  let mixed = 0;
+  for (let k = 0; k < 400; k++) {
+    const mates = [friendLine[random(friendLine.length)], friendLine[random(friendLine.length)]];
+    const f1 = mates.map(mate => hatch(pinned, mate, TIER_ORDER[k % 4]).baby);
+    // Parent B is a sibling, a wild Friend or the Friend itself (backcross).
+    const [partner, partnerParents] = k % 3 === 0 ? [f1[1], [pinned, mates[1]]] as const : k % 3 === 1 ? [mates[1], null] as const : [pinned, null] as const;
+    const parents = [[f1[0], [pinned, mates[0]]], [partner, partnerParents]] as const;
+    const { result } = hatch(f1[0], partner, TIER_ORDER[(k + 1) % 4]);
+    const names = labelSides(result.family);
+    const view = result.dna.traits.includes("Side-walker") ? "right" : "down";
+    // Families each side really passes on (rows with ink in that parent's main frame, all its rows if none).
+    const carried = parents.map(([parent, grand], side) => {
+      const mine = result.dna.rowSource.map((source, y) => source === side ? y : -1).filter(y => y >= 0);
+      const inked = mine.filter(y => rowHasInk(parent.sheet.idle[view][0], y));
+      return new Set<string>((inked.length ? inked : mine).map(y => rowFamily(parent, grand, y)));
+    });
+    names.forEach((name, side) => assert.ok(carried[side].has(name), `${result.family}: side ${side} passes on ${name} (${[...carried[side]]})`));
+    if (new Set([...carried[0], ...carried[1]]).size >= 2) {
+      mixed++;
+      assert.notEqual(names[0], names[1], `${result.family} hides a family the line carries`);
+    }
+  }
+  assert.ok(mixed > 250, `most sampled lines are mixed (${mixed})`);
 });
 
 test("degenerate parents never crash and never give empty or broken frames", () => {

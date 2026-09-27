@@ -443,7 +443,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     if (beaconBox && inside(x, y, beaconBox)) { goToStation("matchmaker"); return; }
     const baby = hitBaby(x, y, slop);
     if (baby) { hop(baby, 12, 300); onCreatureActivate?.(baby.creature.key); dirty = true; return; }
-    if (inside(x, y, entityBox(player))) { hopChain(); fx.hearts(player.x, player.y - topOf(player) - 4, 1, 6); tagUntil = time + 2200; return; }
+    if (inside(x, y, entityBox(player))) { hopChain(); fx.hearts(player.x, player.y - topOf(player) - 4, 1, 6); tagUntil = time + 2200; onCreatureActivate?.(player.creature.key); return; }
     const station = hitStation(x, y);
     if (station) { goToStation(station); return; }
     if (walkTo({ x, y })) {

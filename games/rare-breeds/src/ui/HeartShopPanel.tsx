@@ -103,30 +103,15 @@ export function HeartShopPanel({ hearts, perMinute, wearers, catalog, owned, equ
         onClick={() => setTab(value)}>{value === "hats" ? <PixelIcon name="sparkle" /> : <PixelIcon name="heart" />}{label}</button>)}
     </div>
 
-    {tab === "hats" && wearer && preview && <div className="rb-shop-hats" role="tabpanel" id={`${id}-hats-panel`} aria-labelledby={`${id}-hats`}>
-      <div className="rb-shop-preview">
-        <figure className="rb-shop-stage">
-          <SpriteThumb key={`${preview.key}|${hat.id}`} creature={preview} scale={compact ? 4 : 6} clip="walk" reducedMotion={reducedMotion}
-            label={`${wearer.name} wearing the ${hat.name}`} />
-          <figcaption><strong>{hat.name}</strong><span>{hat.blurb}</span></figcaption>
-        </figure>
-        <div className="rb-shop-wearers" role="radiogroup" aria-label="Who wears it?">
-          <p className="rb-section-label">Who wears it?</p>
-          <div className="rb-shop-wearer-list">
-            {wearers.map(creature => <label key={creature.key} className={cx("rb-pick", "rb-pick-chip", "rb-shop-wearer")}>
-              <input type="radio" className="rb-sr-only" name={`${id}-wearer`} value={creature.key} checked={creature.key === wearer.key}
-                onChange={() => setWearerKey(creature.key)} />
-              <span className="rb-pick-body">
-                <span className="rb-slot"><SpriteThumb creature={creature} scale={2} label="" animate={false} /></span>
-                <span className="rb-pick-text">
-                  <span className="rb-pick-name">{creature.kind === "friend" ? "You" : creature.name}</span>
-                  <span className="rb-pick-meta">{equipped.get(creature.key) ? catalog.find(item => item.id === equipped.get(creature.key))?.name : "No hat"}</span>
-                </span>
-              </span>
-            </label>)}
-          </div>
-        </div>
-      </div>
+    {/* Both tabs stay mounted in one grid cell, so the panel keeps the taller tab's height when switching. */}
+    <div className="rb-shop-stack">
+    {wearer && preview && <div className={cx("rb-shop-hats rb-shop-v2", tab !== "hats" && "rb-shop-away")} role="tabpanel" id={`${id}-hats-panel`}
+      aria-labelledby={`${id}-hats`} inert={tab !== "hats" || undefined} aria-hidden={tab !== "hats" || undefined}>
+      <figure className="rb-shop-stage">
+        <SpriteThumb key={`${preview.key}|${hat.id}`} creature={preview} scale={compact ? 4 : 6} clip="walk" reducedMotion={reducedMotion}
+          label={`${wearer.name} wearing the ${hat.name}`} />
+        <figcaption><strong>{hat.name}</strong><span>{hat.blurb}</span></figcaption>
+      </figure>
       <div className="rb-shop-grid" role="radiogroup" aria-label="Hats">
         {catalog.map(item => {
           const by = wornBy(item.id);
@@ -136,15 +121,33 @@ export function HeartShopPanel({ hearts, perMinute, wearers, catalog, owned, equ
               <span className="rb-slot"><SpriteThumb creature={Object.freeze({ ...wearer, accessory: item.id })} scale={2} label="" animate={false} /></span>
               <span className="rb-shop-item-name">{item.name}</span>
               <span className={cx("rb-shop-item-state", owned.has(item.id) && "rb-owned")}>
-                {!owned.has(item.id) ? <Hearts amount={item.price} /> : by ? <>On {by.kind === "friend" ? "Friend" : by.name}</> : "Owned"}
+                {!owned.has(item.id) ? <Hearts amount={item.price} /> : by
+                  ? <><span className="rb-worn-long">On {by.kind === "friend" ? "Friend" : by.name}</span><span className="rb-worn-short">Worn</span></> : "Owned"}
               </span>
             </span>
           </label>;
         })}
       </div>
+      <div className="rb-shop-wearers" role="radiogroup" aria-labelledby={`${id}-wearers`}>
+        <p className="rb-section-label" id={`${id}-wearers`}>Who wears it?</p>
+        <div className="rb-shop-wearer-list">
+          {wearers.map(creature => <label key={creature.key} className={cx("rb-pick", "rb-pick-chip", "rb-shop-wearer")}>
+            <input type="radio" className="rb-sr-only" name={`${id}-wearer`} value={creature.key} checked={creature.key === wearer.key}
+              onChange={() => setWearerKey(creature.key)} />
+            <span className="rb-pick-body">
+              <span className="rb-slot"><SpriteThumb creature={creature} scale={2} label="" animate={false} /></span>
+              <span className="rb-pick-text">
+                <span className="rb-pick-name">{creature.kind === "friend" ? "You" : creature.name}</span>
+                <span className="rb-pick-meta">{equipped.get(creature.key) ? catalog.find(item => item.id === equipped.get(creature.key))?.name : "No hat"}</span>
+              </span>
+            </span>
+          </label>)}
+        </div>
+      </div>
     </div>}
 
-    {tab === "wish" && <div className="rb-shop-wish" role="tabpanel" id={`${id}-wish-panel`} aria-labelledby={`${id}-wish`}>
+    <div className={cx("rb-shop-wish", tab !== "wish" && "rb-shop-away")} role="tabpanel" id={`${id}-wish-panel`} aria-labelledby={`${id}-wish`}
+      inert={tab !== "wish" || undefined} aria-hidden={tab !== "wish" || undefined}>
       <p className="rb-shop-wish-lead">Pick a family and the Matchmaker offers three mates from it: the fastest way to fill your collection.
         Costs {wishPrice} Hearts; the hatch odds stay the same.</p>
       <div className="rb-shop-families" role="radiogroup" aria-label="Family">
@@ -160,6 +163,7 @@ export function HeartShopPanel({ hearts, perMinute, wearers, catalog, owned, equ
           </label>;
         })}
       </div>
-    </div>}
+    </div>
+    </div>
   </Panel>;
 }

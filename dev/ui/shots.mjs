@@ -11,14 +11,16 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(here, "shots");
 const filter = process.argv[2] ?? "";
 const SCENARIOS = ["thumbs", "nursery", "nursery-prompt", "nursery-prompt-long", "matchmaker", "matchmaker-buy", "matchmaker-broke", "matchmaker-busy",
-  "matchmaker-brood", "matchmaker-first", "intro-1", "intro-2", "intro-3", "intro-4", "intro-5", "intro-6", "nursery-coach", "shop", "shop-wish", "eggs", "eggs-stocked", "eggs-broke", "hatching", "reveal-common", "reveal-spotted", "reveal-mutant", "reveal-prismatic", "brood", "brood-detail",
-  "brood-empty", "settings", "settings-stations", "settings-screen", "loading", "error",
+  "matchmaker-brood", "matchmaker-first", "matchmaker-stock", "matchmaker-preferred", "intro-1", "intro-2", "intro-3", "intro-4", "intro-5", "intro-6", "nursery-coach",
+  "shop", "shop-wish", "eggs", "eggs-stocked", "eggs-broke", "hatching", "reveal-common", "reveal-spotted", "reveal-mutant", "reveal-prismatic", "reveal-f3",
+  "brood", "brood-detail", "brood-empty", "brood-tabs", "brood-legacy", "brood-legacy-ghost", "brood-legacy-empty", "brood-legacy-detail", "friend-panel",
+  "settings", "settings-stations", "settings-screen", "loading", "error",
   "slingshot", "slingshot-many", "slingshot-crowd", "slingshot-empty", "slingshot-blocked", "slingshot-busy", "slingshot-flying", "slingshot-pond", "slingshot-rooftop",
   "slingshot-moon", "slingshot-hud", "slingshot-hud-down", "slingshot-hint", "slingshot-settings", "slingshot-intro"];
 // Page viewport = frame + its 1px border, so the SDK frame renders at exactly 960 x 640 / 390 x 260 / 360 x 240.
 // 390 matches the phone run of tools/test-game.mjs (390 x 844 page, 390 x 260 frame).
-// 390p is a portrait phone: host.css switches the frame to 3:4 (390 x 520).
-const SIZES = [{ name: "960", width: 962, height: 642 }, { name: "390p", width: 392, height: 522 }, { name: "390", width: 392, height: 262 }, { name: "360", width: 362, height: 242 }];
+// 390p is a portrait phone: host.css switches the frame to 3:4 (390 x 520); 360p is a narrow Android portrait frame.
+const SIZES = [{ name: "960", width: 962, height: 642 }, { name: "390p", width: 392, height: 522 }, { name: "360p", width: 362, height: 482 }, { name: "390", width: 392, height: 262 }, { name: "360", width: 362, height: 242 }];
 // The onboarding panels also at the narrowest portrait frame (a 328 px wide phone: 328 x 437).
 const ONBOARDING = /^(intro-|settings)/;
 const NARROW = { name: "328p", width: 330, height: 439 };

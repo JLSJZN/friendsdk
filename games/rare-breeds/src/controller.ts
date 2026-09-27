@@ -166,6 +166,8 @@ export function useRareBreeds({ friendId, client, paused }: { friendId: bigint; 
       if (version === epoch.current) {
         setBabies(current => new Map(current).set(baby.key, baby));
         setHatch(state);
+        // Fresh faces after every hatch, so the lazy path does not breed the same pair forever.
+        setCandidates(pickCandidates(friendId));
       }
       return state;
     }, "The egg could not be hatched.");

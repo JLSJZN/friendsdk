@@ -1,10 +1,10 @@
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { Creature } from "../types.ts";
 import { Panel } from "./Panel.tsx";
 import { PixelIcon } from "./PixelIcon.tsx";
 import { SpriteThumb } from "./SpriteThumb.tsx";
 import { familyOf } from "./collection.ts";
-import { cx, hashString, lineageLabel, tierLabel, tierVars, useReducedMotion, type TierInfo } from "./shared.ts";
+import { cx, hashString, lineageLabel, tierLabel, tierVars, useCompact, useReducedMotion, type TierInfo } from "./shared.ts";
 
 export type MatchmakerPanelProps = Readonly<{
   /** Parent A options: the player's Friend first, then kept babies. */
@@ -42,6 +42,22 @@ export type MatchmakerPanelProps = Readonly<{
   onWish?: () => void;
   /** Wish match price in Hearts, e.g. 15. */
   wishPrice?: number;
+  /**
+   * Preselect Parent B by key (a wild mate on offer or a kept baby), e.g. one from a family not collected yet.
+   * The player's own pick wins while it is still on offer; after a reroll the new preferred mate is picked.
+   */
+  preferredMateKey?: string;
+  /**
+   * With no egg waiting: a secondary "Stock up: 5 eggs · 5 RF" action next to "Buy egg & breed"
+   * (one runtime confirmation for the whole pack). Called with the pack size.
+   */
+  onStockUp?: (quantity: bigint) => void;
+  /** Eggs in the stock-up pack. Default 5. */
+  stockUpQuantity?: number;
+  /** Preformatted pack price, e.g. "5 RF". */
+  stockUpPrice?: string;
+  /** Disables the stock-up action, e.g. when the pack is not affordable. */
+  stockUpDisabled?: boolean;
   reducedMotion?: boolean;
 }>;
 
@@ -97,14 +113,28 @@ function Pick({ creature, name, checked, disabled, onPick, variant, isNew }: Pic
 
 /** Choose two parents, reroll wild mates for free, and breed (buying an egg first when needed). */
 export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, canAfford, busy, busyLabel, actionLabel, error, disabledReason,
-  initialParentA, onReroll, onBreed, onClose, collectedFamilies, odds, guide, onWish, wishPrice, reducedMotion }: MatchmakerPanelProps) {
+  initialParentA, onReroll, onBreed, onClose, collectedFamilies, odds, guide, onWish, wishPrice, preferredMateKey,
+  onStockUp, stockUpQuantity = 5, stockUpPrice, stockUpDisabled, reducedMotion }: MatchmakerPanelProps) {
   const id = useId();
+  const node = useRef<HTMLDivElement>(null);
+  const aList = useRef<HTMLDivElement>(null);
+  const compact = useCompact(node);
   const reduced = useReducedMotion(reducedMotion);
   const [aKey, setAKey] = useState(initialParentA ?? parents[0]?.key ?? "");
-  const [bKey, setBKey] = useState(candidates[0]?.key ?? "");
+  const [bKey, setBKey] = useState(preferredMateKey ?? candidates[0]?.key ?? "");
   const a = parents.find(creature => creature.key === aKey) ?? parents[0];
   const broodMates = parents.filter(creature => creature.kind === "baby" && creature.key !== a?.key);
-  const b = [...candidates, ...broodMates].find(creature => creature.key === bKey) ?? candidates[0] ?? broodMates[0];
+  const offered = [...candidates, ...broodMates];
+  const b = offered.find(creature => creature.key === bKey) ?? offered.find(creature => creature.key === preferredMateKey)
+    ?? candidates[0] ?? broodMates[0];
+  // Parent A becomes one sideways-scrolling row once there is a choice; keep the picked one in view.
+  const aRow = parents.length > 1;
+  useLayoutEffect(() => {
+    const list = aList.current, picked = list?.querySelector<HTMLElement>("input:checked")?.closest<HTMLElement>(".rb-pick");
+    if (!list || !picked || list.scrollWidth <= list.clientWidth) return;
+    const left = picked.offsetLeft - list.offsetLeft, right = left + picked.offsetWidth;
+    if (left < list.scrollLeft || right > list.scrollLeft + list.clientWidth) list.scrollLeft = Math.max(0, left - 8);
+  }, [aRow, compact]);
   const fun = a && b ? chemistry(a, b) : null;
   const isNew = (creature: Creature) => !!collectedFamilies && creature.kind !== "baby" && !collectedFamilies.includes(familyOf(creature));
   const newCount = collectedFamilies && a && b ? new Set([a, b].filter(isNew).map(familyOf)).size : 0;
@@ -113,6 +143,11 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
     ?? (needsEgg && !canAfford ? `Not enough simulated RF. An egg costs ${price}.` : undefined)
     ?? (!a || !b ? "Pick two parents first." : undefined);
   const label = busy ? busyLabel ?? "Hatching…" : actionLabel ?? (needsEgg ? `Buy egg & breed · ${price}` : "Breed · uses 1 egg");
+  const stockUp = needsEgg && onStockUp && !actionLabel && !busy
+    ? <button type="button" className="rb-button rb-button-ghost rb-button-sm rb-stock" onClick={() => onStockUp(BigInt(stockUpQuantity))}
+      disabled={stockUpDisabled || !!disabledReason} aria-label={`Stock up: ${stockUpQuantity} eggs${stockUpPrice ? ` for ${stockUpPrice}` : ""}, one confirmation`}>
+      <PixelIcon name="egg" /><span><span className="rb-stock-long">Stock up: </span>{stockUpQuantity}<span className="rb-stock-eggs"> eggs</span>{stockUpPrice ? ` · ${stockUpPrice}` : ""}</span>
+    </button> : null;
   const footer = <>
     {odds && odds.length > 0 && <div className="rb-odds-strip">
       <p className="rb-odds-strip-label"><span className="rb-long">What can hatch</span><span className="rb-short">Odds</span></p>
@@ -131,7 +166,7 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
         : "Next, Rare Friends asks you to confirm Use egg. It is a simulated preview, no real RF moves."}</span>
       <span className="rb-short">{needsEgg ? "Next: confirm Buy egg and Use egg (both simulated)." : "Next: confirm Use egg (simulated)."}</span>
     </p>}
-    <div className="rb-match-foot">
+    <div className={cx("rb-match-foot", stockUp && "rb-match-foot-stock")}>
     <div className="rb-foot-info">
       <p className="rb-foot-meta">
         <PixelIcon name="egg" /><strong>{eggs}</strong> {eggs === 1 ? "egg" : "eggs"}
@@ -143,6 +178,7 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
           ? `This pair adds ${newCount === 1 ? "a new family" : `${newCount} new families`} to your collection.`
           : needsEgg ? "You confirm the purchase in Rare Friends." : "Pick a pair, then hatch."}</p>}
     </div>
+    {stockUp}
     <button type="button" className="rb-button rb-button-primary rb-button-lg rb-breed" aria-busy={busy || undefined}
       disabled={busy || !!reason} onClick={() => a && b && onBreed(a, b)} data-autofocus>
       {busy ? <span className="rb-spinner" aria-hidden="true" /> : <PixelIcon name="heart" />}
@@ -150,6 +186,47 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
     </button>
     </div>
   </>;
+
+  const sectionA = <div key="a" className="rb-section rb-section-a">
+    <div className="rb-section-head"><h3 className="rb-section-label" id={`${id}-a`}>Parent A{aRow && <span className="rb-section-hint">Yours · {parents.length}</span>}</h3></div>
+    <div ref={aList} className={cx("rb-chip-list", aRow && "rb-chip-scroll")} role="radiogroup" aria-labelledby={`${id}-a`}>
+      {parents.map(creature => <Pick key={creature.key} creature={creature} name={`${id}-parent-a`} variant="chip" disabled={busy}
+        checked={creature.key === a?.key} onPick={() => setAKey(creature.key)} />)}
+    </div>
+  </div>;
+
+  const broodChips = broodMates.length > 0 && <div className="rb-chip-list rb-chip-list-wrap rb-chip-scroll">
+    {broodMates.map(creature => <Pick key={creature.key} creature={creature} name={`${id}-parent-b`} variant="chip" disabled={busy}
+      checked={creature.key === b?.key} onPick={() => setBKey(creature.key)} />)}
+  </div>;
+  // Phones: kept babies as Parent B come last, after Parent A, so the real wild Friends and your own pick both show first.
+  const broodSection = broodChips && <div key="brood" className="rb-section rb-section-brood" role="radiogroup" aria-labelledby={`${id}-brood`}>
+    <p className="rb-section-sub" id={`${id}-brood`}>Or Parent B from your brood</p>
+    {broodChips}
+  </div>;
+
+  const sectionB = (withBrood: boolean) => <div key="b" className="rb-section rb-section-b">
+    <div className="rb-section-head">
+      <h3 className="rb-section-label" id={`${id}-b`}>Parent B</h3>
+      <button type="button" className="rb-button rb-button-ghost rb-button-sm rb-reroll" onClick={onReroll} disabled={busy}>
+        <PixelIcon name="dice" /><span>New faces</span><span className="rb-tag">Free</span>
+      </button>
+      {onWish && <button type="button" className="rb-button rb-button-ghost rb-button-sm rb-wish" onClick={onWish} disabled={busy}
+        aria-label={`Wish match: pick a family${wishPrice ? `, ${wishPrice} Hearts` : ""}`}>
+        <PixelIcon name="sparkle" /><span>Wish</span>{wishPrice ? <span className="rb-wish-price"><PixelIcon name="heart" />{wishPrice}</span> : null}
+      </button>}
+    </div>
+    <div role="radiogroup" aria-labelledby={`${id}-b`} className="rb-section-b-options">
+      <div className="rb-card-row">
+        {candidates.map(creature => <Pick key={creature.key} creature={creature} name={`${id}-parent-b`} variant="card" disabled={busy}
+          checked={creature.key === b?.key} onPick={() => setBKey(creature.key)} isNew={isNew(creature)} />)}
+      </div>
+      {withBrood && broodChips && <>
+        <p className="rb-section-sub">Or one of your brood</p>
+        {broodChips}
+      </>}
+    </div>
+  </div>;
 
   return <Panel eyebrow="Matchmaker" title="Find a match" onClose={busy ? undefined : onClose} size="lg" footer={footer} className={cx("rb-match", guide && "rb-match-guided")}>
     {a && b && fun && <section className={cx("rb-match-stage", !reduced && "rb-animate")} aria-label={`Chosen pair: ${a.name} and ${b.name}`}>
@@ -178,40 +255,8 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
       <span><strong>Parent A</strong> is yours: your Friend or a kept baby. <strong>Parent B</strong> is the mate: a real Rare Friend or one of your babies.</span>
     </p>}
 
-    <div className="rb-match-pickers">
-      <div className="rb-section rb-section-a">
-        <div className="rb-section-head"><h3 className="rb-section-label" id={`${id}-a`}>Parent A</h3></div>
-        <div className="rb-chip-list" role="radiogroup" aria-labelledby={`${id}-a`}>
-          {parents.map(creature => <Pick key={creature.key} creature={creature} name={`${id}-parent-a`} variant="chip" disabled={busy}
-            checked={creature.key === a?.key} onPick={() => setAKey(creature.key)} />)}
-        </div>
-      </div>
-
-      <div className="rb-section rb-section-b">
-        <div className="rb-section-head">
-          <h3 className="rb-section-label" id={`${id}-b`}>Parent B</h3>
-          <button type="button" className="rb-button rb-button-ghost rb-button-sm rb-reroll" onClick={onReroll} disabled={busy}>
-            <PixelIcon name="dice" /><span>New faces</span><span className="rb-tag">Free</span>
-          </button>
-          {onWish && <button type="button" className="rb-button rb-button-ghost rb-button-sm rb-wish" onClick={onWish} disabled={busy}
-            aria-label={`Wish match: pick a family${wishPrice ? `, ${wishPrice} Hearts` : ""}`}>
-            <PixelIcon name="sparkle" /><span>Wish</span>{wishPrice ? <span className="rb-wish-price"><PixelIcon name="heart" />{wishPrice}</span> : null}
-          </button>}
-        </div>
-        <div role="radiogroup" aria-labelledby={`${id}-b`} className="rb-section-b-options">
-          <div className="rb-card-row">
-            {candidates.map(creature => <Pick key={creature.key} creature={creature} name={`${id}-parent-b`} variant="card" disabled={busy}
-              checked={creature.key === b?.key} onPick={() => setBKey(creature.key)} isNew={isNew(creature)} />)}
-          </div>
-          {broodMates.length > 0 && <>
-            <p className="rb-section-sub">Or one of your brood</p>
-            <div className="rb-chip-list rb-chip-list-wrap">
-              {broodMates.map(creature => <Pick key={creature.key} creature={creature} name={`${id}-parent-b`} variant="chip" disabled={busy}
-                checked={creature.key === b?.key} onPick={() => setBKey(creature.key)} />)}
-            </div>
-          </>}
-        </div>
-      </div>
+    <div ref={node} className={cx("rb-match-pickers", "rb-match-v2", aRow && "rb-match-stacked", compact && "rb-match-b-first")}>
+      {compact ? [sectionB(false), sectionA, broodSection] : [sectionA, sectionB(true)]}
     </div>
   </Panel>;
 }

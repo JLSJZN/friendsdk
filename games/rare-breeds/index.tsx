@@ -8,14 +8,14 @@ import { ACCESSORIES } from "./src/accessories.ts";
 import { KEEP_BONUS, WISH_PRICE, heartsPerMinute, useHearts, wishFamilies } from "./src/hearts.ts";
 import { describeTiers, expectedValueLabel, formatRF, purchaseBlocker } from "./src/economy.ts";
 import { createNurseryScene } from "./src/scene/nursery.ts";
-import { createHatchSequence } from "./src/scene/hatch.ts";
+import { createHatchSequence, createQuickHatchSequence } from "./src/scene/hatch.ts";
 import { createLaunchSequence } from "./src/scene/launch.ts";
 import { slingshotNet, useSlingshot, zoneInfo, type LaunchResult } from "./src/slingshot.ts";
 import type { HatchSequence, LaunchSequence, NurseryScene } from "./src/api.ts";
 import { TIER_ORDER, type Creature, type LaunchZoneId, type StationId, type TierId } from "./src/types.ts";
 import {
   ActionBar, BabyCard, BroodPanel, EggShopPanel, ErrorScreen, GameRoot, HatchOverlay, HeartShopPanel, Hud, IntroPanel, LaunchOverlay, LoadingScreen,
-  MatchmakerPanel, SettingsPanel, SlingshotPanel, Toast, WorldLayer, buildCollection, discoveriesOf, signedRF, type ShopTab, type TierInfo,
+  MatchmakerPanel, SettingsPanel, SlingshotPanel, Toast, WorldLayer, buildCollection, discoveriesOf, familyOf, signedRF, type BroodTab, type ShopTab, type TierInfo,
 } from "./src/ui/index.ts";
 import "./style.css";
 
@@ -37,6 +37,8 @@ const LANDING_CUE: Record<LaunchZoneId, FriendSoundCue> = {
 /** Once the player has a kept baby and has never opened the slingshot: a tappable pointer to it in the prompt slot. */
 const SLING_HINT = "Moon Slingshot: x0 to x10", SLING_HINT_SHORT = "Slingshot x0-x10";
 const EGG_PACKS = [1n, 3n, 5n] as const;
+/** Matchmaker "Stock up" pack: one runtime confirmation for several eggs. */
+const STOCK_UP = 5n;
 
 /** Rare Breeds: the SDK runtime supplies the verified Friend, the simulated ledger and every confirmation. */
 export default function RareBreeds({ friendId, client, paused }: GameComponentProps) {
@@ -45,6 +47,10 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
   const [panel, setPanel] = useState<PanelId | null>(null);
   const [parentAKey, setParentAKey] = useState<string | undefined>();
   const [broodFocus, setBroodFocus] = useState<string | null>(null);
+  // Brood panel tab: "legacy" shows the Friend's card and family tree (e.g. after tapping the Friend).
+  const [broodTab, setBroodTab] = useState<BroodTab>("brood");
+  // Hatches presented this session: after the first two, common and spotted babies get the quick cut.
+  const hatchesShown = useRef(new Set<string>());
   const [near, setNear] = useState<StationId | null>(null);
   const [muted, setMuted] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -136,7 +142,10 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
       else if (station === "slingshot") openSling();
       else { openPanel(station === "incubator" ? "eggs" : "brood"); setSanctuary(station === "sanctuary"); }
     },
-    creature: key => { setBroodFocus(key); openPanel("brood"); },
+    creature: key => {
+      const friend = key === player?.key;
+      setBroodTab(friend ? "legacy" : "brood"); setBroodFocus(friend ? null : key); openPanel("brood");
+    },
   };
   useEffect(() => {
     if (!worldCanvas || !player) return;
@@ -161,7 +170,10 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
   useEffect(() => {
     if (!hatch || hatch.stage !== "hatching" || !hatchCanvas) return;
     let revealed = false;
-    const created = createHatchSequence({
+    const tier = hatch.baby.tier ?? "common";
+    // First two hatches and every Mutant or Prismatic get the full show; later ones the 1.8 s cut.
+    const quick = hatchesShown.current.add(hatch.baby.key).size > 2 && tier !== "mutant" && tier !== "prismatic";
+    const created = (quick ? createQuickHatchSequence : createHatchSequence)({
       canvas: hatchCanvas, parentA: hatch.parentA, parentB: hatch.parentB, baby: hatch.baby, reducedMotion,
       onBeat: beat => {
         if (beat === "wobble") cue("anticipation");
@@ -263,6 +275,12 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
   }
 
   function openShop(tab: ShopTab) { setShopTab(tab); openPanel("shop"); }
+  function openBrood(tab: BroodTab = "brood") { setBroodTab(tab); setBroodFocus(null); openPanel("brood"); }
+
+  /** Matchmaker "Stock up": buys a pack of eggs and stays in the Matchmaker, ready to breed. */
+  async function stockUp(quantity: bigint) {
+    if (await game.buyEggs(quantity)) { cue("purchase"); notify(`${quantity} eggs in the incubator.`, "success"); }
+  }
 
   function wish(familyId: number) {
     const family = wishFamilies.find(item => item.familyId === familyId);
@@ -308,12 +326,12 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
       <canvas ref={setWorldCanvas} className="rb-world-canvas" aria-label={`Nursery. ${player.name} and ${brood.length} babies. Use WASD or arrow keys, or tap to walk.`} />
       <Hud balance={formatRF(snapshot.rfBalance)} eggs={eggs} broodCount={keptCount} muted={muted}
         onToggleSound={() => setMuted(value => !value)} onOpenSettings={() => openPanel("settings")}
-        onOpenBrood={() => openPanel("brood")} disabled={paused || !!busy} collection={collection}
+        onOpenBrood={() => openBrood()} disabled={paused || !!busy} collection={collection}
         hearts={hearts.hearts} onOpenShop={() => openShop("hats")}
         slingshot={{ net: slingshotNet(sling.ledger) - (inAir ? inAir.payout - inAir.value : 0n), launches: sling.ledger.launches - (inAir ? 1 : 0) }}
         onOpenSlingshot={openSling} />
       {note && <Toast key={note.id} message={note.message} tone={note.tone} onDismiss={() => { setNote(null); game.clearError(); }} />}
-      {!modalOpen && <ActionBar onFindMatch={() => openMatch()} broodCount={brood.length} onOpenBrood={() => openPanel("brood")}
+      {!modalOpen && <ActionBar onFindMatch={() => openMatch()} broodCount={brood.length} onOpenBrood={() => openBrood()}
         primaryLabel={game.pendingPlay ? "Finish hatching" : busy ? busyLabel : undefined} disabled={paused || !!busy}
         prompt={near ? { label: STATION_LABEL[near], short: STATION_SHORT[near], keyHint: "E", onActivate: () => handlers.current.station(near) }
           : firstTime.sling && !firstTime.match && brood.length > 0 ? { label: SLING_HINT, short: SLING_HINT_SHORT, keyHint: "!", onActivate: openSling } : null}
@@ -325,9 +343,13 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
       actionLabel={game.pendingPlay ? "Finish hatching" : undefined} error={game.error} disabledReason={game.blockerText || undefined}
       initialParentA={parentAKey} onReroll={() => { cue("select"); game.reroll(); }} onBreed={(a, b) => void breed(a, b)}
       onClose={busy ? undefined : () => openPanel(null)} collectedFamilies={collection.families} odds={tiers} guide={firstTime.breed}
-      onWish={() => openShop("wish")} wishPrice={WISH_PRICE} reducedMotion={reducedMotion} />}
+      onWish={() => openShop("wish")} wishPrice={WISH_PRICE} reducedMotion={reducedMotion}
+      preferredMateKey={game.candidates.find(mate => !collection.families.includes(familyOf(mate)))?.key}
+      onStockUp={quantity => void stockUp(quantity)} stockUpQuantity={Number(STOCK_UP)} stockUpPrice={formatRF(definition.price * STOCK_UP)}
+      stockUpDisabled={paused || purchaseBlocker(snapshot, definition, STOCK_UP) !== null} />}
 
     {panel === "brood" && <BroodPanel babies={dressedBrood} tiers={tiers} creature={dressedCreature} initialSelectedKey={broodFocus}
+      friend={dressedPlayer ?? player} initialTab={broodTab}
       heartsRate={baby => heartsPerMinute(baby.tier)} onOpenShop={() => openShop("hats")}
       onRelease={baby => void release(baby, false)} onUseAsParent={baby => openMatch(baby.key)} onFindMatch={() => openMatch()}
       onClose={busy ? undefined : () => { setBroodFocus(null); openPanel(null); }} collection={collection} sanctuary={sanctuary} busy={!!busy}
@@ -366,8 +388,7 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
       label={`${hatch.baby.name} hatched`}>
       {hatch.stage === "result" && <BabyCard baby={hatch.baby} parentA={hatchParents[0]} parentB={hatchParents[1]}
         chance={tierInfo(hatch.baby.tier).chance} value={tierInfo(hatch.baby.tier).value} mode="reveal" discoveries={discoveriesOf(hatch.baby, collection)}
-        heartsPerMinute={heartsPerMinute(hatch.baby.tier)} keepBonus={KEEP_BONUS}
-        hint={firstTime.card ? `Keep ${hatch.baby.name} to earn ${heartsPerMinute(hatch.baby.tier)} Hearts a minute and breed again, or trade it in at the Sanctuary for a fixed ${tierInfo(hatch.baby.tier).value} (simulated).` : undefined}
+        heartsPerMinute={heartsPerMinute(hatch.baby.tier)} keepBonus={KEEP_BONUS} creature={dressedCreature}
         onKeep={() => keep(hatch.baby)} onRelease={() => void release(hatch.baby, true)} busy={!!busy} busyLabel={busyLabel}
         error={game.error} reducedMotion={reducedMotion} />}
     </HatchOverlay>}
