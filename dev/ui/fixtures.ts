@@ -2,6 +2,8 @@
 import wildData from "../../games/rare-breeds/data/wild-friends.json";
 import gameJson from "../../games/rare-breeds/game.json";
 import { describeTiers, type TierRow } from "../../games/rare-breeds/src/economy.ts";
+import { breed, breedSeed } from "../../games/rare-breeds/src/genetics.ts";
+import { lineageTitles } from "../../games/rare-breeds/src/titles.ts";
 import { creatureFromRecord, type WildFriendRecord } from "../../games/rare-breeds/src/sprites.ts";
 import { FACINGS, FRAME_SIZE, TIER_ORDER, type Creature, type Dna, type Frame, type SpriteSheet, type TierId } from "../../games/rare-breeds/src/types.ts";
 import type { TierInfo } from "../../games/rare-breeds/src/ui/index.ts";
@@ -82,6 +84,29 @@ babies.push(makeBaby({ name: "Tofu", a: babies[4], b: babies[2], tier: "common",
 
 const lookup = new Map<string, Creature>([player, ...wild, ...babies].map(creature => [creature.key, creature]));
 export const creature = (key: string) => lookup.get(key) ?? null;
+
+// Real genetics (src/genetics.ts) for the collector-depth stories: a Mutant with a shape, its Common child that inherited
+// it, and an Echo (a backcross with 12+ of 16 rows from the player's Friend). Deterministic: the first play id that fits.
+function bred(a: Creature, b: Creature, tier: TierId, playId: number): Creature {
+  const id = BigInt(playId), result = breed({ a, b, tier, playId: id, seed: breedSeed(player.tokenId ?? 0n, a.key, b.key, id),
+    takenNames: new Set([...lookup.values()].filter(item => item.kind === "baby").map(item => item.name)) });
+  const baby: Creature = Object.freeze({ key: `baby:${playId}`, kind: "baby", name: result.name, family: result.family, familyId: result.familyId,
+    lineage: result.lineage, sheet: result.sheet, tier, parents: [a.key, b.key] as const, dna: result.dna, playId: id });
+  lookup.set(baby.key, baby);
+  return baby;
+}
+function first(from: number, make: (playId: number) => Creature, fits: (baby: Creature) => boolean) {
+  for (let playId = from; playId < from + 400; playId++) {
+    const baby = make(playId);
+    if (fits(baby)) return baby;
+    lookup.delete(baby.key);
+  }
+  throw new Error(`No fixture baby fits from play ${from}`);
+}
+export const shaped = first(60, id => bred(player, wild[1], "mutant", id), baby => (baby.dna?.shapes ?? []).some(shape => shape.kind === "head"));
+export const heir = first(700, id => bred(shaped, wild[4], "common", id), baby => (baby.dna?.shapes ?? []).some(shape => shape.from));
+const firstBorn = first(90, id => bred(player, wild[2], "common", id), () => true);
+export const echo = first(800, id => bred(player, firstBorn, "spotted", id), baby => lineageTitles(baby, creature, player).some(title => title.id === "echo"));
 
 export const tiers: TierInfo[] = TIER_ORDER.map((tier, index) => ({
   tier, chance: ["62%", "25%", "10%", "3%"][index], value: ["0.25 RF", "1 RF", "2.5 RF", "8 RF"][index],

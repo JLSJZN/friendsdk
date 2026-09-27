@@ -1,6 +1,7 @@
-// Dev-only: screenshots every harness scenario at 960 x 640, 390 x 520 (portrait), 390 x 260 and 360 x 240 (inside the real
-// SDK frame chrome; the intro and help panels also at 328 x 437), fails on console errors and clipped text, and runs keyboard
-// checks. Usage: node dev/ui/shots.mjs [scenario-filter]
+// Dev-only: screenshots every harness scenario at 960 x 640, 390 x 520 and 360 x 480 (3:4 portrait), 390 x 651 and 360 x 642
+// (the taller portrait frames host.css gives most phones), 390 x 260 and 360 x 240 (inside the real SDK frame chrome; the intro
+// and help panels also at 328 x 437), fails on console errors and clipped text, and runs keyboard checks.
+// Usage: node dev/ui/shots.mjs [scenario-filter]
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -13,17 +14,23 @@ const filter = process.argv[2] ?? "";
 const SCENARIOS = ["thumbs", "nursery", "nursery-prompt", "nursery-prompt-long", "matchmaker", "matchmaker-buy", "matchmaker-broke", "matchmaker-busy",
   "matchmaker-brood", "matchmaker-first", "matchmaker-stock", "matchmaker-preferred", "intro-1", "intro-2", "intro-3", "intro-4", "intro-5", "intro-6", "nursery-coach",
   "shop", "shop-wish", "eggs", "eggs-stocked", "eggs-broke", "hatching", "reveal-common", "reveal-spotted", "reveal-mutant", "reveal-prismatic", "reveal-f3",
-  "brood", "brood-detail", "brood-empty", "brood-tabs", "brood-legacy", "brood-legacy-ghost", "brood-legacy-empty", "brood-legacy-detail", "friend-panel",
+  "reveal-inherit", "reveal-echo", "brood-inherit", "brood-book", "brood", "brood-detail", "brood-empty", "brood-tabs", "brood-legacy", "brood-legacy-ghost", "brood-legacy-empty", "brood-legacy-detail", "friend-panel",
   "settings", "settings-stations", "settings-screen", "loading", "error",
-  "slingshot", "slingshot-many", "slingshot-crowd", "slingshot-empty", "slingshot-blocked", "slingshot-busy", "slingshot-flying", "slingshot-pond", "slingshot-rooftop",
+  "slingshot", "slingshot-many", "slingshot-crowd", "slingshot-empty", "slingshot-marks", "slingshot-blocked", "slingshot-busy", "slingshot-ready", "slingshot-flying", "slingshot-pond", "slingshot-jump",
+  "slingshot-record", "slingshot-crash",
   "slingshot-moon", "slingshot-hud", "slingshot-hud-down", "slingshot-hint", "slingshot-settings", "slingshot-intro"];
 // Page viewport = frame + its 1px border, so the SDK frame renders at exactly 960 x 640 / 390 x 260 / 360 x 240.
-// 390 matches the phone run of tools/test-game.mjs (390 x 844 page, 390 x 260 frame).
-// 390p is a portrait phone: host.css switches the frame to 3:4 (390 x 520); 360p is a narrow Android portrait frame.
-const SIZES = [{ name: "960", width: 962, height: 642 }, { name: "390p", width: 392, height: 522 }, { name: "360p", width: 362, height: 482 }, { name: "390", width: 392, height: 262 }, { name: "360", width: 362, height: 242 }];
+// 390p and 360p are 3:4 portrait frames (host.css's fallback step: 390 x 520, 360 x 480). 390t is the 3:5 frame of a
+// 390 x 664 iPhone Safari view (390 x 651 inside the border), 360t the 9:16 frame of a 360 x 640 Android phone.
+const SIZES = [{ name: "960", width: 962, height: 642 }, { name: "390p", width: 392, height: 522 }, { name: "360p", width: 362, height: 482 },
+  { name: "390t", width: 392, height: 654 }, { name: "360t", width: 362, height: 644 }, { name: "390", width: 392, height: 262 }, { name: "360", width: 362, height: 242 }];
 // The onboarding panels also at the narrowest portrait frame (a 328 px wide phone: 328 x 437).
 const ONBOARDING = /^(intro-|settings)/;
 const NARROW = { name: "328p", width: 330, height: 439 };
+
+// Scenarios that need longer before the shot: the Moon ride flies for 9 s before its result card, the record and crash
+// stories jump (or give out) after 1.5 s and 3.2 s.
+const SETTLE = { "slingshot-moon": 10_500, "slingshot-record": 3000, "slingshot-crash": 4500 };
 
 await mkdir(outDir, { recursive: true });
 const server = await startServer();
@@ -39,7 +46,7 @@ async function open(size, scenario, extra = "") {
   await page.waitForSelector("iframe");
   const frame = await (await page.$("iframe")).contentFrame();
   await frame.waitForSelector(".rb-root");
-  await page.waitForTimeout(1300);
+  await page.waitForTimeout(SETTLE[scenario] ?? 1300);
   return { page, frame, logs };
 }
 
@@ -225,19 +232,21 @@ async function keyboard() {
 
 if (!filter) for (const line of await keyboard()) console.log(line);
 
-// Moon Slingshot: hold-to-pull by keyboard and pointer, picker arrows, Escape, the flight overlay and the HUD net pill.
+// Moon Slingshot: the panel by keyboard (picker arrows, Launch, busy, Escape), then the flight: hold to fly with Space or the
+// pointer, let go to jump, Escape before ignition (Don't fly) and after the jump (skip), the result card and the HUD net pill.
 async function slingshotKeyboard() {
   const report = [];
-  const launches = messages => messages.filter(text => text.startsWith("launch"));
-  const pullState = frame => frame.evaluate(() => {
-    const button = document.querySelector(".rb-sling-pull");
-    return { label: button.querySelector(".rb-long").textContent, pull: button.style.getPropertyValue("--rb-pull") || "0" };
-  });
-  const expectOne = (name, messages, check) => {
-    const seen = launches(messages);
-    if (seen.length !== 1) problems.push(`slingshot ${name}: expected 1 launch, got ${seen.length} (${seen.join(", ")})`);
-    else if (check && !check(Number(seen[0].split(" ")[2]))) problems.push(`slingshot ${name}: unexpected pull in "${seen[0]}"`);
-    return seen[0] ?? "nothing";
+  const meter = frame => frame.evaluate(() => ({
+    stage: document.querySelector(".rb-launch")?.getAttribute("data-stage") ?? "none",
+    mult: document.querySelector(".rb-flight-mult")?.textContent ?? "",
+    label: document.querySelector(".rb-flight-hold")?.textContent?.trim() ?? "",
+  }));
+  /** Launch from the panel with Enter and wait for the (faked) trade-in confirmation to open the flight. */
+  const toFlight = async (page, frame) => {
+    await frame.focus(".rb-sling-go");
+    await page.keyboard.press("Enter");
+    await frame.waitForSelector(".rb-flight-hold", { timeout: 3000 });
+    await page.waitForTimeout(300);
   };
   {
     const { page, frame, logs, messages } = await openFocused("slingshot");
@@ -251,98 +260,149 @@ async function slingshotKeyboard() {
     await page.keyboard.press("ArrowLeft");
     const picked = await frame.evaluate(() => document.querySelector('input[name$="-baby"]:checked').value);
     report.push(`slingshot ArrowLeft in the picker -> ${picked}, stake line: ${(await frame.locator(".rb-sling-stake .rb-long").textContent()).slice(0, 40)}`);
-    await frame.focus(".rb-sling-pull");
-    await page.keyboard.down(" ");
-    await page.waitForTimeout(450);
-    const mid = await pullState(frame);
-    report.push(`slingshot Space held 450 ms -> "${mid.label}", --rb-pull ${mid.pull}`);
-    if (!(Number(mid.pull) > 0.3 && Number(mid.pull) < 0.8)) problems.push(`slingshot: pull after 450 ms is ${mid.pull}`);
-    await page.keyboard.up(" ");
+    await frame.focus(".rb-sling-go");
+    await page.keyboard.press("Enter");
     await page.waitForTimeout(150);
-    report.push(`slingshot Space released -> ${expectOne("Space hold", messages, pull => pull > 0.4 && pull < 0.8)}`);
-    await page.waitForTimeout(100);
-    report.push(`slingshot busy while confirming -> disabled ${await frame.locator(".rb-sling-pull").isDisabled()}, "${(await frame.locator(".rb-sling-pull .rb-long").textContent())}"`);
+    const launches = messages.filter(text => text.startsWith("launch"));
+    report.push(`slingshot Enter on Launch -> ${launches.join(", ") || "nothing"}`);
+    if (launches.length !== 1) problems.push(`slingshot: Enter launched ${launches.length} times`);
+    report.push(`slingshot busy while confirming -> disabled ${await frame.locator(".rb-sling-go").isDisabled()}, "${(await frame.locator(".rb-sling-go .rb-long").textContent())}"`);
     for (const log of logs) problems.push(`keyboard slingshot: ${log}`);
     await page.close();
   }
   {
     const { page, frame, messages } = await openFocused("slingshot");
-    await frame.focus(".rb-sling-pull");
-    await page.keyboard.press("Enter");
-    await page.waitForTimeout(150);
-    report.push(`slingshot Enter tap -> ${expectOne("Enter tap", messages, pull => pull === 0.3)}`);
-    await page.close();
-  }
-  {
-    const { page, frame, messages } = await openFocused("slingshot");
-    await frame.focus(".rb-sling-pull");
-    await page.keyboard.down(" ");
-    await page.waitForTimeout(1100);
-    const full = await pullState(frame);
-    report.push(`slingshot Space held 1100 ms -> "${full.label}", --rb-pull ${full.pull}`);
-    await page.screenshot({ path: path.join(outDir, "slingshot-pulling-960.png") });
-    await page.keyboard.up(" ");
-    await page.waitForTimeout(150);
-    report.push(`slingshot full release -> ${expectOne("full pull", messages, pull => pull === 1)}`);
-    await page.close();
-  }
-  {
-    const { page, frame, messages } = await openFocused("slingshot");
-    await frame.focus(".rb-sling-pull");
-    await page.keyboard.down(" ");
-    await page.waitForTimeout(300);
-    await page.keyboard.press("Escape");
-    await page.keyboard.up(" ");
-    await page.waitForTimeout(150);
-    const cancelled = launches(messages).length === 0 && !messages.includes("close");
-    report.push(`slingshot Escape while pulling -> cancelled without closing: ${cancelled}, pull ${(await pullState(frame)).pull}`);
-    if (!cancelled) problems.push("slingshot: Escape mid-pull launched or closed the panel");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(100);
-    report.push(`slingshot Escape when idle -> onClose called: ${messages.includes("close")}`);
+    report.push(`slingshot Escape in the panel -> onClose called: ${messages.includes("close")}`);
     if (!messages.includes("close")) problems.push("slingshot: Escape did not close the panel");
     await page.close();
   }
   {
-    const { page, frame, messages } = await openFocused("slingshot");
-    const box = await frame.locator(".rb-sling-pull").boundingBox();
-    const offset = await page.evaluate(() => document.querySelector("iframe").getBoundingClientRect().toJSON());
-    await page.mouse.move(offset.left + box.x + box.width / 2, offset.top + box.y + box.height / 2);
-    await page.mouse.down();
-    await page.waitForTimeout(400);
-    await page.mouse.up();
-    await page.waitForTimeout(200);
-    report.push(`slingshot pointer hold 400 ms -> ${expectOne("pointer hold", messages, pull => pull > 0.3 && pull < 0.7)}`);
-    await page.close();
-  }
-  {
-    // Whole flow with a Moon roll: launch, confirm (faked), fly, Escape skips, result, Escape closes, HUD shows the net.
-    const { page, frame, logs, messages } = await openFocused("slingshot", "&roll=9900");
-    await frame.focus(".rb-sling-pull");
-    await page.keyboard.press(" ");
-    await page.waitForTimeout(1200);
+    // Crash point x5.99 (roll 1500): Space held 1.6 s climbs past x1.5, releasing jumps; Escape skips the ending.
+    const { page, frame, logs, messages } = await openFocused("slingshot", "&roll=1500");
+    await toFlight(page, frame);
     report.push(`slingshot flight initial focus -> ${await describe(frame)}`);
+    await page.keyboard.down(" ");
+    await page.waitForTimeout(1600);
+    const mid = await meter(frame);
+    report.push(`slingshot Space held 1.6 s -> ${mid.stage}, ${mid.mult}, "${mid.label}"`);
+    if (mid.stage !== "flying" || !(Number(mid.mult.slice(1)) >= 1.5)) problems.push(`slingshot: after 1.6 s of Space ${JSON.stringify(mid)}`);
+    await page.screenshot({ path: path.join(outDir, "slingshot-holding-960.png") });
+    await page.keyboard.up(" ");
+    await page.waitForTimeout(150);
+    report.push(`slingshot Space released -> ${messages.filter(text => text.startsWith("settle")).join(", ") || "not booked"}`);
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(700);
-    report.push(`slingshot Escape while flying -> skip: ${messages.includes("skip")}, result card: ${(await frame.locator(".rb-launch-card").count()) === 1}`);
+    await frame.waitForSelector(".rb-launch-card", { timeout: 3000 }).catch(() => {});
+    report.push(`slingshot Escape after the jump -> result card: ${(await frame.locator(".rb-launch-card").count()) === 1}, "${await frame.locator(".rb-launch-zone").textContent().catch(() => "")}"`);
     report.push(`slingshot result focus -> ${await describe(frame)}`);
     for (let i = 0; i < 3; i++) await page.keyboard.press("Tab");
     const inside = await frame.evaluate(() => !!document.activeElement.closest(".rb-launch"));
     report.push(`slingshot result Tab x3 stays in overlay: ${inside}`);
     if (!inside) problems.push("slingshot: focus escaped the launch overlay");
     report.push(`slingshot result sums -> ${(await frame.locator(".rb-launch-sums").innerText()).replace(/\s+/g, " ")}`);
-    await page.screenshot({ path: path.join(outDir, "slingshot-flow-moon-960.png") });
+    await page.waitForTimeout(450);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
     const pill = await frame.locator(".rb-hud-sling").count() ? await frame.locator(".rb-hud-sling").getAttribute("aria-label") : "missing";
     report.push(`slingshot Escape on result -> overlay closed: ${(await frame.locator(".rb-launch").count()) === 0}, HUD pill: ${pill}`);
-    if (!pill.includes("+54 RF")) problems.push(`slingshot: HUD net pill after a Moon landing reads "${pill}"`);
+    if (!/Slingshot net, simulated RF: \+\d[\d.]* RF/.test(pill)) problems.push(`slingshot: HUD net pill after a jump reads "${pill}"`);
     for (const log of logs) problems.push(`keyboard slingshot flow: ${log}`);
     await page.close();
   }
   {
+    // Pointer hold on a Moon roll: holding climbs, letting go jumps (no Moon: it let go first).
+    const { page, frame, messages } = await openFocused("slingshot", "&roll=0");
+    await toFlight(page, frame);
+    const box = await frame.locator(".rb-flight-hold").boundingBox();
+    const offset = await page.evaluate(() => document.querySelector("iframe").getBoundingClientRect().toJSON());
+    await page.mouse.move(offset.left + box.x + box.width / 2, offset.top + box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(900);
+    const held = await meter(frame);
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    report.push(`slingshot pointer hold 900 ms -> ${held.mult} "${held.label}", then ${messages.filter(text => text.startsWith("settle")).join(", ") || "not booked"}`);
+    if (held.stage !== "flying" || !messages.some(text => text.startsWith("settle") && text.endsWith("jump"))) problems.push(`slingshot: pointer hold ${JSON.stringify(held)} ${messages.join(" | ")}`);
+    await page.close();
+  }
+  {
+    // Escape before lighting the rocket: Don't fly (nothing booked).
+    const { page, frame, messages } = await openFocused("slingshot", "&roll=0");
+    await toFlight(page, frame);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    const booked = messages.some(text => text.startsWith("settle") || text.startsWith("ignite"));
+    report.push(`slingshot Escape before ignition -> cancel: ${messages.includes("cancel")}, booked: ${booked}`);
+    if (!messages.includes("cancel") || booked) problems.push("slingshot: Escape before ignition did not leave without a flight");
+    await page.close();
+  }
+  {
+    // Enter held through a flight the rocket ends by itself (x1.12 on roll 8000): its auto-repeat must neither skip the
+    // ending nor close the result card; a real press afterwards does.
+    const { page, frame, messages } = await openFocused("slingshot", "&roll=8000");
+    await toFlight(page, frame);
+    await page.keyboard.down("Enter");
+    for (let i = 0; i < 90; i++) { await page.keyboard.down("Enter"); await page.waitForTimeout(33); }
+    const held = await meter(frame);
+    await page.keyboard.up("Enter");
+    await page.waitForTimeout(700);
+    const open = await frame.locator(".rb-launch-card").count(), closed = messages.includes("close");
+    report.push(`slingshot Enter held through a crash (3 s of auto-repeat) -> stage ${held.stage}, result card open: ${open === 1}, closed: ${closed}`);
+    if (open !== 1 || closed) problems.push("slingshot: a held Enter closed the result card");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    report.push(`slingshot a real Enter press on the result -> closed: ${messages.includes("close")}`);
+    if (!messages.includes("close")) problems.push("slingshot: Enter on Back to the nursery did not close after the held key was released");
+    await page.close();
+  }
+  {
+    // Space held through the crash: releasing it must not skip the ending (Space clicks on keyup).
+    const { page, frame } = await openFocused("slingshot", "&roll=8000");
+    await toFlight(page, frame);
+    await page.keyboard.down(" ");
+    for (let i = 0; i < 30; i++) { await page.keyboard.down(" "); await page.waitForTimeout(33); }
+    const before = await meter(frame);
+    await page.keyboard.up(" ");
+    await page.waitForTimeout(120);
+    const after = await meter(frame);
+    report.push(`slingshot Space held through a crash, then released -> ${before.stage} then ${after.stage}`);
+    if (before.stage !== "ending" || after.stage !== "ending") problems.push(`slingshot: releasing a held Space skipped the ending (${before.stage} -> ${after.stage})`);
+    await frame.waitForSelector(".rb-launch-card", { timeout: 6000 }).catch(() => {});
+    report.push(`slingshot ... then the result card by itself: ${(await frame.locator(".rb-launch-card").count()) === 1}`);
+    await page.close();
+  }
+  {
+    // Mounted while paused: focus on the hold button (aria-disabled), never on Don't fly; after the pause Space flies.
+    const { page, frame, messages } = await openFocused("slingshot-paused");
+    const focus = await describe(frame);
+    report.push(`slingshot mounted paused -> focus ${focus}, aria-disabled ${await frame.locator(".rb-flight-hold").getAttribute("aria-disabled")}`);
+    if (!focus.includes("Hold to fly")) problems.push(`slingshot: mounted paused, focus is on ${focus}`);
+    await page.keyboard.press(" ");
+    await page.waitForTimeout(150);
+    if (messages.includes("close") || (await meter(frame)).stage !== "ready") problems.push("slingshot: Space while paused did something");
+    await frame.waitForFunction(() => !document.querySelector(".rb-flight-hold")?.hasAttribute("aria-disabled"), null, { timeout: 4000 });
+    await page.keyboard.down(" ");
+    await page.waitForTimeout(500);
+    const flying = await meter(frame);
+    await page.keyboard.up(" ");
+    await page.waitForTimeout(150);
+    report.push(`slingshot after the pause, Space -> ${flying.stage} ${flying.mult}, then ${messages.filter(text => text.startsWith("settle")).join(", ") || "not booked"}`);
+    if (flying.stage !== "flying" || !messages.some(text => text.startsWith("settle"))) problems.push("slingshot: after the pause Space did not fly and jump");
+    await page.close();
+  }
+  {
+    // Unmounted mid-air: the flight is booked at the multiplier showing, never left lit.
+    const { page, messages } = await openFocused("slingshot-unmount");
+    await page.waitForTimeout(1200);
+    const booked = messages.filter(text => text.startsWith("settle"));
+    report.push(`slingshot unmounted mid-air -> ${messages.includes("unmount") ? "unmounted" : "still mounted"}, ${booked.join(", ") || "not booked"}`);
+    if (!messages.includes("unmount") || booked.length !== 1 || !booked[0].endsWith("jump")) problems.push(`slingshot: unmount mid-air booked ${booked.join(", ") || "nothing"}`);
+    await page.close();
+  }
+  {
     const { page, frame } = await openFocused("slingshot-blocked");
-    report.push(`slingshot blocked -> disabled ${await frame.locator(".rb-sling-pull").isDisabled()}, "${await frame.locator(".rb-sling-status").innerText()}"`);
+    report.push(`slingshot blocked -> disabled ${await frame.locator(".rb-sling-go").isDisabled()}, "${await frame.locator(".rb-sling-status").innerText()}"`);
     await page.close();
   }
   {
@@ -353,7 +413,7 @@ async function slingshotKeyboard() {
   {
     const { page, frame, logs } = await open(SIZES[0], "slingshot-moon", "&rm");
     const animated = await frame.locator(".rb-animate, .rb-confetti-bit").count();
-    report.push(`slingshot moon reduced motion -> animated elements: ${animated}`);
+    report.push(`slingshot moon reduced motion -> animated elements: ${animated}, result: "${await frame.locator(".rb-launch-zone").textContent().catch(() => "none")}"`);
     if (animated) problems.push("slingshot reduced motion: animated elements present");
     for (const log of logs) problems.push(`slingshot reduced motion: ${log}`);
     await page.close();
@@ -395,7 +455,7 @@ if (!filter) {
     if (["matchmaker-brood", "reveal-prismatic", "slingshot", "nursery-prompt-long"].includes(scenario)) await page.screenshot({ path: path.join(outDir, `${scenario}-${size.name}.png`) });
     await page.close();
   }
-  // Short portrait frames (3:4 under 480 tall, e.g. 360 x 640 and 390 x 844 phones): the slingshot and the station prompt.
+  // Short portrait frames (the 3:4 fallback under 480 tall, e.g. a 360 x 500 view): the slingshot and the station prompt.
   const PORTRAIT = [{ name: "328p", width: 330, height: 439 }, { name: "358p", width: 360, height: 479 }];
   for (const size of PORTRAIT) for (const scenario of ["nursery-prompt-long", "slingshot-hint", "slingshot", "slingshot-crowd", "slingshot-busy", "slingshot-pond", "slingshot-hud"]) {
     const { page, frame, logs } = await open(size, scenario);

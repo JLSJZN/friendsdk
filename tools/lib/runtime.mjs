@@ -92,6 +92,7 @@ export function createHelpers({ page, game, definition, viewport, mediaDirectory
   const titles = confirmationTitles(definition);
   const titleFor = name => titles[name] ?? name;
   const confirmations = [];
+  let touch = null;
   async function respond(name, button, { expect, timeout } = {}) {
     const details = await readConfirmation(page, name ? titleFor(name) : undefined, timeout);
     checkConfirmation(details, expect);
@@ -109,6 +110,26 @@ export function createHelpers({ page, game, definition, viewport, mediaDirectory
     forceRolls: (rolls, fallback) => forceRolls(page, rolls, fallback),
     forceTiers: (tiers, fallback) => forceRolls(page, tiers.map(tier => outcomeStartRolls(definition)[outcomeIdFor(definition, tier) - 1]), fallback),
     locate: spec => locate({ page, game }, spec),
+    /**
+     * Press and hold a target ("down"), then let go ("up", wherever it is now): a real touch on touch viewports
+     * (Chromium CDP touch events, so the page sees touch pointers), the mouse otherwise, or Space with via "key".
+     */
+    async press(spec, phase, via = viewport?.touch ? "touch" : "mouse") {
+      if (phase === "up") {
+        if (via === "key") await page.keyboard.up("Space");
+        else if (via === "mouse") await page.mouse.up();
+        else await touch?.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        return;
+      }
+      const target = locate({ page, game }, spec);
+      if (via === "key") { await target.focus(); await page.keyboard.down("Space"); return; }
+      const box = await target.boundingBox();
+      assert(box, `No visible ${describe(spec)} to press`);
+      const x = box.x + box.width / 2, y = box.y + box.height / 2;
+      if (via === "mouse") { await page.mouse.move(x, y); await page.mouse.down(); return; }
+      touch ??= await page.context().newCDPSession(page);
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+    },
     /** Click or tap the game canvas at logical world coordinates (default logical size 960 x 640). */
     async world([x, y], { canvas = "canvas", logical = [960, 640] } = {}) {
       const target = game.locator(canvas).first(), box = await target.boundingBox();
@@ -168,6 +189,7 @@ async function poll(read, test, timeout, message) {
  *   { click: target }  { tap: target }  { hover: target }  { focus: target }
  *   { world: [x, y], canvas?, logical? }   click/tap the canvas at logical coordinates
  *   { key: "ArrowRight", hold?: ms }   { type: "text" }   { wait: ms }
+ *   { down: target, via?: "mouse" | "touch" | "key" }  { up: target, via? }   press and keep holding, then let go (default touch on touch viewports; up needs no target)
  *   { waitFor: target, state?: "visible" | "hidden" | "attached" | "detached", timeout? }
  *   { expect: target, contains?: string, matches?: RegExp, timeout? }
  *   { confirm: "buy" | "play" | "redeem" | title, expect?: { title?, description?, amount? } }
@@ -181,7 +203,7 @@ export async function runSteps(ctx, steps, { label = "", log = console.log } = {
   const timeout = ctx.timeout ?? 15_000;
   for (const [index, step] of steps.entries()) {
     if (step.only && viewport && step.only !== viewport.name) continue;
-    const kind = Object.keys(step).find(key => !["only", "note", "state", "timeout", "hold", "expect", "contains", "matches", "canvas", "logical", "of", "fallback"].includes(key))
+    const kind = Object.keys(step).find(key => !["only", "note", "state", "timeout", "hold", "expect", "contains", "matches", "canvas", "logical", "of", "fallback", "via"].includes(key))
       ?? (step.expect !== undefined ? "expect" : undefined);
     log(`  ${label}${index + 1}/${steps.length} ${kind} ${describe(step[kind]).slice(0, 90)}${step.note ? ` (${step.note})` : ""}`);
     try {
@@ -195,6 +217,8 @@ export async function runSteps(ctx, steps, { label = "", log = console.log } = {
           if (step.hold) { await page.keyboard.down(step.key); await page.waitForTimeout(step.hold); await page.keyboard.up(step.key); }
           else await page.keyboard.press(step.key);
           break;
+        case "down": await helpers.press(step.down, "down", step.via); break;
+        case "up": await helpers.press(step.up, "up", step.via); break;
         case "type": await page.keyboard.type(step.type); break;
         case "wait": await page.waitForTimeout(step.wait); break;
         case "waitFor": await helpers.locate(step.waitFor).waitFor({ state: step.state ?? "visible", timeout: step.timeout }); break;

@@ -19,13 +19,19 @@ const BLOCKED = [
   "nud", "sodo", "bum", "gay", "sux", "vomi",
 ] as const;
 
+/** Real words that read like unfilled UI text ("Inherited: Horns from Name!"). */
+const PLACEHOLDERS = ["name", "none"] as const;
+
 export const isBlockedName = (name: string) => {
   const lower = name.toLowerCase();
-  return BLOCKED.some(part => lower.includes(part));
+  return BLOCKED.some(part => lower.includes(part)) || (PLACEHOLDERS as readonly string[]).includes(lower);
 };
 
-/** Deterministic name for a breed seed: CV + CV, sometimes a cute repeat (Momo, Kiki). */
-export function babyName(seed: number): string {
+/**
+ * Deterministic name for a breed seed: CV + CV, sometimes a cute repeat (Momo, Kiki). A name in `taken` (already used
+ * this session) is skipped like a blocked one, so the same seed and taken set always give the same name.
+ */
+export function babyName(seed: number, taken?: ReadonlySet<string>): string {
   // mulberry32, salted so names do not correlate with the genetics streams of the same seed.
   let state = (seed ^ 0x5bd1e995) >>> 0;
   const next = (n: number) => {
@@ -39,7 +45,8 @@ export function babyName(seed: number): string {
     const repeat = next(6) === 0;
     const name = repeat ? onset + vowel + onset + vowel
       : onset + vowel + SECOND[next(SECOND.length)] + VOWELS[next(VOWELS.length)];
-    if (!isBlockedName(name)) return name[0].toUpperCase() + name.slice(1);
+    const cute = name[0].toUpperCase() + name.slice(1);
+    if (!isBlockedName(name) && !taken?.has(cute)) return cute;
   }
   return "Momo";
 }

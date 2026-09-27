@@ -1,11 +1,14 @@
-// The Moon Slingshot overlay: the baby shoots out of the nursery window, flies past the landing zones and
-// lands in the zone src/slingshot.ts already drew, with one slapstick gag per zone. Side view: the camera
-// follows it over the garden, the pond, the hay field and the village, up to the clouds and, for the two far
-// zones, into space. World art sits on the room's 3 px art grid; the baby flies at sprite scale 8 so the
-// gags read on phones.
-import { WORLD_HEIGHT as H, WORLD_WIDTH as W, type LaunchSequence, type LaunchSequenceOptions } from "../api.ts";
-import { multiplierLabel, zoneInfo } from "../slingshot.ts";
-import { FRAME_SIZE, type Clip, type Facing, type Frame, type LaunchZoneId } from "../types.ts";
+// The Moon Slingshot flight: the slingshot tosses the baby out of the nursery window onto a tiny firework rocket
+// on a raft in the pond. Lit, it climbs past the nursery roof (x1.5), cloud nine (x2), the orbit (x4) and up to the
+// Moon (x10). A jump ends with a parachute into the hay; a rocket that gives out first sputters and drops the baby
+// in the pond (the duck gag); x10 lands it on the Moon. Side view on the room's 3 px art grid; the baby rides at
+// sprite scale 8 so it reads on phones. Portrait frames show a slice of the 960 x 640 composition, about
+// PORTRAIT_W wide and as tall as the frame (more sky above), panned to the action: the window and the rocket on
+// the pad, the landmarks during the climb, then the pond, the hay or the Moon. The flight clock and every rule
+// live in the UI and src/slingshot.ts: this only draws what it is told (ignite, fly(ms), end).
+import { WORLD_HEIGHT as H, WORLD_WIDTH as W, type LaunchBeat, type LaunchSequence, type LaunchSequenceOptions } from "../api.ts";
+import { FLIGHT_MS, flightHundredths, multiplierLabel, type FlightEnd } from "../slingshot.ts";
+import { FRAME_SIZE, type Clip, type Facing, type Frame } from "../types.ts";
 import {
   GREEN, GRID, INK, MOSS, MUTED, PAPER, SHADE, WHITE, bitmap, box, clamp, dither, easeInCubic, easeOutBack, easeOutCubic,
   ellipseBox, lerp, makeCanvas, rect, rng,
@@ -15,9 +18,8 @@ import { drawText, textWidth } from "./font.ts";
 import { createParticles } from "./fx.ts";
 import { createPixelView } from "./view.ts";
 
-type Beat = "launch" | "apex" | "land";
 type Point = { x: number; y: number };
-/** How the baby is drawn. x, y: centre of its 16 x 16 box (world px, or screen px in space). */
+/** How the baby is drawn. x, y: centre of its 16 x 16 box (world px, or screen px on the Moon). */
 type Pose = {
   x: number; y: number;
   /** Quarter turns clockwise. */
@@ -25,38 +27,44 @@ type Pose = {
   clip: Clip; facing: Facing; frame: number;
   /** Screen-space squash and stretch around (ax, ay), default the box centre. */
   sx: number; sy: number; ax?: number; ay?: number;
-  /** Nothing below this y is drawn (water line, hay); `under` shows that part as a dim silhouette (water). */
+  /** Nothing below this y is drawn (the water line); `under` shows that part as a dim silhouette. */
   cut?: number;
   under?: boolean;
 };
+type Chute = { open: number; x: number; y: number; flat: number };
 
 const A = 3, S = 8, HALF = 8 * S, BOX = 16 * S;
 const ART_W = W / A, ART_H = Math.ceil(H / A);
 
-/** How long the landed frame keeps its gentle idle after `end` before it holds still. */
+/** How long the final frame keeps its gentle idle after the ending before it holds still. */
 const IDLE_MS = 2000;
-// Timeline (ms). apex and land are beats (arc apexes are measured from the path), title shows the zone name,
-// end resolves play(). Durations grow with the distance so every extra second means "further".
-const T = {
-  pond: { apex: 520, look: 690, drop: 830, land: 1030, sink: 1110, duck: 1200, surface: 1380, spit: 1470, title: 1260, end: 2250 },
-  haystack: { apex: 0, land: 1500, title: 1830, end: 2900 },
-  rooftop: { apex: 0, land: 1950, bounce: 2230, edge: 2720, clonk: 3040, title: 3180, end: 3700 },
-  cloud: { apex: 0, land: 2550, settle: 3840, title: 2960, end: 4300 },
-  orbit: { apex: 1450, insert: 2250, land: 2700, title: 3000, end: 4900 },
-  moon: { apex: 1450, leave: 2250, descend: 3480, land: 4300, flag: 4560, title: 4760, end: 5500 },
+// Ending timelines (ms after end()). The crash fall and the parachute descent last longer from higher up.
+const END = {
+  pad: { look: 330, topple: 720, land: 1050 },
+  air: { look: 140, pop: 420 },
+  pond: { sink: 80, duck: 170, surface: 350, spit: 440, end: 1220 },
+  jump: { hop: 260, settle: 760 },
+  moon: { cut: 130, land: 900, flag: 1160, rays: 1360, end: 2150 },
 } as const;
 
 // World layout (logical px; ground is y = 0, up is negative).
-/** Camera top when the ground is framed (ground line at screen y 480), and the camera left at the start. */
-const GROUND_CAM = -480, START_CAM_X = -470;
+/** Camera top when the ground is framed (ground line at screen y 480). */
+const GROUND_CAM = -480;
 /** The nursery facade (art canvas, 120 x 132 art px) and its open window. */
 const HOUSE = { x: -390, y: -396, win: { x: 62, y: 54, w: 44, h: 42 } };
-/** Where the baby leaves the window (box centre). */
-const EXIT: Point = { x: HOUSE.x + (HOUSE.win.x + HOUSE.win.w / 2) * A, y: HOUSE.y + (HOUSE.win.y + HOUSE.win.h / 2) * A };
-const POND = { x0: 170, x1: 560, surface: 6, depth: 22 };
-const STALL: Point = { x: 345, y: -300 };
-const HAY = { cx: 770, w: 74, h: 54 };
+const ROOF_PEAK: Point = { x: HOUSE.x + 60 * A, y: HOUSE.y + 4 * A };
+const POND = { x0: 30, x1: 500, surface: 6, depth: 22 };
+/** The rocket climbs straight up from a raft on the pond. */
+const FLIGHT_X = 190, RAFT = { w: 96, top: -3 };
+/** Rocket parts relative to the baby's box centre (the baby rides strapped to the front of the tube). */
+const ROCKET = { tube: 42, top: -81, bottom: 99, nose: 42, stick: 189 };
+const PAD_Y = RAFT.top - ROCKET.stick;
+/** Camera left for the pad and the climb: the flight column sits at screen x 440, with the nursery window in view. */
+const CAM_X = FLIGHT_X - 440;
+const SPLASH_X = FLIGHT_X + 90, DUCK_X = SPLASH_X + 112;
+const HAY = { cx: 700, w: 74, h: 54 };
 const HAY_TOP = -HAY.h * A;
+const HAY_CAM_X = HAY.cx - 480;
 const HOUSES = [
   { cx: 1010, w: 44, wall: 36, roof: 22, chimney: 1 },
   { cx: 1210, w: 72, wall: 46, roof: 46, chimney: -1 },
@@ -64,36 +72,39 @@ const HOUSES = [
   { cx: 1590, w: 52, wall: 40, roof: 28, chimney: 1 },
 ] as const;
 const OVERHANG = 4;
-const TARGET = HOUSES[1];
-const PEAK: Point = { x: TARGET.cx, y: -(TARGET.wall + TARGET.roof) * A };
-const SLOPE = TARGET.roof / (TARGET.w / 2 + OVERHANG);
-const roofY = (x: number) => PEAK.y + Math.abs(x - PEAK.x) * SLOPE;
-const EAVE_X = PEAK.x + (TARGET.w / 2 + OVERHANG) * A;
-const CLOUD9 = { cx: 1600, cy: -520, w: 92, h: 34 };
-const CLOUD9_TOP = CLOUD9.cy - (CLOUD9.h * A) / 2 + 9;
-/** Decorative clouds (world px, art size, seed). The high ones pass by on the way to orbit and the Moon. */
+/** Height of the baby above the pad after `ms` of flight; it speeds up as it climbs. */
+const altitude = (ms: number) => { const u = clamp(ms / FLIGHT_MS); return 1100 * u + 1400 * u * u; };
+const flightY = (ms: number) => PAD_Y - altitude(ms);
+/** Where the baby is when the multiplier shows `hundredths`: every landmark sits at its multiplier. */
+const levelAt = (hundredths: number) => flightY(FLIGHT_MS * Math.log10(hundredths / 100));
+const ROOF_FLAG_Y = levelAt(150);
+const CLOUD9 = { cx: FLIGHT_X + 300, cy: Math.round(levelAt(200)), w: 92, h: 34 };
+const ORBIT_Y = Math.round(levelAt(400));
+/** Decorative clouds along the climb (world px, art size, seed). */
 const CLOUDS = [
-  [-250, -600, 46, 16, 1], [430, -760, 58, 20, 2], [880, -900, 64, 22, 3], [1230, -690, 50, 18, 4], [1880, -740, 60, 20, 5],
-  [1900, -420, 44, 16, 6], [1190, -1080, 56, 20, 7], [150, -1080, 62, 22, 8], [520, -1260, 70, 24, 10], [80, -1640, 58, 20, 11],
-  [640, -1720, 76, 26, 12],
+  [-150, -560, 46, 16, 1], [650, -470, 40, 14, 2], [-70, -830, 58, 20, 3], [600, -960, 50, 18, 4], [-190, -1110, 62, 22, 5], [430, -1210, 56, 20, 6],
 ] as const;
 const LAND = { x0: -600, y0: -420, w: 860, h: 200 };
-const SKY = { y0: -3000, y1: 240 };
-const FINAL_CAM: Partial<Record<LaunchZoneId, Point>> = {
-  pond: { x: 20, y: GROUND_CAM }, haystack: { x: 400, y: GROUND_CAM }, rooftop: { x: 840, y: -600 }, cloud: { x: 1120, y: -960 },
-};
-// Space (screen px).
-const GLOBE = { x: 480, y: 360, r: 150 };
-const ORBIT = { rx: 320, ry: 112, tilt: -0.17, period: 1100 };
+/** Sky ramp rows (world px); the top reaches past the Moon's height for tall portrait frames (a multiple of 12 higher, same dither). */
+const SKY = { y0: -4080, y1: 240 };
+// The Moon landing (screen px).
 const MOON_TOP: Point = { x: 560, y: 430 }, MOON_R = 900;
 const EARTH_FAR = { x: 190, y: 372, r: 48 };
 const DAY_MOON = { x: 800, y: 118, r: 27 };
+/**
+ * Portrait frames: the visible slice is PORTRAIT_W logical px wide and the frame's height tall (the 640 px band sits at
+ * the bottom, more sky above). The slice centres on these plane x positions (screen px of the 960 x 640 composition):
+ * the nursery window and the rocket on the pad, the flight column with cloud nine's and the orbit's tags, the pond
+ * with the duck, the hay field, the Moon landing.
+ */
+const PORTRAIT_W = 540;
+const FOCUS = { ready: 300, climb: 510, pond: 494, jump: 480, moon: MOON_TOP.x } as const;
 
 const WATER = MUTED, WATER_LIGHT = "#A39E94", WATER_DEEP = "#77726A", ROOF = "#2E2E2E", STRAW = "#EADBA8", STRAW_DARK = "#C9B278";
+const GOLD = "#FFE27A", ORANGE = "#FFB800";
 const SKY_RAMP = [WHITE, PAPER, GRID, SHADE, "#BDB6A8", MUTED, "#6A655D", "#45423D", "#2A2927", "#1A1A1A", INK];
-const PRISM = ["#FF4D6D", "#FFB800", GREEN, "#3DDCFF", "#8A4DFF", WHITE];
+const PRISM = ["#FF4D6D", ORANGE, GREEN, "#3DDCFF", "#8A4DFF", WHITE];
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
-const STAMP: Record<LaunchZoneId, string> = { pond: "SPLASH!", haystack: "POOF!", rooftop: "BONK!", cloud: "BOING!", orbit: "WHEEE!", moon: "TOUCHDOWN!" };
 /** Exact quarter-turn rotations (cos, sin) so rotated sprites stay on whole pixels. */
 const TURN = [[1, 0], [0, 1], [-1, 0], [0, -1]] as const;
 /** Earth continents and Moon craters in disc units: centre u, v and radii. */
@@ -125,8 +136,6 @@ const DUCK = bitmap([
   ".#wwwwwsw#..",
   "..#######...",
 ]);
-const TILE = bitmap(["########", "#mmmmmm#", "#mmmmmm#", "#ssssss#", "########"]);
-const DIZZY = bitmap(["..#..", ".#G#.", "#GwG#", ".#G#.", "..#.."]);
 const DROP = bitmap([".#.", "#w#", "#w#", ".#."]);
 
 const smooth = (x: number) => { x = clamp(x); return x * x * (3 - 2 * x); };
@@ -134,8 +143,9 @@ const pack = (hex: string) => {
   const n = parseInt(hex.slice(1), 16);
   return (255 << 24 | (n & 0xff) << 16 | ((n >> 8) & 0xff) << 8 | (n >> 16)) >>> 0;
 };
-/** Sky darkness at an altitude: 0 day, 1 space. */
-const darkness = (y: number) => Math.pow(clamp((-y - 180) / 1700), 1.4);
+/** Sky darkness at an altitude: 0 day, 1 space (reached just below the orbit). */
+const darkness = (y: number) => Math.pow(clamp((-y - 200) / 1150), 1.4);
+const multiplierText = (hundredths: number) => multiplierLabel(hundredths).replace(/^x/, "×");
 
 function inkBox(frame: Frame) {
   let minX = FRAME_SIZE, maxX = -1, minY = FRAME_SIZE, maxY = -1;
@@ -166,7 +176,7 @@ function discSpan(cx: number, cy: number, r: number, y: number): [number, number
 }
 
 // ---------------------------------------------------------------------------------------------
-// Static art, painted once and shared by every launch
+// Static art, painted once and shared by every flight
 
 type Art = ReturnType<typeof paintArt>;
 let cachedArt: Art | null = null;
@@ -306,10 +316,10 @@ function paintLand() {
     drawText(g, text, left + 3, top + 2, { scale: 1, color: INK });
   };
   paintHouse(g, X(HOUSE.x), Y(HOUSE.y));
-  // Picket fence along the garden.
-  for (let x = X(-20); x < X(135); x += 5) { box(g, x, ground - 10, 3, 11, WHITE); rect(g, x + 1, ground - 11, 1, 1, INK); }
-  rect(g, X(-20), ground - 7, X(135) - X(-20), 1, INK);
-  rect(g, X(-20), ground - 3, X(135) - X(-20), 1, INK);
+  // A short picket fence between the house and the pond.
+  for (let x = X(-24); x < X(6); x += 5) { box(g, x, ground - 10, 3, 11, WHITE); rect(g, x + 1, ground - 11, 1, 1, INK); }
+  rect(g, X(-24), ground - 7, X(6) - X(-24), 1, INK);
+  rect(g, X(-24), ground - 3, X(6) - X(-24), 1, INK);
   // Pond: a dark basin cut into the ground, reeds on both banks, lily pads.
   const x0 = X(POND.x0), x1 = X(POND.x1), cx = (x0 + x1) / 2, half = (x1 - x0) / 2, surface = Y(POND.surface);
   for (let x = x0; x <= x1; x++) {
@@ -333,19 +343,17 @@ function paintLand() {
       if (i % 4 === 0) { rect(g, x - 1, ground - tall - 3, 3, 4, INK); rect(g, x, ground - tall - 2, 1, 2, MUTED); }
     }
   }
-  for (const [px, r] of [[cx - 34, 5], [cx + 22, 4], [cx + 44, 3]] as const) {
+  for (const [px, r] of [[X(80), 5], [X(445), 4], [X(470), 3]] as const) {
     ellipseBox(g, Math.round(px), surface, r, 1, GREEN);
     rect(g, Math.round(px) + 1, surface - 1, 1, 2, INK);
   }
-  sign(150, "×0");
-  // Hay field: pitchfork and sign (the haystack itself is drawn live, it squashes).
-  sign(640, multiplierText(5000));
+  // The pond pays nothing; the hay field (pitchfork) is where parachutes come down.
+  sign(545, "×0");
   const fork = X(HAY.cx + HAY.w * A / 2 + 18);
   for (let i = 0; i < 26; i++) rect(g, fork + Math.floor(i / 5), ground - i, 1, 1, INK);
   for (let i = 0; i < 3; i++) rect(g, fork + 4 + i * 2, ground - 32, 1, 6, MUTED);
   rect(g, fork + 4, ground - 27, 5, 1, MUTED);
   // Village.
-  sign(905, "×1");
   for (const house of HOUSES) paintVillageHouse(g, house, X(house.cx), ground);
   for (const [x, r] of [[1290, 5], [1450, 6], [1640, 7], [1760, 5]] as const) {
     ellipseBox(g, X(x), ground - r, r + 1, r, GREEN);
@@ -353,8 +361,6 @@ function paintLand() {
   }
   return canvas;
 }
-
-function multiplierText(bps: number) { return multiplierLabel(bps).replace(/^x/, "×"); }
 
 function paintHouse(g: CanvasRenderingContext2D, ox: number, oy: number) {
   // Walls with siding.
@@ -431,255 +437,185 @@ function paintVillageHouse(g: CanvasRenderingContext2D, house: typeof HOUSES[num
 // The sequence
 
 export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequence {
-  const { canvas, baby, zone, onBeat } = options;
+  const { canvas, baby, onBeat } = options;
   const reducedMotion = options.reducedMotion;
-  const pull = clamp(Number.isFinite(options.pull) ? options.pull : 0.5);
-  /** Cosmetic: a harder pull front-loads the launch and spins faster. Paths and landings never change. */
-  const kick = 0.3 + 0.7 * pull;
   let destroyed = false, dirty = true, raf = 0, last = 0;
-  let t = 0, started = false, finished = false;
-  let playPromise: Promise<void> | null = null, resolvePlay: (() => void) | null = null;
+  /** Scene clock (ms since creation): idle animation, particles and the ending timeline. */
+  let clock = 0;
+  let phase: "ready" | "flying" | "ending" = "ready";
+  let flightMs = 0, ending: FlightEnd | null = null, exit: number | null = null, endAt = 0, endTotal = 0, fallMs = 0, descentMs = 0;
+  /** Where the baby, the camera and the portrait slice were when the flight was decided. */
+  let from: Point = { x: FLIGHT_X, y: PAD_Y }, fromCam = GROUND_CAM, fromFocus: number = FOCUS.ready;
+  let endPromise: Promise<void> | null = null, resolveEnd: (() => void) | null = null;
   const fired = new Set<string>();
-  const view = createPixelView(canvas, W, H, () => { dirty = true; });
+  // Portrait boxes (at most PORTRAIT_W / H wide for their height) zoom to a PORTRAIT_W wide slice, as tall as the box.
+  const view = createPixelView(canvas, W, H, { onResize: () => { dirty = true; }, overscan: true,
+    zoomFor: (width, height, fit) => width * H <= height * PORTRAIT_W ? width / PORTRAIT_W / fit : 1 });
+  /** The visible part of the composition this frame (plane px): the whole 960 x 640, or the portrait slice. */
+  const region = { x: 0, y: 0, w: W, h: H };
   const ctx = view.ctx;
   const fx = createParticles();
   const art = cachedArt ??= paintArt();
-  const info = zoneInfo(zone);
-  const multiplier = multiplierText(info.multiplierBps);
-  const space = zone === "orbit" || zone === "moon";
-  const plan = T[zone];
   // Ink extents of the baby, for contact points: feet below the centre, head above it, front edge (facing right).
   const front = inkBox(baby.sheet.idle.down[0]), side = inkBox(baby.sheet.idle.right[0]);
-  const feet = (front.maxY + 1 - 8) * S, head = (8 - side.minY) * S, belly = (side.maxX + 1 - 8) * S;
-  const headTop = (8 - front.minY) * S;
-  if (!canvas.hasAttribute("aria-label")) canvas.setAttribute("aria-label", `${baby.name} flies out of the nursery window: ${info.label}, ${multiplier}.`);
+  const feet = (front.maxY + 1 - 8) * S, belly = (side.maxX + 1 - 8) * S, headTop = (8 - front.minY) * S;
+  const contact = POND.surface - belly, seat = HAY_TOP - feet + 12;
+  if (!canvas.hasAttribute("aria-label")) canvas.setAttribute("aria-label", `${baby.name} strapped to a firework rocket on a raft in the pond.`);
 
-  const beat = (name: Beat) => {
-    if (fired.has(name)) return;
-    fired.add(name);
+  const beat = (name: LaunchBeat, key: string = name) => {
+    if (fired.has(key)) return;
+    fired.add(key);
     try { onBeat?.(name); } catch { /* sound errors must not break the show */ }
   };
+  const since = () => clock - endAt;
+  /** The ending moment to draw: reduced motion shows only the final frame. */
+  const shownAt = () => reducedMotion && phase === "ending" ? endTotal : since();
 
   // ------------------------------------------------------------------------------------------
-  // Paths (pure functions of time)
+  // Poses (pure functions of the state and the time)
 
-  const flail = (time: number) => Math.floor(time / (72 - 22 * pull)) % 8;
-  function arc(time: number, t1: number, to: Point, height: number): Point {
-    const raw = clamp(time / t1), u = raw + kick * raw * (1 - raw) ** 2;
-    return { x: lerp(EXIT.x, to.x, u), y: lerp(EXIT.y, to.y, u) - 4 * height * u * (1 - u) };
+  /** The camera offset that keeps the climbing baby low in the frame (screen y of its box centre, above the hold button). */
+  const climbScreenY = (ms: number) => lerp(PAD_Y - GROUND_CAM, region.y + region.h * (420 / H), smooth(ms / FLIGHT_MS / 0.35));
+  /** The plane x the portrait slice centres on while the rocket is on the pad or climbing. */
+  const climbFocus = (ms: number) => lerp(FOCUS.ready, FOCUS.climb, smooth((ms - 1300) / 1100));
+  /** The plane x the portrait slice centres on at this moment (a pure function of the state, like the poses). */
+  function focusX() {
+    if (phase === "ready" || (phase === "flying" && reducedMotion)) return FOCUS.ready;
+    if (phase === "flying") return climbFocus(flightMs);
+    const e = shownAt();
+    if (ending === "moon") return e >= END.moon.cut ? FOCUS.moon : fromFocus;
+    return lerp(fromFocus, ending === "jump" ? FOCUS.jump : FOCUS.pond, smooth(e / 700));
   }
-  /** Quarter turns: tumbles from `start` and settles on `final` (mod 4) at `stop`. */
-  function tumble(time: number, start: number, stop: number, final: number) {
-    const turns = 4 * Math.max(1, Math.round((stop - start) / (600 - 260 * pull))) + final;
-    return Math.floor(turns * clamp((time - start) / (stop - start)));
+  /** Sets `region` for this frame: the view's visible size, bottom-aligned (extra sky above), panned to focusX(). */
+  function frameRegion() {
+    region.w = view.viewWidth; region.h = view.viewHeight;
+    region.x = Math.round(clamp(focusX() - region.w / 2, 0, W - region.w));
+    region.y = H - region.h;
   }
-  const flying = (p: Point, time: number, rot: number): Pose => ({ ...p, rot, clip: "walk", facing: "right", frame: flail(time), sx: 1, sy: 1 });
+  const flying = (x: number, y: number, time: number, rot = 0, facing: Facing = "down"): Pose =>
+    ({ x, y, rot, clip: "walk", facing, frame: Math.floor(time / 60) % 8, sx: 1, sy: 1 });
+  const idle = (x: number, y: number, time: number, facing: Facing = "down"): Pose =>
+    ({ x, y, rot: 0, clip: "idle", facing, frame: reducedMotion ? 0 : Math.floor(time / 170) % 8, sx: 1, sy: 1 });
 
-  function pondPose(time: number): Pose {
-    const P = T.pond;
-    if (time < P.apex) {
-      // Out of the window with a somersault, then it simply runs out of steam above the pond.
-      const u = time / P.apex, e = 1 - Math.pow(1 - u, 2.2 + pull);
-      return flying({ x: lerp(EXIT.x, STALL.x, e), y: lerp(EXIT.y, STALL.y, e) }, time, Math.floor(4 * clamp(u * 1.3)));
+  function readyPose(): Pose {
+    if (reducedMotion) return idle(FLIGHT_X, PAD_Y, 0);
+    // It lands on the rocket from the slingshot shot, squashes, then waits.
+    const drop = clamp(clock / 260), landed = clock - 260;
+    const squash = landed > 0 && landed < 150 ? 1 - Math.sin((landed / 150) * Math.PI) * 0.18 : 1;
+    return { ...idle(FLIGHT_X, lerp(PAD_Y - 260, PAD_Y, easeInCubic(drop)), clock), sx: 1 / Math.sqrt(squash), sy: squash, ay: PAD_Y + feet };
+  }
+
+  /** After the splash: sinks, surfaces to its chin, spits at the duck, then bobs (the old pond landing). */
+  function pondPose(after: number, x: number): Pose {
+    const P = END.pond;
+    if (after < P.surface) {
+      const flat = after < 150 ? 1 - Math.sin((after / 150) * Math.PI) * 0.4 : 1;
+      const sink = easeInCubic(clamp((after - P.sink) / 240)) * (BOX + 30);
+      return { x, y: contact + sink, rot: 1, clip: "idle", facing: "right", frame: 0, sx: 1 / Math.sqrt(flat), sy: flat, ay: POND.surface, cut: POND.surface, under: true };
     }
-    if (time < P.drop) {
-      const looking = time >= P.look, hover = Math.round(Math.sin((time - P.apex) / 80) * 2);
-      return { x: STALL.x, y: STALL.y + hover, rot: 0, clip: looking ? "idle" : "walk", facing: looking ? "down" : "right", frame: looking ? 0 : Math.floor(time / 40) % 8, sx: 1, sy: 1 };
-    }
-    const contact = POND.surface - belly;
-    if (time < P.land) {
-      const u = (time - P.drop) / (P.land - P.drop);
-      return { x: STALL.x + 8 * u, y: lerp(STALL.y, contact, easeInCubic(u)), rot: u > 0.25 ? 1 : 0, clip: "idle", facing: u > 0.25 ? "right" : "down", frame: 0, sx: 0.9, sy: 1.14 };
-    }
-    const since = time - P.land;
-    if (time < P.surface) {
-      const flat = since < 150 ? 1 - Math.sin((since / 150) * Math.PI) * 0.4 : 1;
-      const sink = easeInCubic(clamp((time - P.sink) / 240)) * (BOX + 30);
-      return { x: STALL.x + 8, y: contact + sink, rot: 1, clip: "idle", facing: "right", frame: 0, sx: 1 / Math.sqrt(flat), sy: flat, ay: POND.surface, cut: POND.surface, under: true };
-    }
-    // Surfaces up to its chin, spits a fountain at the duck, then bobs.
-    const up = time - P.surface, rise = easeOutBack(clamp(up / 280), 2.4);
+    const up = after - P.surface, rise = easeOutBack(clamp(up / 280), 2.4);
     const rest = POND.surface - (front.minY + 8) * S + HALF;
-    const spitting = time >= P.spit && time < P.spit + 300;
-    const bob = up > 280 ? Math.round(Math.sin((up - 280) / 240) * 3) : 0;
+    const spitting = after >= P.spit && after < P.spit + 300;
+    const bob = up > 280 && !reducedMotion ? Math.round(Math.sin((up - 280) / 240) * 3) : 0;
     return {
-      x: STALL.x - 8, y: lerp(POND.surface + HALF + 6, rest, rise) + bob, rot: 0, clip: "idle", facing: "down", frame: spitting ? 0 : Math.floor(up / 170) % 8,
-      sx: spitting ? 1.08 : 1, sy: spitting ? 0.94 : 1, ay: POND.surface, cut: POND.surface, under: true,
+      x: x - 16, y: lerp(POND.surface + HALF + 6, rest, rise) + bob, rot: 0, clip: "idle", facing: "down",
+      frame: spitting || reducedMotion ? 0 : Math.floor(up / 170) % 8, sx: spitting ? 1.08 : 1, sy: spitting ? 0.94 : 1, ay: POND.surface, cut: POND.surface, under: true,
     };
   }
 
-  /** Haystack squash: vertical scale of the stack after the dive. */
+  /** When the splash happens (ms after end()), or Infinity when this ending stays dry. */
+  const splashAt = () => ending === "fizzle" ? END.pad.land : ending === "crash" ? END.air.pop + fallMs : Infinity;
+  const touchAt = () => END.jump.hop + descentMs;
   const hayScale = (time: number) => {
-    const since = time - T.haystack.land;
-    return since < 0 ? 1 : 1 - 0.16 * Math.exp(-since / 200) * Math.cos(since / 55);
+    const after = time - touchAt();
+    return ending !== "jump" || after < 0 ? 1 : 1 - 0.08 * Math.exp(-after / 200) * Math.cos(after / 55);
   };
-  function hayPose(time: number): Pose {
-    const P = T.haystack;
-    const contact = HAY_TOP - head;
-    if (time < P.land) return flying(arc(time, P.land, { x: HAY.cx, y: contact }, 250), time, tumble(time, 110, P.land - 260, 2));
-    // Head first into the hay: only the legs stick out, kicking, with a pause for comic timing.
-    const since = time - P.land, top = HAY_TOP * hayScale(time);
-    const plunge = easeOutCubic(clamp(since / 130));
-    const loop = since - 1250;
-    const kicking = since < 620 || (loop > 0 && loop % 1300 < 760);
-    const jiggle = kicking ? Math.round(Math.sin(since / 30) * 6) : 0;
-    return { x: HAY.cx + jiggle, y: lerp(contact, top - 10 * S + HALF + 6, plunge), rot: 2, clip: kicking ? "walk" : "idle", facing: since < 90 ? "right" : "down", frame: kicking ? Math.floor(since / 50) % 8 : 0, sx: 1, sy: 1, cut: top + 6 };
-  }
 
-  const HIT_X = PEAK.x + 16, SEAT_X = PEAK.x + 36, EDGE_X = EAVE_X - 16;
-  const roofHit: Point = { x: HIT_X, y: roofY(HIT_X) - belly };
-  const edgeFeet = roofY(EDGE_X);
-  function roofPose(time: number): Pose {
-    const P = T.rooftop;
-    if (time < P.land) return flying(arc(time, P.land, roofHit, 300), time, tumble(time, 110, P.land - 200, 1));
-    const since = time - P.land;
-    if (since < 70) return { ...roofHit, rot: 1, clip: "idle", facing: "right", frame: 0, sx: 1.18, sy: 0.8, ay: roofY(HIT_X) };
-    if (time < P.bounce) {
-      // Bounces off with a flip and lands on its bottom further down the slope.
-      const u = (since - 70) / (P.bounce - P.land - 70), seat = { x: SEAT_X, y: roofY(SEAT_X) - feet };
-      return { x: lerp(roofHit.x, seat.x, u), y: lerp(roofHit.y, seat.y, u) - 4 * 80 * u * (1 - u), rot: 1 + Math.floor(3 * clamp(u * 1.4)), clip: "walk", facing: "right", frame: Math.floor(time / 45) % 8, sx: 1, sy: 1 };
-    }
-    if (time < P.edge) {
-      const u = (time - P.bounce) / (P.edge - P.bounce), x = lerp(SEAT_X, EDGE_X, u * u);
-      return { x, y: roofY(x) - feet, rot: 0, clip: "idle", facing: "right", frame: 0, sx: 1, sy: 1 };
-    }
-    if (time < P.clonk) {
-      // Stops right at the edge and teeters, then looks at us: phew.
-      const k = (time - P.edge) / (P.clonk - P.edge);
-      return { x: EDGE_X + Math.round(Math.sin(k * Math.PI * 5) * 4 * (1 - k)), y: edgeFeet - feet, rot: 0, clip: "idle", facing: k > 0.45 ? "down" : "right", frame: 0, sx: 1, sy: 1 };
-    }
-    const hit = time - P.clonk, squash = hit < 170 ? 1 - Math.sin((hit / 170) * Math.PI) * 0.24 : 1;
-    return { x: EDGE_X + Math.round(Math.sin(hit / 260) * 3), y: edgeFeet - feet, rot: 0, clip: "idle", facing: "down", frame: Math.floor(hit / 200) % 8, sx: 1 / Math.sqrt(squash), sy: squash, ay: edgeFeet };
-  }
-  /** The roof tile knocked loose by the first bonk: up it goes, and down on the baby's head. */
-  function tileAt(time: number) {
-    const P = T.rooftop, u = clamp((time - P.land) / (P.clonk - P.land));
-    const to = edgeFeet - feet - headTop;
-    return { x: lerp(HIT_X, EDGE_X, u), y: lerp(roofY(HIT_X), to, u) - 4 * 290 * u * (1 - u), rot: Math.floor((time - P.land) / 85) };
-  }
-
-  // Cloud bounces after the landing: [start, end, kind, amount]. dip: sinks into the fluff, air: hops.
-  const BOUNCES = [[0, 110, "dip", 36], [110, 210, "rise", 36], [210, 600, "air", 150], [600, 670, "dip", 18], [670, 740, "rise", 18],
-    [740, 980, "air", 54], [980, 1020, "dip", 8], [1020, 1060, "rise", 8], [1060, 1200, "air", 16], [1200, 1250, "dip", 4], [1250, 1290, "rise", 4]] as const;
-  function bounceAt(since: number) {
-    for (const [a, b, kind, amount] of BOUNCES) {
-      if (since < a || since >= b) continue;
-      const u = (since - a) / (b - a);
-      if (kind === "air") return { dip: 0, lift: 4 * amount * u * (1 - u), flip: a === 210 ? Math.floor(4 * clamp(u * 1.2)) : 0 };
-      return { dip: amount * Math.sin((kind === "dip" ? u : 1 - u) * Math.PI / 2), lift: 0, flip: 0 };
-    }
-    return { dip: since < 0 ? 0 : 3, lift: 0, flip: 0 };
-  }
-  function cloudPose(time: number): Pose {
-    const P = T.cloud, rest = CLOUD9_TOP - feet;
-    if (time < P.land) return flying(arc(time, P.land, { x: CLOUD9.cx, y: rest }, 620), time, tumble(time, 110, P.land - 320, 0));
-    const since = time - P.land, b = bounceAt(since), sat = time >= P.settle;
-    const squash = 1 - b.dip / 150;
-    return {
-      x: CLOUD9.cx, y: rest + b.dip - b.lift, rot: b.flip, clip: b.lift > 0 ? "walk" : "idle", facing: sat ? "down" : "right",
-      frame: sat ? Math.floor(since / 190) % 8 : Math.floor(since / 45) % 8, sx: 1 / Math.sqrt(squash), sy: squash, ay: CLOUD9_TOP + b.dip,
-    };
-  }
-
-  function ascentPose(time: number): Pose {
-    const raw = clamp(time / T.orbit.apex), u = raw + kick * 0.5 * raw * (1 - raw) ** 2;
-    return flying({ x: EXIT.x + 640 * (1 - Math.pow(1 - u, 2.2)), y: EXIT.y - 2232 * (0.45 * u + 0.55 * u * u) }, time, Math.floor(4 * clamp(u / 0.35)));
-  }
-
-  function worldPose(time: number): Pose {
-    switch (zone) {
-      case "pond": return pondPose(time);
-      case "haystack": return hayPose(time);
-      case "rooftop": return roofPose(time);
-      case "cloud": return cloudPose(time);
-      default: return ascentPose(Math.min(time, T.orbit.apex));
-    }
-  }
-
-  // The camera holds on the window for the burst, follows the baby (a centred moving average smooths the
-  // turns), then settles on the landing frame.
-  function follow(time: number): Point {
-    const p = worldPose(clamp(time, 0, space ? T.orbit.apex : plan.end));
-    return { x: Math.max(START_CAM_X, p.x - 400), y: Math.min(GROUND_CAM, p.y - 150) };
-  }
-  function cameraAt(time: number): Point {
-    let x = 0, y = 0;
-    for (let k = -3; k <= 3; k++) { const c = follow(time + k * 45); x += c.x; y += c.y; }
-    x = lerp(START_CAM_X, x / 7, smooth((time - 90) / 460)); y = lerp(GROUND_CAM, y / 7, smooth((time - 30) / 240));
-    const final = FINAL_CAM[zone];
-    if (final) { const k = smooth((time - (plan.land - 700)) / 900); x = lerp(x, final.x, k); y = lerp(y, final.y, k); }
-    return { x: Math.round(x), y: Math.round(y) };
-  }
-
-  // Space (orbit and moon), screen coordinates. The flight enters where the world camera last showed it.
-  const entry = (() => { const p = ascentPose(T.orbit.apex), c = cameraAt(T.orbit.apex); return { x: p.x - c.x, y: p.y - c.y }; })();
-  const orbitPoint = (theta: number) => {
-    const c = Math.cos(ORBIT.tilt), s = Math.sin(ORBIT.tilt), ex = ORBIT.rx * Math.cos(theta), ey = ORBIT.ry * Math.sin(theta);
-    return { x: GLOBE.x + ex * c - ey * s, y: GLOBE.y + ex * s + ey * c };
-  };
-  const orbitAngle = (time: number) => Math.PI - (2 * Math.PI * (time - T.orbit.land)) / ORBIT.period;
-  function spacePose(time: number): Pose {
-    const since = time - T.orbit.apex;
-    const rise = easeOutCubic(clamp(since / 800));
-    const lazy = Math.floor(time / 110) % 8;
-    let x = lerp(entry.x, 480, rise), y = lerp(entry.y, 170, rise);
-    if (zone === "orbit") {
-      if (time < T.orbit.insert) return { x, y, rot: 0, clip: "walk", facing: "right", frame: lazy, sx: 1, sy: 1 };
-      if (time < T.orbit.land) {
-        // Swoops down into the orbit on a curve that meets it at its left end, moving down.
-        const k0 = (time - T.orbit.insert) / (T.orbit.land - T.orbit.insert), k = k0 * (1.25 - 0.25 * k0);
-        const end = orbitPoint(Math.PI), c = { x: end.x, y: end.y - 190 };
-        x = (1 - k) ** 2 * 480 + 2 * k * (1 - k) * c.x + k * k * end.x;
-        y = (1 - k) ** 2 * 170 + 2 * k * (1 - k) * c.y + k * k * end.y;
-        return { x, y, rot: Math.floor(k0 * 2), clip: "walk", facing: "right", frame: flail(time), sx: 1, sy: 1 };
+  function endPose(e: number): Pose {
+    switch (ending) {
+      case "fizzle": {
+        const P = END.pad;
+        if (e < P.topple) return idle(FLIGHT_X + (reducedMotion ? 0 : Math.round(Math.sin(e / 30) * 1) * A), PAD_Y, clock);
+        if (e < P.land) {
+          const k = (e - P.topple) / (P.land - P.topple);
+          return { ...flying(lerp(FLIGHT_X, SPLASH_X, k), lerp(PAD_Y, contact, easeInCubic(k)) - 70 * Math.sin(k * Math.PI), e, Math.floor(k * 5), "right"), clip: "idle", frame: 0 };
+        }
+        return pondPose(e - P.land, SPLASH_X);
       }
-      const p = orbitPoint(orbitAngle(time));
-      return { ...p, rot: Math.floor((time - T.orbit.land) / 110), clip: "walk", facing: "right", frame: flail(time), sx: 1, sy: 1 };
+      case "crash": {
+        const P = END.air;
+        if (e < P.pop) return idle(from.x, from.y + (reducedMotion ? 0 : Math.round(Math.sin(e / 70) * 2) * A), clock);
+        if (e < P.pop + fallMs) {
+          const k = (e - P.pop) / fallMs;
+          return flying(lerp(from.x, SPLASH_X, k), lerp(from.y, contact, easeInCubic(k)), e, Math.floor(k * 9), "right");
+        }
+        return pondPose(e - P.pop - fallMs, SPLASH_X);
+      }
+      case "jump": {
+        const hop = END.jump.hop;
+        if (e < hop) {
+          const k = e / hop;
+          return flying(from.x + 70 * k, from.y + 10 * k - 44 * Math.sin(k * Math.PI), e, 0, "right");
+        }
+        const touch = touchAt();
+        if (e < touch) {
+          const k = (e - hop) / descentMs, sway = Math.sin((e - hop) / 260) * 14 * (1 - k);
+          return { ...idle(lerp(from.x + 70, HAY.cx, smooth(k)) + sway, lerp(from.y + 10, seat, smooth(k)), clock), clip: "walk", frame: Math.floor(e / 160) % 8 };
+        }
+        const after = e - touch, squash = after < 160 ? 1 - Math.sin((after / 160) * Math.PI) * 0.22 : 1;
+        const hopUp = !reducedMotion && after > 380 && after < 700 ? Math.sin(((after - 380) / 320) * Math.PI) * 30 : 0;
+        return { ...idle(HAY.cx, seat - hopUp, clock), sx: 1 / Math.sqrt(squash), sy: squash, ay: seat + feet };
+      }
+      default: return idle(from.x, from.y, clock);
     }
-    const P = T.moon;
-    if (time < P.descend) {
-      // Keeps going past the orbit, floats with a lazy somersault while the Moon comes closer.
-      const k = clamp((time - P.leave) / (P.descend - P.leave));
-      return { x: x + 20 * smooth(k), y: y - 18 * Math.sin(k * Math.PI), rot: time > P.leave + 300 ? Math.floor(4 * clamp((time - P.leave - 300) / 900)) : 0, clip: "walk", facing: "right", frame: lazy, sx: 1, sy: 1 };
+  }
+
+  function moonPose(e: number): Pose {
+    const M = END.moon, top = MOON_TOP.y - feet;
+    if (e < M.land) {
+      const k = smooth((e - M.cut) / (M.land - M.cut));
+      return { ...flying(lerp(470, MOON_TOP.x, k), lerp(200, top, k), e), clip: k > 0.7 ? "idle" : "walk", facing: k > 0.7 ? "down" : "right", frame: k > 0.7 ? 0 : Math.floor(e / 110) % 8 };
     }
-    const top = MOON_TOP.y - feet;
-    if (time < P.land) {
-      const k = smooth((time - P.descend) / (P.land - P.descend));
-      return { x: lerp(500, MOON_TOP.x, k), y: lerp(170, top, k), rot: 0, clip: k > 0.7 ? "idle" : "walk", facing: "right", frame: k > 0.7 ? 0 : lazy, sx: 1, sy: 1 };
-    }
-    const after = time - P.land;
-    const squash = after < 200 ? 1 - Math.sin((after / 200) * Math.PI) * 0.25 : 1;
+    const after = e - M.land, squash = after < 200 ? 1 - Math.sin((after / 200) * Math.PI) * 0.25 : 1;
     // Low-gravity happy hops after the jackpot.
-    const hop = time > P.title ? Math.max(0, Math.sin(((time - P.title) / 900) * Math.PI * 2)) * 34 : 0;
-    return { x: MOON_TOP.x, y: top - hop, rot: 0, clip: hop > 0 ? "walk" : "idle", facing: time > P.flag - 60 ? "down" : "right", frame: Math.floor(after / 170) % 8, sx: 1 / Math.sqrt(squash), sy: squash, ay: MOON_TOP.y };
+    const hop = e > M.rays && !reducedMotion ? Math.max(0, Math.sin(((e - M.rays) / 900) * Math.PI * 2)) * 34 : 0;
+    return { x: MOON_TOP.x, y: top - hop, rot: 0, clip: hop > 0 ? "walk" : "idle", facing: "down", frame: reducedMotion ? 0 : Math.floor(after / 170) % 8, sx: 1 / Math.sqrt(squash), sy: squash, ay: MOON_TOP.y };
   }
 
-  function earthAt(time: number) {
-    const k = easeOutCubic(clamp((time - T.orbit.apex) / 1100));
-    const r = Math.exp(lerp(Math.log(2600), Math.log(GLOBE.r), k)), top = lerp(700, GLOBE.y - GLOBE.r, k);
-    const e = { x: GLOBE.x, y: top + r, r };
-    if (zone !== "moon") return e;
-    const m = smooth((time - T.moon.leave) / 1300);
-    return { x: lerp(e.x, EARTH_FAR.x, m), y: lerp(e.y, EARTH_FAR.y, m), r: Math.exp(lerp(Math.log(e.r), Math.log(EARTH_FAR.r), m)) };
+  /** The baby, the rocket (null once it is gone), the parachute and the camera at this moment (world phase). */
+  function worldState() {
+    const e = shownAt();
+    if (phase === "ready" || (phase === "flying" && reducedMotion)) {
+      return { pose: readyPose(), rocket: { x: FLIGHT_X, y: PAD_Y, flame: phase === "flying" ? 1 : 0 }, strap: reducedMotion || clock > 300, chute: null as Chute | null, cam: { x: CAM_X, y: GROUND_CAM } };
+    }
+    if (phase === "flying") {
+      const x = FLIGHT_X + Math.round(Math.sin(clock / 45)) * A, y = flightY(flightMs);
+      return { pose: flying(x, y, clock), rocket: { x, y, flame: 1 }, strap: true, chute: null as Chute | null, cam: { x: CAM_X, y: Math.min(GROUND_CAM, y - climbScreenY(flightMs)) } };
+    }
+    const pose = endPose(e);
+    const offset = from.y - fromCam;
+    const follow = (screenY: number) => Math.min(GROUND_CAM, pose.y - screenY);
+    if (ending === "fizzle") {
+      const sputtering = e < END.pad.topple;
+      return { pose, rocket: { x: FLIGHT_X, y: PAD_Y, flame: sputtering ? 0.5 : 0 }, strap: sputtering, chute: null as Chute | null, cam: { x: CAM_X, y: GROUND_CAM } };
+    }
+    if (ending === "crash") {
+      const hanging = e < END.air.pop;
+      return { pose, rocket: hanging ? { x: pose.x, y: pose.y, flame: 0.5 } : null, strap: hanging, chute: null as Chute | null, cam: { x: CAM_X, y: e < splashAt() ? follow(offset) : GROUND_CAM } };
+    }
+    if (ending === "jump") {
+      const hop = END.jump.hop, touch = touchAt(), k = clamp((e - hop) / descentMs);
+      // The empty rocket keeps climbing out of sight.
+      const ry = from.y - (e * 0.6 + e * e * 0.0015);
+      const open = e < hop ? 0 : reducedMotion ? 1 : easeOutBack(clamp((e - hop) / 220), 2);
+      const flat = e < touch ? 0 : reducedMotion ? 1 : easeOutCubic((e - touch) / 450);
+      // The camera rides down with the parachute, the canopy in view, and ends on the hay field.
+      const cam = { x: Math.round(lerp(CAM_X, HAY_CAM_X, smooth(k))), y: Math.round(follow(lerp(offset, 330, smooth(k)))) };
+      return { pose, rocket: ry > cam.y - 400 ? { x: from.x, y: ry, flame: 1 } : null, strap: false, chute: e < hop ? null : { open, x: pose.x, y: pose.y, flat }, cam };
+    }
+    // The Moon, before the cut: the rocket arrives at x10.
+    return { pose, rocket: { x: from.x, y: from.y, flame: 1 }, strap: true, chute: null as Chute | null, cam: { x: CAM_X, y: fromCam } };
   }
-  /** Where the day moon sits for a camera (world phase), and the Moon in space. */
-  const dayMoon = (cam: Point) => ({ x: DAY_MOON.x - (cam.x - START_CAM_X) * 0.03, y: DAY_MOON.y - (cam.y - GROUND_CAM) * 0.05, r: DAY_MOON.r });
-  const skyMoon = dayMoon(cameraAt(T.orbit.apex));
-  function moonAt(time: number) {
-    if (zone !== "moon") return { x: skyMoon.x, y: skyMoon.y, r: skyMoon.r };
-    const m = smooth((time - T.moon.leave - 100) / 1300);
-    const r = Math.exp(lerp(Math.log(skyMoon.r), Math.log(MOON_R), m));
-    const topX = lerp(skyMoon.x, MOON_TOP.x, m), topY = lerp(skyMoon.y - skyMoon.r, MOON_TOP.y, m);
-    return { x: topX, y: topY + r, r };
-  }
-
-  // Beat times: arc apexes are measured from the path.
-  const apexAt = (() => {
-    if (plan.apex) return plan.apex;
-    let best = 0, high = Infinity;
-    for (let time = 0; time < plan.land; time += 10) { const y = worldPose(time).y; if (y < high) { high = y; best = time; } }
-    return best;
-  })();
 
   // ------------------------------------------------------------------------------------------
   // Drawing
@@ -702,25 +638,83 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
     paint(top, cut);
   }
 
-  /** Speed lines trailing the baby, from its motion over the last frames. */
-  function drawTrail(poseAt: (time: number) => Pose, time: number, color: string) {
-    const now = poseAt(time), before = poseAt(time - 40);
-    const vx = now.x - before.x, vy = now.y - before.y, speed = Math.hypot(vx, vy);
-    if (speed < 14) return;
-    const ux = vx / speed, uy = vy / speed, px = -uy, py = ux;
-    ctx.fillStyle = color;
-    for (let i = -1; i <= 1; i++) {
-      const length = Math.min(90, speed * 2.2) * (i ? 0.7 : 1), off = i * 30 + ((Math.floor(time / 60) + i) % 2) * 4;
-      for (let d = HALF; d < HALF + length; d += 6) {
-        ctx.fillRect(Math.round((now.x - ux * d + px * off) / A) * A, Math.round((now.y - uy * d + py * off) / A) * A, A, A);
+  /** The firework rocket behind the baby (box centre x, y): green nose cone, paper tube with a green spiral, wooden stick, flame 0-1. */
+  function drawRocket(x: number, y: number, flame: number, time: number) {
+    const X = Math.round(x / A), Y = Math.round(y / A), half = ROCKET.tube / A / 2;
+    const top = Y + ROCKET.top / A, bottom = Y + ROCKET.bottom / A, nose = ROCKET.nose / A;
+    ctx.save(); ctx.scale(A, A);
+    box(ctx, X + 3, bottom - 10, 3, Y + ROCKET.stick / A - bottom + 10, STRAW);
+    if (flame > 0) {
+      // Flickering flame; half power sputters on and off.
+      const tick = reducedMotion ? 0 : Math.floor(time / 45);
+      const on = flame >= 1 || tick % 3 !== 0;
+      const length = on ? Math.round((flame >= 1 ? 9 : 4) + (tick * 7 % 5)) : 0;
+      for (let r = 0; r < length; r++) {
+        const w = Math.max(1, Math.round(4 * (1 - r / length)) + (r < 2 ? 1 : 0));
+        rect(ctx, X - w - 1, bottom + 2 + r, w * 2 + 2, 1, INK);
+        rect(ctx, X - w, bottom + 2 + r, w * 2, 1, r < 2 ? WHITE : r < length * 0.45 ? GOLD : ORANGE);
       }
+    }
+    rect(ctx, X - 4, bottom, 8, 2, INK);
+    box(ctx, X - half, top, half * 2, bottom - top, WHITE);
+    for (let j = top + 1; j < bottom - 1; j++) for (let i = 1; i < half * 2 - 1; i++) if ((i + j) % 9 < 3) rect(ctx, X - half + i, j, 1, 1, GREEN);
+    rect(ctx, X - half, top + 3, half * 2, 1, INK);
+    rect(ctx, X - half, bottom - 4, half * 2, 1, INK);
+    for (let r = 0; r < nose; r++) {
+      const w = Math.max(1, Math.round(((r + 1) / nose) * (half + 1)));
+      rect(ctx, X - w, top - nose + r, w * 2, 1, INK);
+      if (w > 1 && r > 1) { rect(ctx, X - w + 1, top - nose + r, w * 2 - 2, 1, GREEN); rect(ctx, X - w + 2, top - nose + r, 1, 1, WHITE); }
+    }
+    ctx.restore();
+  }
+
+  /** The seat strap across the baby's tummy, with a buckle. */
+  function drawStrap(p: Pose) {
+    const X = Math.round(p.x / A), Y = Math.round((p.y + 24) / A);
+    ctx.save(); ctx.scale(A, A);
+    rect(ctx, X - 15, Y, 30, 3, INK);
+    rect(ctx, X - 14, Y + 1, 28, 1, GREEN);
+    box(ctx, X - 2, Y - 1, 5, 5, WHITE);
+    ctx.restore();
+  }
+
+  /** Parachute: a striped canopy above the baby on four lines; `flat` lays it down over the hay after touchdown. */
+  function drawChute(c: Chute) {
+    const X = Math.round((c.x + 90 * c.flat) / A), base = Math.round((lerp(c.y - HALF - 108, seat + feet - 18, c.flat)) / A);
+    const rx = Math.round(lerp(32, 38, c.flat) * c.open), ry = Math.max(1, Math.round(lerp(18, 4, c.flat) * c.open));
+    if (rx < 2) return;
+    ctx.save(); ctx.scale(A, A);
+    if (c.flat < 0.6) {
+      const shoulders = Math.round((c.y - 18) / A), bx = Math.round(c.x / A);
+      for (const [from, to] of [[-rx, -5], [-Math.round(rx / 3), -2], [Math.round(rx / 3), 2], [rx, 5]] as const) {
+        const steps = Math.max(1, shoulders - base);
+        for (let i = 0; i <= steps; i += 2) rect(ctx, Math.round(lerp(X + from, bx + to, i / steps)), base + i, 1, 1, INK);
+      }
+    }
+    const rows = Array.from({ length: ry + 1 }, (_, dy) => [base - ry + dy, Math.round(rx * Math.sqrt(Math.max(0, 1 - ((ry - dy) / ry) ** 2)))] as const);
+    // Ink outline first, then the green and white panels inside it.
+    for (const [y, half] of rows) rect(ctx, X - half - 1, y - 1, half * 2 + 2, 2, INK);
+    for (const [y, half] of rows) for (let i = -half; i < half; i++) rect(ctx, X + i, y, 1, 1, Math.floor((i + rx) / Math.max(1, rx / 3)) % 2 ? GREEN : WHITE);
+    rect(ctx, X - rx - 1, base + 1, rx * 2 + 2, 1, INK);
+    ctx.restore();
+  }
+
+  /** Speed lines beside the baby: `speed` px per ms, positive when it climbs (lines trail below), negative when it falls. */
+  function drawSpeedLines(x: number, y: number, speed: number, color: string) {
+    const length = Math.min(130, Math.abs(speed) * 300);
+    if (length < 20) return;
+    const dir = Math.sign(speed), shift = Math.floor(clock / 40) % 3 * 6;
+    ctx.fillStyle = color;
+    for (const off of [-HALF - 24, -HALF - 50, HALF + 24, HALF + 50]) {
+      const start = y + dir * (Math.abs(off) > HALF + 30 ? 10 : 40) + dir * shift;
+      for (let d = 0; d < length * (Math.abs(off) > HALF + 30 ? 0.6 : 1); d += 6) ctx.fillRect(Math.round((x + off) / A) * A, Math.round((start + dir * d) / A) * A, A, A);
     }
   }
 
   function drawSky(camY: number) {
-    const rows = art.sky.height;
-    const row = clamp(Math.floor((camY - SKY.y0) / A), 0, rows - ART_H - 1);
-    ctx.drawImage(art.sky, 0, row, ART_W, ART_H + 1, 0, SKY.y0 + row * A - camY, W, (ART_H + 1) * A);
+    const rows = art.sky.height, span = Math.ceil(region.h / A) + 1;
+    const row = clamp(Math.floor((camY + region.y - SKY.y0) / A), 0, rows - span);
+    ctx.drawImage(art.sky, 0, row, ART_W, span, 0, SKY.y0 + row * A - camY, W, span * A);
   }
 
   function drawStars(shift: number, alpha: number) {
@@ -729,28 +723,30 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
     const span = ART_H * A;
     art.stars.forEach((layer, i) => {
       const y = ((Math.round(shift * (1 + i * 1.4) / A) * A) % span + span) % span;
-      ctx.drawImage(layer, 0, y, W, span);
-      ctx.drawImage(layer, 0, y - span, W, span);
+      // Tiles from the first one reaching the region's top (y - span on the plain 640 px band) down past its bottom.
+      for (let top = y - span * Math.ceil((y - region.y) / span); top < region.y + region.h; top += span) ctx.drawImage(layer, 0, top, W, span);
     });
     ctx.globalAlpha = 1;
   }
 
-  // Discs are drawn in art units (ctx scaled by A) so every curve stays on the 3 px grid.
+  // Discs are drawn in art units (ctx scaled by A) so every curve stays on the 3 px grid, on the visible rows only.
+  const rowsTop = () => Math.floor(region.y / A), rowsBottom = () => Math.ceil((region.y + region.h) / A);
   function drawMoonDisc(cx: number, cy: number, r: number, day: boolean) {
     const fill = day ? GRID : SHADE, lit = day ? WHITE : GRID, pit = day ? SHADE : MUTED;
-    discRows(cx, cy, r + 1, (y, x0, x1) => rect(ctx, x0, y, x1 - x0, 1, day ? SHADE : INK));
-    discRows(cx, cy, r, (y, x0, x1) => rect(ctx, x0, y, x1 - x0, 1, fill));
+    const top = rowsTop(), bottom = rowsBottom();
+    discRows(cx, cy, r + 1, (y, x0, x1) => rect(ctx, x0, y, x1 - x0, 1, day ? SHADE : INK), top, bottom);
+    discRows(cx, cy, r, (y, x0, x1) => rect(ctx, x0, y, x1 - x0, 1, fill), top, bottom);
     discRows(cx - r * 0.16, cy - r * 0.18, r * 0.84, (y, x0, x1) => {
       const span = discSpan(cx, cy, r - 1, y);
       if (span) rect(ctx, Math.max(x0, span[0]), y, Math.min(x1, span[1]) - Math.max(x0, span[0]), 1, lit);
-    });
+    }, top, bottom);
     for (const [u, v, ru, rv] of MARIA) {
       const ex = cx + u * r, ey = cy + v * r, rx = ru * r, ry = rv * r;
       discRows(ex, ey, rx, (y, x0, x1) => {
         if (Math.abs(y + 0.5 - ey) > ry) return;
         const body = discSpan(cx, cy, r - 1, y);
         if (body && Math.min(x1, body[1]) > Math.max(x0, body[0])) rect(ctx, Math.max(x0, body[0]), y, Math.min(x1, body[1]) - Math.max(x0, body[0]), 1, day ? SHADE : "#CFC8BA");
-      });
+      }, top, bottom);
     }
     if (r > 40) for (const [u, v] of SPECKS) {
       const x = Math.round(cx + u * r), y = Math.round(cy + v * r), body = discSpan(cx, cy, r - 2, y);
@@ -758,8 +754,8 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
     }
     for (const [u, v, ru, rv] of CRATERS) {
       const ex = cx + u * r, ey = cy + v * r, rx = ru * r, ry = Math.max(0.6, rv * r);
-      if (rx < 2.5 || ey + ry < 0 || ey - ry > ART_H || ex + rx < 0 || ex - rx > ART_W) continue;
-      for (let y = Math.max(0, Math.floor(ey - ry)); y <= Math.min(ART_H - 1, Math.ceil(ey + ry)); y++) {
+      if (rx < 2.5 || ey + ry < top || ey - ry > bottom || ex + rx < 0 || ex - rx > ART_W) continue;
+      for (let y = Math.max(top, Math.floor(ey - ry)); y <= Math.min(bottom - 1, Math.ceil(ey + ry)); y++) {
         const dy = (y + 0.5 - ey) * (rx / ry), h2 = rx * rx - dy * dy, body = discSpan(cx, cy, r, y);
         if (h2 <= 0 || !body) continue;
         const half = Math.sqrt(h2), a = Math.max(Math.round(ex - half), body[0]), b = Math.min(Math.round(ex + half), body[1]);
@@ -770,19 +766,20 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
   }
 
   function drawEarth(cx: number, cy: number, r: number, time: number) {
+    const top = rowsTop(), bottom = rowsBottom();
     // Atmosphere: a dotted green ring, then ink outline, paper oceans, green land, white clouds, night side.
     discRows(cx, cy, r + 3, (y, x0, x1) => {
       const inner = discSpan(cx, cy, r + 1, y);
       const paint = (a: number, b: number) => { for (let x = Math.max(a, -1); x < Math.min(b, ART_W + 1); x++) if ((x + y) % 2 === 0) rect(ctx, x, y, 1, 1, (x + y) % 4 === 0 ? GREEN : MOSS); };
       if (!inner) paint(x0, x1); else { paint(x0, inner[0]); paint(inner[1], x1); }
-    });
-    discRows(cx, cy, r + 1, (y, x0, x1) => rect(ctx, x0, y, x1 - x0, 1, INK));
-    discRows(cx, cy, r, (y, x0, x1) => rect(ctx, x0, y, x1 - x0, 1, PAPER));
+    }, top, bottom);
+    discRows(cx, cy, r + 1, (y, x0, x1) => rect(ctx, x0, y, x1 - x0, 1, INK), top, bottom);
+    discRows(cx, cy, r, (y, x0, x1) => rect(ctx, x0, y, x1 - x0, 1, PAPER), top, bottom);
     const spin = time / 9000;
     const blob = (u: number, v: number, ru: number, rv: number, color: string) => {
       const ex = cx + u * r, ey = cy + v * r, rx = ru * r, ry = Math.max(0.6, rv * r);
-      if (ex + rx < -2 || ex - rx > ART_W + 2 || ey + ry < 0 || ey - ry > ART_H) return;
-      for (let y = Math.max(0, Math.floor(ey - ry)); y <= Math.min(ART_H - 1, Math.ceil(ey + ry)); y++) {
+      if (ex + rx < -2 || ex - rx > ART_W + 2 || ey + ry < top || ey - ry > bottom) return;
+      for (let y = Math.max(top, Math.floor(ey - ry)); y <= Math.min(bottom - 1, Math.ceil(ey + ry)); y++) {
         const dy = (y + 0.5 - ey) * (rx / ry), h2 = rx * rx - dy * dy, body = discSpan(cx, cy, r, y);
         if (h2 <= 0 || !body) continue;
         const half = Math.sqrt(h2), a = Math.max(Math.round(ex - half), body[0]), b = Math.min(Math.round(ex + half), body[1]);
@@ -799,27 +796,22 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
       const lit = discSpan(cx - r * 0.42, cy - r * 0.2, r * 1.08, y);
       const from = lit ? Math.max(x0, lit[1]) : x0;
       if (x1 > from) rect(ctx, from, y, x1 - from, 1, INK);
-    });
+    }, top, bottom);
     ctx.globalAlpha = 1;
   }
 
-  function drawOrbitRing(e: { x: number; y: number; r: number }, half: "back" | "front", time: number, alpha: number) {
-    if (alpha <= 0.01) return;
-    const scale = e.r / GLOBE.r, c = Math.cos(ORBIT.tilt), s = Math.sin(ORBIT.tilt);
-    ctx.globalAlpha = alpha;
-    const count = 72, march = (time / 600) % 1;
-    for (let i = 0; i < count; i++) {
-      const theta = ((i + march) / count) * Math.PI * 2, front = Math.sin(theta) > 0;
-      if (front !== (half === "front") || i % 2) continue;
-      const ex = ORBIT.rx * scale * Math.cos(theta), ey = ORBIT.ry * scale * Math.sin(theta);
-      const size = front ? 2 * A : A;
-      rect(ctx, Math.round((e.x + ex * c - ey * s) / A) * A - size / 2, Math.round((e.y + ex * s + ey * c) / A) * A - size / 2, size, size, front ? GREEN : MUTED);
+  /** The orbit at x4: a dotted green arc across the sky with its tag (world px). */
+  function drawOrbit(cam: Point) {
+    if (Math.abs(ORBIT_Y - cam.y - region.y - region.h / 2) > region.h / 2 + 200) return;
+    const cx = FLIGHT_X + 60, rx = 1000, ry = 300, cy = ORBIT_Y + ry, march = reducedMotion ? 0 : (clock / 900) % 1;
+    for (let i = 0; i < 80; i++) {
+      const theta = Math.PI + ((i + march) / 80) * Math.PI, x = cx + rx * Math.cos(theta), y = cy + ry * Math.sin(theta);
+      if (x < cam.x - 20 || x > cam.x + W + 20 || i % 2) continue;
+      rect(ctx, Math.round(x / A) * A - 6, Math.round(y / A) * A - 6, 12, 12, INK);
+      rect(ctx, Math.round(x / A) * A - 3, Math.round(y / A) * A - 3, 6, 6, GREEN);
     }
-    if (half === "front") {
-      const tag = { x: e.x + ORBIT.rx * scale * c + 14, y: e.y + ORBIT.rx * scale * s - 10 };
-      drawText(ctx, multiplierText(40_000), tag.x, tag.y, { scale: 3, color: GREEN, outline: INK });
-    }
-    ctx.globalAlpha = 1;
+    const tx = FLIGHT_X + 150, ty = cy - ry * Math.sqrt(1 - ((tx - cx) / rx) ** 2) - 42;
+    drawText(ctx, `${multiplierText(400)} ORBIT`, tx, ty, { scale: 3, color: GREEN, outline: INK });
   }
 
   function drawCloud(sprite: HTMLCanvasElement, cx: number, cy: number, sx = 1, sy = 1) {
@@ -827,126 +819,129 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
     ctx.drawImage(sprite, Math.round(cx - w / 2), Math.round(cy + (sprite.height * A) / 2 - h), w, h);
   }
 
-  function drawStamp(text: string, x: number, y: number, since: number, scale: number, color = WHITE) {
-    if (since < 0 || since > 650) return;
-    const pop = since < 70 ? scale - 2 : since < 140 ? scale + 1 : scale;
-    ctx.globalAlpha = since > 480 ? 1 - (since - 480) / 170 : 1;
-    const rise = Math.round(Math.min(since, 480) / 40);
+  function drawStamp(text: string, x: number, y: number, age: number, scale: number, color = WHITE) {
+    if (reducedMotion || age < 0 || age > 650) return;
+    const pop = age < 70 ? scale - 2 : age < 140 ? scale + 1 : scale;
+    ctx.globalAlpha = age > 480 ? 1 - (age - 480) / 170 : 1;
+    const rise = Math.round(Math.min(age, 480) / 40);
     const width = textWidth(text, pop);
-    const left = clamp(x - width / 2, 24, W - 24 - width);
+    const left = clamp(x - width / 2, region.x + 24, region.x + region.w - 24 - width);
     drawText(ctx, text, left, clamp(y - rise, 160, 470), { scale: pop, color, outline: INK });
     ctx.globalAlpha = 1;
   }
 
-  function drawTitle(time: number) {
-    const since = reducedMotion ? 9999 : time - plan.title;
-    if (since < 0) return;
-    const label = info.label.toUpperCase(), big = zone === "moon";
-    const labelScale = 3, multScale = big ? 7 : 5;
-    const lw = textWidth(label, labelScale), mw = textWidth(multiplier, multScale), gap = 18;
-    const width = lw + gap + mw + 36, height = multScale * 7 + 26;
-    const drop = easeOutBack(clamp(since / 380), 1.8);
-    const left = Math.round(W / 2 - width / 2), top = Math.round(lerp(-height - 10, 70, drop));
-    rect(ctx, left - 3, top - 3, width + 6, height + 6, info.multiplierBps >= 20_000 ? GREEN : PAPER);
-    rect(ctx, left, top, width, height, INK);
-    drawText(ctx, label, left + 18, top + (height - 7 * labelScale) / 2, { scale: labelScale, color: PAPER });
-    const colors = info.multiplierBps === 0 ? MUTED : info.multiplierBps < 20_000 ? WHITE : GREEN;
-    drawText(ctx, multiplier, left + 18 + lw + gap, top + 13, {
-      scale: multScale, color: colors, colorAt: big ? (i => PRISM[(i + Math.floor(time / 120)) % 5]) : undefined,
-    });
+  /** A multiplier tag on strings (cloud nine's x2) or on a pole (the roof's x1.5), swaying in the wind. */
+  function drawTag(text: string, x: number, y: number, pole: boolean) {
+    const sway = reducedMotion ? 0 : Math.round(Math.sin(clock / 400) * 2) * A;
+    const w = textWidth(text, 3) + 18;
+    if (pole) rect(ctx, x - A, y, A * 2, 78, INK);
+    else { rect(ctx, x, y, A, 36, INK); rect(ctx, x + w - A, y, A, 36, INK); }
+    const left = pole ? x + A : x - A + sway, top = pole ? y + 3 : y + 36;
+    box(ctx, left, top, w + 6, 36, WHITE);
+    rect(ctx, left, top, w + 6, A, INK); rect(ctx, left, top + 33, w + 6, A, INK);
+    rect(ctx, left, top, A, 36, INK); rect(ctx, left + w + 3, top, A, 36, INK);
+    drawText(ctx, text, left + 12, top + 8, { scale: 3, color: INK });
   }
 
-  function shakeAt(time: number) {
-    if (reducedMotion) return 0;
-    const hits: [number, number][] = zone === "pond" ? [[T.pond.land, 7]] : zone === "haystack" ? [[T.haystack.land, 6]] : zone === "rooftop" ? [[T.rooftop.land, 9], [T.rooftop.clonk, 5]]
-      : zone === "cloud" ? [[T.cloud.land, 4]] : zone === "moon" ? [[T.moon.land, 6], [T.moon.title, 8]] : [];
+  function shakeAt(e: number) {
+    if (reducedMotion || phase !== "ending") return 0;
+    const hits: [number, number][] = ending === "jump" ? [[touchAt(), 4]] : ending === "moon" ? [[END.moon.land, 6], [END.moon.rays, 8]] : [[splashAt(), 7]];
     let offset = 0;
-    for (const [at, amp] of hits) { const since = time - at; if (since >= 0 && since < 420) offset += amp * Math.exp(-since / 110) * Math.sin(since / 17); }
+    for (const [at, amp] of hits) { const age = e - at; if (age >= 0 && age < 420) offset += amp * Math.exp(-age / 110) * Math.sin(age / 17); }
     return Math.round(offset);
   }
 
   // ------------------------------------------------------------------------------------------
   // World phase
 
-  function renderWorld(time: number) {
-    const cam = cameraAt(time);
-    const pose = worldPose(time);
+  function renderWorld() {
+    const e = shownAt(), state = worldState(), { pose, cam } = state;
+    cam.x = Math.round(cam.x); cam.y = Math.round(cam.y);
+    const dark = darkness(cam.y + H / 2);
     drawSky(cam.y);
-    drawStars(-cam.y * 0.08, clamp((-cam.y - 1500) / 700));
-    // Day moon (far away: it barely moves).
-    const moon = dayMoon(cam);
+    drawStars(-cam.y * 0.08, clamp((-cam.y - 1100) / 500));
+    // The Moon: a day moon at first, growing overhead as the rocket nears x10 (from the slice's right edge; a portrait
+    // slice keeps it half its extra sky higher).
+    const near = smooth((GROUND_CAM - cam.y - 1100) / 1500);
+    const moon = { x: lerp(DAY_MOON.x, 650, near) + (region.x + region.w - W), y: lerp(DAY_MOON.y, 150, near) + region.y / 2,
+      r: Math.exp(lerp(Math.log(DAY_MOON.r), Math.log(170), near)) };
     ctx.save(); ctx.scale(A, A);
     drawMoonDisc(moon.x / A, moon.y / A, moon.r / A, darkness(cam.y) < 0.45);
     ctx.restore();
+    if (near > 0.25) {
+      // Beside the disc, or across it when the slice has no room on its left.
+      const label = `${multiplierText(1000)} MOON`, right = moon.x - moon.r - 24;
+      if (right - textWidth(label, 3) >= region.x + 12) drawText(ctx, label, right, moon.y - 10, { scale: 3, color: GREEN, outline: INK, align: "right" });
+      else drawText(ctx, label, moon.x, moon.y - 10, { scale: 3, color: GREEN, outline: INK, align: "center" });
+    }
     // Far hills and clouds (parallax).
     const hillsTop = 480 - 60 * A + 30 - (cam.y - GROUND_CAM) * 0.3;
     if (hillsTop < H) {
-      const ox = -((((cam.x - START_CAM_X) * 0.3) % W) + W) % W;
+      const ox = -((((cam.x - CAM_X) * 0.3) % W) + W) % W;
       for (const x of [ox, ox + W]) ctx.drawImage(art.hills, Math.round(x), Math.round(hillsTop), W, 60 * A);
       rect(ctx, 0, Math.round(hillsTop + 60 * A), W, H, SHADE);
     }
     art.far.forEach((sprite, i) => {
-      const x = ((([150, 520, 830][i] - (cam.x - START_CAM_X) * 0.5 + time * 0.012 * (i + 1)) % 1500) + 1500) % 1500 - 250;
+      const x = ((([150, 520, 830][i] - (cam.x - CAM_X) * 0.5 + clock * 0.012 * (i + 1)) % 1500) + 1500) % 1500 - 250;
       const y = [120, 200, 70][i] - (cam.y - GROUND_CAM) * 0.5;
-      if (y > -80 && y < H + 40) ctx.drawImage(sprite, Math.round(x), Math.round(y), sprite.width * A, sprite.height * A);
+      if (y > region.y - 80 && y < H + 40) ctx.drawImage(sprite, Math.round(x), Math.round(y), sprite.width * A, sprite.height * A);
     });
-    const shake = shakeAt(time);
     ctx.save();
-    ctx.translate(-cam.x, -cam.y + shake);
+    ctx.translate(-cam.x, -cam.y + shakeAt(e));
     CLOUDS.forEach(([x, y], i) => {
-      if (Math.abs(x - cam.x - W / 2) < 800 && y - cam.y > -120 && y - cam.y < H + 120) drawCloud(art.clouds[i], x, y);
+      if (Math.abs(x - cam.x - W / 2) < 800 && y - cam.y > region.y - 120 && y - cam.y < H + 120) drawCloud(art.clouds[i], x, y);
     });
     ctx.drawImage(art.land, LAND.x0, LAND.y0, LAND.w * A, LAND.h * A);
-    drawWindow(time);
-    drawPond(time, pose);
-    // Haystack (squashes on the dive).
-    const hs = zone === "haystack" ? hayScale(time) : 1, hw = HAY.w * A * (1 + (1 - hs) * 0.6), hh = HAY.h * A * hs;
+    drawWindow();
+    drawTag(multiplierText(150), ROOF_PEAK.x, ROOF_FLAG_Y - 6, true);
+    // Cloud nine with its x2 pennant, and the orbit at x4.
+    drawTag(multiplierText(200), CLOUD9.cx - 30, CLOUD9.cy + CLOUD9.h * A / 2 - 6, false);
+    drawCloud(art.cloud9, CLOUD9.cx, CLOUD9.cy);
+    drawOrbit(cam);
+    const hs = hayScale(e), hw = HAY.w * A * (1 + (1 - hs) * 0.6), hh = HAY.h * A * hs;
     ctx.drawImage(art.hay, Math.round(HAY.cx - hw / 2), Math.round(-hh), Math.round(hw), Math.round(hh));
-    if (zone === "rooftop" && time >= T.rooftop.land) {
-      // The hole the bonk left in the roof.
-      const hx = Math.round(HIT_X / A) * A, hy = Math.round(roofY(HIT_X) / A) * A;
-      rect(ctx, hx - 9, hy + 3, 21, 9, INK);
-      rect(ctx, hx - 6, hy + 6, 15, 3, "#3A3A3A");
-    }
-    // Cloud nine with its pennant; it squashes under the landing.
-    const dip = zone === "cloud" && time >= T.cloud.land ? bounceAt(time - T.cloud.land).dip : 0;
-    const bob = zone === "cloud" && time > T.cloud.settle && !reducedMotion ? Math.round(Math.sin((time - T.cloud.settle) / 500) * 3) : 0;
-    drawPennant(CLOUD9.cx - 30, CLOUD9.cy + CLOUD9.h * A / 2 - 6 + bob, time);
-    drawCloud(art.cloud9, CLOUD9.cx, CLOUD9.cy + dip * 0.35 + bob, 1 + dip / 260, 1 - dip / 120);
-    // The baby, and what flies with it.
-    if (zone === "pond") drawDuck(time);
-    if (time > 60 && time < plan.land) drawTrail(worldPose, time, darkness(cam.y) > 0.5 ? GRID : MUTED);
-    const shown = zone === "cloud" && bob ? { ...pose, y: pose.y + bob, ay: (pose.ay ?? pose.y) + bob } : pose;
-    drawBaby(shown, time);
-    if (zone === "cloud" && time >= T.cloud.land) {
-      // A tuft of fluff in front of its feet, so it sits in the cloud rather than on it.
-      const fx0 = Math.round(CLOUD9.cx / A), fy = Math.round((CLOUD9_TOP + dip + bob) / A);
-      ctx.save(); ctx.scale(A, A);
-      for (const [dx, dy, r] of [[-16, 2, 5], [-6, 0, 6], [6, 1, 6], [16, 3, 4]] as const) ellipseBox(ctx, fx0 + dx, fy + dy, r, Math.max(3, r - 2), WHITE);
-      rect(ctx, fx0 - 19, fy + 2, 38, 4, WHITE);
-      ctx.restore();
-    }
-    drawGags(time, pose);
+    const splash = splashAt();
+    drawPond(e - splash, pose);
+    drawDuck(e - splash);
+    drawRaft();
+    if (!reducedMotion && phase === "flying") drawSpeedLines(pose.x, pose.y, (altitude(flightMs) - altitude(flightMs - 40)) / 40, dark > 0.5 ? GRID : MUTED);
+    if (!reducedMotion && ending === "crash" && e > END.air.pop && e < splash) drawSpeedLines(pose.x, pose.y, -(1 + (e - END.air.pop) / fallMs) * 1.2, dark > 0.5 ? GRID : MUTED);
+    if (state.chute) drawChute(state.chute);
+    if (state.rocket) drawRocket(state.rocket.x, state.rocket.y, state.rocket.flame, clock);
+    drawBaby(pose, clock);
+    if (state.strap && state.rocket) drawStrap(pose);
+    drawGags(e, pose);
     fx.draw(ctx, "floor");
     fx.draw(ctx, "top");
     ctx.restore();
-    drawWorldStamps(time, cam);
+    drawWorldStamps(e, cam);
   }
 
-  /** The slingshot in the dark window, its band still twanging, and the shutters the burst flung open. */
-  function drawWindow(time: number) {
+  /** The raft the rocket stands on, bobbing on the water. */
+  function drawRaft() {
+    const bob = reducedMotion ? 0 : Math.round(Math.sin(clock / 500)) * A;
+    const X = Math.round((FLIGHT_X - RAFT.w / 2) / A), Y = Math.round((RAFT.top + bob) / A), w = RAFT.w / A;
+    ctx.save(); ctx.scale(A, A);
+    box(ctx, X, Y, w, 4, STRAW);
+    for (let i = 4; i < w - 1; i += 5) rect(ctx, X + i, Y + 1, 1, 2, STRAW_DARK);
+    rect(ctx, X + 2, Y + 4, w - 4, 1, WATER_DEEP);
+    ctx.restore();
+  }
+
+  /** The slingshot in the dark window, its band still twanging from the shot, and the shutters it flung open. */
+  function drawWindow() {
     const wx = HOUSE.x + HOUSE.win.x * A, wy = HOUSE.y + HOUSE.win.y * A, ww = HOUSE.win.w * A, wh = HOUSE.win.h * A;
-    const settle = reducedMotion ? 0 : Math.exp(-time / 420);
+    const settle = reducedMotion ? 0 : Math.exp(-clock / 420);
     const cx = wx + ww / 2, base = wy + wh, fork = wy + 45;
     rect(ctx, cx - 6, fork + 12, 12, base - fork - 12, MUTED);
     for (let i = 0; i < 6; i++) { rect(ctx, cx - 6 - i * 6, fork + 12 - i * 6, 9, 9, MUTED); rect(ctx, cx - 3 + i * 6, fork + 12 - i * 6, 9, 9, MUTED); }
-    const sag = Math.round(Math.sin(time / 28) * 24 * settle / A) * A;
+    const sag = Math.round(Math.sin(clock / 28) * 24 * settle / A) * A;
     for (let i = 0; i <= 10; i++) {
       const k = i / 10, bend = Math.sin(k * Math.PI) * sag;
       rect(ctx, Math.round((cx - 36 + 72 * k) / A) * A, Math.round((fork - 24 + bend) / A) * A, A, A, GREEN);
     }
     for (const side of [-1, 1]) {
-      const swing = Math.abs(Math.cos(Math.sin(time / 85 + (side > 0 ? 0.7 : 0)) * 1.3 * settle));
+      const swing = Math.abs(Math.cos(Math.sin(clock / 85 + (side > 0 ? 0.7 : 0)) * 1.3 * settle));
       const width = Math.max(A, Math.round(9 * swing) * A), hinge = side < 0 ? wx - 2 * A : wx + ww + 2 * A;
       const left = side < 0 ? hinge - width : hinge;
       rect(ctx, left, wy - 2 * A, width, wh + 4 * A, INK);
@@ -957,15 +952,14 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
     }
   }
 
-  function drawPond(time: number, pose: Pose) {
-    // Surface glints drift along the water.
-    const y = POND.surface, drift = reducedMotion ? 0 : Math.floor(time / 180);
-    for (let i = 0; i < 13; i++) if ((i + drift) % 3) rect(ctx, Math.round((POND.x0 + 24 + i * 27) / A) * A, y + 3, 9, A, (i + drift) % 3 === 1 ? WHITE : GRID);
-    if (zone !== "pond" || time < T.pond.land) return;
-    const since = time - T.pond.land, x0 = STALL.x + 8;
-    // Ripple rings (flat on the water).
+  /** Glints on the water, and after a splash (`after` ms ago): ripples, the splash sheet, droplets, bubbles, the spit. */
+  function drawPond(after: number, pose: Pose) {
+    const y = POND.surface, drift = reducedMotion ? 0 : Math.floor(clock / 180);
+    for (let i = 0; i < 16; i++) if ((i + drift) % 3) rect(ctx, Math.round((POND.x0 + 24 + i * 27) / A) * A, y + 3, 9, A, (i + drift) % 3 === 1 ? WHITE : GRID);
+    if (!(after >= 0)) return;
+    const x0 = SPLASH_X, P = END.pond;
     for (let k = 0; k < 3; k++) {
-      const age = (reducedMotion ? 900 : since) - k * 220;
+      const age = (reducedMotion ? 900 : after) - k * 220;
       if (age < 0 || age > 1500) continue;
       const r = 24 + age * 0.13, ry = Math.max(3, r * 0.14), steps = Math.round(r / 5);
       ctx.fillStyle = WHITE;
@@ -977,10 +971,10 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
     }
     if (reducedMotion) return;
     // Splash: a ragged white sheet shoots up and collapses, with a crown of droplets.
-    if (since < 340) {
-      const k = since / 340, tall = Math.sin(k * Math.PI) * 160 * (1 - k * 0.3), wide = 84 + k * 70;
+    if (after < 340) {
+      const k = after / 340, tall = Math.sin(k * Math.PI) * 160 * (1 - k * 0.3), wide = 84 + k * 70;
       for (let j = 0; j < tall; j += A) {
-        const v = j / tall, rag = Math.round(Math.sin(j * 0.21 + since / 30) * 2) * A;
+        const v = j / tall, rag = Math.round(Math.sin(j * 0.21 + after / 30) * 2) * A;
         const width = Math.round((wide * (1 - v * 0.55) + rag) / A) * A, left = Math.round((x0 - width / 2 + rag / 2) / A) * A;
         rect(ctx, left - A, y - j - A, width + 2 * A, A * 2, INK);
         rect(ctx, left, y - j, width, A, v > 0.2 && v < 0.8 && (j / A) % 7 === 3 ? GRID : WHITE);
@@ -990,10 +984,10 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
         if (tall > 20) { rect(ctx, bx - A, by - A, 12, 12, INK); rect(ctx, bx, by, 6, 6, WHITE); }
       }
     }
-    if (since < 900) for (let i = 0; i < 18; i++) {
+    if (after < 900) for (let i = 0; i < 18; i++) {
       const spread = (i - 8.5) / 8.5, vx = spread * 0.42, vy = -(0.6 + 0.35 * (1 - Math.abs(spread))) * (i % 3 ? 1 : 0.75);
       for (let tail = 0; tail < 3; tail++) {
-        const age = since - tail * 24;
+        const age = after - tail * 24;
         if (age < 0) continue;
         const dx = vx * age, dy = vy * age + 0.0012 * age * age;
         if (dy > 0) continue;
@@ -1003,15 +997,15 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
       }
     }
     // Bubbles while it is under.
-    if (time > T.pond.sink + 200 && time < T.pond.surface + 100) for (let i = 0; i < 3; i++) {
-      const age = (time - T.pond.sink - 200 - i * 90) % 360;
+    if (after > P.sink + 200 && after < P.surface + 100) for (let i = 0; i < 3; i++) {
+      const age = (after - P.sink - 200 - i * 90) % 360;
       if (age < 0) continue;
       const bx = x0 - 14 + i * 14 + Math.sin(age / 50 + i) * 4, by = y + 30 - age * 0.12;
       if (by > y) { rect(ctx, Math.round(bx / A) * A - A, Math.round(by / A) * A - A, 9, 9, WHITE); rect(ctx, Math.round(bx / A) * A, Math.round(by / A) * A, A, A, WATER); }
     }
     // The spit: an arc of water from its mouth, straight onto the duck's head.
-    if (time >= T.pond.spit) for (let i = 0; i < 12; i++) {
-      const age = time - T.pond.spit - i * 24;
+    if (after >= P.spit) for (let i = 0; i < 12; i++) {
+      const age = after - P.spit - i * 24;
       if (age < 0) continue;
       const mx = pose.x + 12, my = y - 14, px = mx + 0.45 * age, py = my - 0.5 * age + 0.0016 * age * age;
       if (py > y || (px > DUCK_X - 20 && py > POND.surface - 52)) continue;
@@ -1021,13 +1015,13 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
   }
 
   /** The pond's duck pops up to see who dropped in, and gets spat at. */
-  const DUCK_X = 480;
-  function duckHitAt() { return T.pond.spit + 260; }
-  function drawDuck(time: number) {
-    if (time < T.pond.duck) return;
-    const since = time - T.pond.duck, rise = easeOutBack(clamp(since / 260), 2.6);
-    const hit = time - duckHitAt(), jolt = hit > 0 && hit < 300 ? Math.round(Math.sin(hit / 25) * 5 * (1 - hit / 300)) : 0;
-    const bob = since > 260 && !reducedMotion ? Math.round(Math.sin(since / 260 + 1) * 3) : 0;
+  const duckHit = END.pond.spit + 260;
+  function drawDuck(after: number) {
+    const P = END.pond;
+    if (!(after >= P.duck)) return;
+    const age = after - P.duck, rise = easeOutBack(clamp(age / 260), 2.6);
+    const hit = after - duckHit, jolt = hit > 0 && hit < 300 && !reducedMotion ? Math.round(Math.sin(hit / 25) * 5 * (1 - hit / 300)) : 0;
+    const bob = age > 260 && !reducedMotion ? Math.round(Math.sin(age / 260 + 1) * 3) : 0;
     const px = 6, w = DUCK.width * px, h = DUCK.height * px;
     const top = POND.surface + 6 - Math.round(lerp(-6, h - 12, rise)) + bob - (hit > 0 && hit < 200 ? 12 : 0);
     ctx.save();
@@ -1038,245 +1032,186 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
     ctx.restore();
   }
 
-  function drawPennant(x: number, y: number, time: number) {
-    // Two strings down from cloud nine to its little multiplier flag.
-    const sway = reducedMotion ? 0 : Math.round(Math.sin(time / 400) * 2) * A;
-    const w = textWidth(multiplierText(20_000), 3) + 18;
-    rect(ctx, x, y, A, 36, INK); rect(ctx, x + w - A, y, A, 36, INK);
-    box(ctx, x - A + sway, y + 36, w + 6, 36, WHITE);
-    rect(ctx, x - A + sway, y + 36, w + 6, A, INK); rect(ctx, x - A + sway, y + 69, w + 6, A, INK);
-    rect(ctx, x - A + sway, y + 36, A, 36, INK); rect(ctx, x + w + sway, y + 36, A, 36, INK);
-    drawText(ctx, multiplierText(20_000), x + 9 + sway, y + 44, { scale: 3, color: INK });
+  /** The "uh oh" beat over the baby, and the duck's lines. */
+  function drawGags(e: number, pose: Pose) {
+    if (phase !== "ending") return;
+    const look = ending === "fizzle" ? [END.pad.look, END.pad.topple] : ending === "crash" ? [END.air.look, END.air.pop] : null;
+    if (look && e >= look[0] && e < look[1]) {
+      const pop = e - look[0] < 60 ? 5 : 7;
+      drawText(ctx, "!", pose.x + 10, pose.y - headTop - 30 - pop * 7, { scale: pop, color: INK, outline: WHITE });
+      ctx.drawImage(DROP, Math.round((pose.x - 58) / A) * A, Math.round((pose.y - 40 + ((e - look[0]) / 25)) / A) * A, 18, 24);
+    }
+    const after = e - splashAt(), P = END.pond;
+    if (after >= P.duck + 80 && after < duckHit - 120) drawText(ctx, "QUACK?", DUCK_X - 40, POND.surface - 118, { scale: 3, color: INK, outline: WHITE });
+    const hit = after - duckHit;
+    if (hit > 0) drawText(ctx, "QUACK!", DUCK_X - 30, POND.surface - 124 - Math.round(Math.min(hit, 600) / 60), { scale: 4, color: INK, outline: WHITE });
   }
 
-  /** Per-zone props and effects drawn over the baby. */
-  function drawGags(time: number, pose: Pose) {
-    if (zone === "pond") {
-      if (time >= T.pond.look && time < T.pond.drop) {
-        const pop = time - T.pond.look < 60 ? 5 : 7;
-        drawText(ctx, "!", pose.x + 10, pose.y - HALF - 20 - pop * 7, { scale: pop, color: INK, outline: WHITE });
-        ctx.drawImage(DROP, Math.round((pose.x - 58) / A) * A, Math.round((pose.y - 40 + ((time - T.pond.look) / 25)) / A) * A, 18, 24);
-      }
-      if (time >= T.pond.duck + 80 && time < duckHitAt() - 120) drawText(ctx, "QUACK?", DUCK_X - 40, POND.surface - 118, { scale: 3, color: INK, outline: WHITE });
-      const hit = time - duckHitAt();
-      if (hit > 0 && hit < T.pond.end - duckHitAt() - 10) drawText(ctx, "QUACK!", DUCK_X - 30, POND.surface - 124 - Math.round(hit / 60), { scale: 4, color: INK, outline: WHITE });
+  /** Onomatopoeia (world anchors, drawn in screen space so they stay inside the safe band). */
+  function drawWorldStamps(e: number, cam: Point) {
+    if (phase !== "ending") return;
+    const at = (x: number, y: number) => [x - cam.x, y - cam.y] as const;
+    if (ending === "fizzle") drawStamp("PFFF...", ...at(FLIGHT_X + 230, PAD_Y - 120), e - 60, 5, WHITE);
+    if (ending === "crash") drawStamp("POP!", ...at(from.x + 120, from.y - 150), e - END.air.pop, 6, GOLD);
+    if (ending === "fizzle" || ending === "crash") drawStamp("SPLASH!", ...at(SPLASH_X + 8, -230), e - splashAt(), 6);
+    if (ending === "jump") {
+      drawStamp(exit === null ? "POOF!" : `${multiplierText(exit)}!`, ...at(HAY.cx, HAY_TOP - 200), e - touchAt(), 6, GREEN);
     }
-    if (zone === "haystack" && time >= T.haystack.land && pose.clip === "walk" && !reducedMotion) {
-      // Kick lines either side of the flailing legs.
-      const flick = Math.floor(time / 90) % 2, top = HAY_TOP * hayScale(time) - 10 * S;
-      for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
-        const x = Math.round((HAY.cx + side * (58 + i * 4 + flick * 6)) / A) * A, y = Math.round((top + 14 + i * 16) / A) * A;
-        rect(ctx, side < 0 ? x - 12 : x, y, 12, A, INK);
-      }
-    }
-    if (zone === "haystack" && time >= T.haystack.land && !reducedMotion) {
-      // Straw bits drifting down after the poof.
-      for (let i = 0; i < 9; i++) {
-        const age = time - T.haystack.land - i * 60;
-        if (age < 0 || age > 1500) continue;
-        const x = HAY.cx + (i - 4) * 22 + Math.sin(age / 180 + i) * 14, y = HAY_TOP - 110 + ((i * 37) % 50) + age * 0.09;
-        if (y > -6) continue;
-        rect(ctx, Math.round(x / A) * A, Math.round(y / A) * A, i % 2 ? 9 : 3, i % 2 ? 3 : 9, i % 3 ? STRAW_DARK : STRAW);
-      }
-    }
-    if (zone === "rooftop") {
-      if (time >= T.rooftop.land && time < T.rooftop.clonk) {
-        const tile = tileAt(time), q = ((tile.rot % 4) + 4) % 4;
-        ctx.save(); ctx.translate(Math.round(tile.x), Math.round(tile.y));
-        const [c, s] = TURN[q]; ctx.transform(c, s, -s, c, 0, 0);
-        ctx.drawImage(TILE, -12, -8, 24, 15);
-        ctx.restore();
-      }
-      if (time >= T.rooftop.clonk) {
-        // Dizzy stars circling its head.
-        const cx = pose.x, cy = edgeFeet - feet - headTop - 12;
-        for (let i = 0; i < 3; i++) {
-          const a = (reducedMotion ? 0.6 : time / 230) + (i * Math.PI * 2) / 3;
-          ctx.drawImage(DIZZY, Math.round((cx + Math.cos(a) * 52 - 15) / A) * A, Math.round((cy + Math.sin(a) * 12 - 15) / A) * A, 30, 30);
-        }
-      }
-    }
-  }
-
-  /** Onomatopoeia at the impact (world anchor, drawn in screen space so it stays inside the safe band). */
-  function drawWorldStamps(time: number, cam: Point) {
-    if (reducedMotion) return;
-    const since = time - plan.land, at = (x: number, y: number) => [x - cam.x, y - cam.y] as const;
-    if (zone === "pond") drawStamp(STAMP.pond, ...at(STALL.x + 8, -230), since, 6);
-    if (zone === "haystack") drawStamp(STAMP.haystack, ...at(HAY.cx, HAY_TOP - 170), since, 6);
-    if (zone === "rooftop") {
-      drawStamp(STAMP.rooftop, ...at(HIT_X - 40, PEAK.y - 170), since, 6);
-      drawStamp("CLONK!", ...at(EDGE_X + 60, edgeFeet - BOX - 110), time - T.rooftop.clonk, 5, GREEN);
-    }
-    if (zone === "cloud") drawStamp(STAMP.cloud, ...at(CLOUD9.cx + 250, CLOUD9_TOP - 120), since, 6, GREEN);
   }
 
   // ------------------------------------------------------------------------------------------
-  // Space phase (orbit, moon)
+  // The Moon (screen space, after a white flash)
 
-  function renderSpace(time: number) {
-    rect(ctx, 0, 0, W, H, INK);
-    const since = time - T.orbit.apex;
-    const shift0 = -cameraAt(T.orbit.apex).y * 0.08;
-    const drift = zone === "moon" && time < T.moon.land ? (time - T.orbit.apex) * 0.02 : zone === "moon" ? (T.moon.land - T.orbit.apex) * 0.02 : 0;
-    drawStars(shift0 + 240 * (1 - Math.exp(-since / 700)) + drift, 1);
-    const shake = shakeAt(time);
+  function renderMoon(e: number) {
+    const M = END.moon;
+    rect(ctx, region.x, region.y, region.w, region.h, INK);
+    drawStars(reducedMotion ? 0 : (e - M.cut) * 0.02, 1);
     ctx.save();
-    ctx.translate(0, shake);
-    const earth = earthAt(time), moon = moonAt(time), pose = spacePose(time);
-    const ringAlpha = zone === "orbit" ? smooth((time - 2050) / 300) : smooth((time - 2050) / 300) * (1 - smooth((time - T.moon.leave - 400) / 500));
-    // The Moon: small and far for an orbit, growing as the moon flight closes in.
-    const moonFirst = zone !== "moon" || moon.r < 120;
+    ctx.translate(0, shakeAt(e));
     ctx.save(); ctx.scale(A, A);
-    if (moonFirst) drawMoonDisc(moon.x / A, moon.y / A, moon.r / A, false);
+    // A portrait slice lifts the Earth into its extra sky, so it hangs over the horizon instead of sitting on it.
+    drawEarth((region.x + EARTH_FAR.x * region.w / W) / A, (EARTH_FAR.y + region.y * 1.2) / A, EARTH_FAR.r / A, clock);
+    drawMoonDisc(MOON_TOP.x / A, (MOON_TOP.y + MOON_R) / A, MOON_R / A, false);
     ctx.restore();
-    const behind = zone === "orbit" && time >= T.orbit.land && Math.sin(orbitAngle(time)) < 0;
-    drawOrbitRing(earth, "back", time, ringAlpha);
-    if (behind) drawBaby(pose, time);
-    ctx.save(); ctx.scale(A, A);
-    drawEarth(earth.x / A, earth.y / A, earth.r / A, time);
-    if (!moonFirst) drawMoonDisc(moon.x / A, moon.y / A, moon.r / A, false);
-    ctx.restore();
-    drawOrbitRing(earth, "front", time, ringAlpha);
-    if (zone === "moon") drawMoonProps(time, pose);
-    if (!behind) {
-      if (since < 900) drawTrail(spacePose, time, GRID);
-      drawBaby(pose, time);
-    }
-    if (zone === "moon" && time >= T.moon.flag) drawFlag(time);
+    // The empty rocket zooms off; the baby floats down onto the Moon.
+    const away = clamp((e - M.cut) / 800);
+    if (away < 1 && !reducedMotion) drawRocket(lerp(470, 330, away), lerp(200, -320, easeInCubic(away)), 1, clock);
+    const pose = moonPose(e);
+    if (e >= M.rays) drawRays(e, pose);
+    drawBaby(pose, clock);
+    if (e >= M.flag) drawFlag(e);
     fx.draw(ctx, "floor");
     fx.draw(ctx, "top");
-    if (!reducedMotion) {
-      if (zone === "orbit") drawStamp(STAMP.orbit, 250, 250, time - T.orbit.land, 6, GREEN);
-      if (zone === "moon") drawStamp(STAMP.moon, MOON_TOP.x, 250, time - T.moon.land, 4, WHITE);
-    }
+    drawStamp("TOUCHDOWN!", MOON_TOP.x, 250, e - M.land, 4, WHITE);
     ctx.restore();
   }
 
-  function drawMoonProps(time: number, pose: Pose) {
-    if (time < T.moon.title) return;
-    // Jackpot rays: dotted beams turning behind the baby.
-    const since = time - T.moon.title, grow = reducedMotion ? 1 : easeOutCubic(clamp(since / 500));
+  /** Jackpot rays: dotted beams turning behind the baby. */
+  function drawRays(e: number, pose: Pose) {
+    const grow = reducedMotion ? 1 : easeOutCubic(clamp((e - END.moon.rays) / 500));
     const cx = pose.x, cy = MOON_TOP.y - feet;
     for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * Math.PI * 2 + (reducedMotion ? 0 : time / 2400);
+      const a = (i / 14) * Math.PI * 2 + (reducedMotion ? 0 : clock / 2400);
       for (let d = 70; d < 70 + 190 * grow; d += 15) {
         const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
         if (y > MOON_TOP.y - 4) continue;
-        rect(ctx, Math.round(x / A) * A, Math.round(y / A) * A, 6, 6, i % 2 ? "#FFE27A" : GREEN);
+        rect(ctx, Math.round(x / A) * A, Math.round(y / A) * A, 6, 6, i % 2 ? GOLD : GREEN);
       }
     }
   }
 
-  function drawFlag(time: number) {
+  function drawFlag(e: number) {
     // The flag stabs into the ground next to the baby, then its cloth waves.
-    const since = time - T.moon.flag, drop = reducedMotion ? 1 : easeInCubic(clamp(since / 140));
+    const age = e - END.moon.flag, drop = reducedMotion ? 1 : easeInCubic(clamp(age / 140));
     const px = Math.round((MOON_TOP.x + 84) / A) * A, ground = MOON_TOP.y + 3;
     const top = Math.round(lerp(ground - 420, ground - 120, drop) / A) * A, foot = Math.min(ground, top + 120);
     rect(ctx, px - 3, top - 3, 9, foot - top + 3, INK);
     rect(ctx, px, top, 3, foot - top, WHITE);
-    const unfurl = reducedMotion ? 1 : easeOutBack(clamp((since - 120) / 260), 1.6);
+    const unfurl = reducedMotion ? 1 : easeOutBack(clamp((age - 120) / 260), 1.6);
     const cols = Math.round(20 * unfurl);
     for (let i = 0; i < cols; i++) {
-      const wave = reducedMotion ? 0 : Math.round(Math.sin(time / 120 - i * 0.5) * 1.2) * A;
+      const wave = reducedMotion ? 0 : Math.round(Math.sin(clock / 120 - i * 0.5) * 1.2) * A;
       const x = px + 3 + i * A, y = top + wave;
       rect(ctx, x, y - 3, A, 42, INK);
       rect(ctx, x, y, A, 36, GREEN);
     }
     if (cols >= 18) {
       // A little heart on the cloth.
-      const hx = px + 3 + 7 * A, hy = top + 3 * A + (reducedMotion ? 0 : Math.round(Math.sin(time / 120 - 3.5) * 1.2) * A);
+      const hx = px + 3 + 7 * A, hy = top + 3 * A + (reducedMotion ? 0 : Math.round(Math.sin(clock / 120 - 3.5) * 1.2) * A);
       for (const [x, y, w] of [[0, 0, 2], [3, 0, 2], [0, 1, 5], [1, 2, 3], [2, 3, 1]] as const) rect(ctx, hx + x * A, hy + y * A, w * A, A, INK);
     }
   }
 
   // ------------------------------------------------------------------------------------------
-  // Frame
+  // Frame and timeline
 
-  const finalTime = plan.end;
-  function render(time: number) {
+  function render() {
     view.sync();
-    view.begin(true);
-    // Reduced motion: the landed frame simply fades in (element opacity, so no draw call can fight it).
-    if (reducedMotion) canvas.style.opacity = time < 500 ? String(clamp(time / 480)) : "";
-    const shown = reducedMotion ? finalTime : time;
-    if (space && shown >= T.orbit.apex) renderSpace(shown); else renderWorld(shown);
-    drawTitle(shown);
-    // The launch flash as it bursts out of the window, and the Moon jackpot flash.
-    if (!reducedMotion && time < 90) { ctx.globalAlpha = 0.5 * (1 - time / 90); rect(ctx, 0, 0, W, H, WHITE); ctx.globalAlpha = 1; }
-    if (!reducedMotion && zone === "moon" && time >= T.moon.title && time < T.moon.title + 220) {
-      ctx.globalAlpha = 0.75 * (1 - (time - T.moon.title) / 220); rect(ctx, 0, 0, W, H, WHITE); ctx.globalAlpha = 1;
+    frameRegion();
+    view.begin(true, region);
+    const e = since();
+    // Reduced motion: the final frame simply fades in (element opacity, so no draw call can fight it).
+    if (reducedMotion) canvas.style.opacity = phase === "ending" && e < 500 ? String(clamp(e / 480)) : "";
+    if (ending === "moon" && shownAt() >= END.moon.cut) renderMoon(shownAt()); else renderWorld();
+    if (!reducedMotion) {
+      // Ignition flash, and the white flash that hides the cut to the Moon.
+      const flash = phase === "flying" && flightMs < 90 ? 0.4 * (1 - flightMs / 90)
+        : ending === "moon" ? (e < END.moon.cut ? e / END.moon.cut : 1 - (e - END.moon.cut) / 260) * 0.9 : 0;
+      if (flash > 0.01) { ctx.globalAlpha = clamp(flash); rect(ctx, region.x, region.y, region.w, region.h, WHITE); ctx.globalAlpha = 1; }
     }
   }
 
-  // ------------------------------------------------------------------------------------------
-  // Events on the timeline
-
+  /** Particles and sound beats on the ending timeline between two moments (ms after end()). */
   function events(previous: number, now: number) {
     const crossed = (at: number) => previous < at && now >= at;
-    const every = (period: number) => now > plan.end && now < plan.end + IDLE_MS && Math.floor((previous - plan.end) / period) !== Math.floor((now - plan.end) / period);
-    if (previous === 0) { beat("launch"); fx.ring(EXIT.x + 30, EXIT.y, 110, WHITE, 3, 320); fx.squares(EXIT.x + 60, EXIT.y, 5, [GREEN, WHITE], 220, INK, 500); }
-    if (crossed(apexAt)) beat("apex");
-    if (crossed(plan.land)) beat("land");
-    switch (zone) {
-      case "pond":
-        if (crossed(T.pond.land)) fx.squares(STALL.x + 8, POND.surface - 6, 16, [WHITE, GRID], 230, INK, 560);
-        if (crossed(T.pond.duck)) fx.squares(DUCK_X, POND.surface - 4, 6, [WHITE, GRID], 200, INK, 420);
-        if (crossed(T.pond.surface)) fx.squares(STALL.x - 8, POND.surface - 6, 8, [WHITE, GRID], 220, INK, 450);
-        if (crossed(duckHitAt())) fx.squares(DUCK_X - 10, POND.surface - 50, 8, [WHITE, GRID], 200, INK, 420);
+    const nozzle = (p: Point) => [p.x, p.y + ROCKET.bottom + 12] as const;
+    switch (ending) {
+      case "fizzle":
+        if (!reducedMotion && Math.floor(previous / 140) !== Math.floor(now / 140) && now < END.pad.topple) fx.puff(...nozzle({ x: FLIGHT_X, y: PAD_Y }), 3, 14);
         break;
-      case "haystack":
-        if (crossed(T.haystack.land)) {
-          fx.squares(HAY.cx, HAY_TOP + 10, 26, [STRAW, STRAW_DARK, PAPER], 420);
-          fx.puff(HAY.cx, HAY_TOP + 12, 12, 60);
+      case "crash":
+        if (!reducedMotion && Math.floor(previous / 110) !== Math.floor(now / 110) && now < END.air.pop) fx.puff(...nozzle(from), 2, 12);
+        if (crossed(END.air.pop)) {
+          fx.confetti(from.x, from.y - 80, [GREEN, WHITE, GOLD, ORANGE], 34, 0.7);
+          fx.sparkles(from.x, from.y - 60, 6, 90, GOLD, 3, 30);
+          fx.ring(from.x, from.y - 40, 120, WHITE, 3, 320);
         }
         break;
-      case "rooftop":
-        if (crossed(T.rooftop.land)) { fx.squares(HIT_X, roofY(HIT_X), 12, [MUTED, INK, SHADE], 320); fx.sparkles(HIT_X, roofY(HIT_X) - 40, 5, 50, WHITE, 3, 20); }
-        if (crossed(T.rooftop.bounce)) fx.dust(SEAT_X, roofY(SEAT_X), -1, 1.2);
-        if (crossed(T.rooftop.edge)) fx.puff(EDGE_X, edgeFeet, 6, 30);
-        if (crossed(T.rooftop.clonk)) { fx.squares(EDGE_X, edgeFeet - feet - headTop, 14, [MUTED, SHADE, INK], 300); fx.sparkles(EDGE_X, edgeFeet - feet - headTop - 10, 4, 40, GREEN, 3, 20); }
+      case "jump": {
+        if (crossed(END.jump.hop)) fx.sparkles(from.x + 70, from.y - HALF - 90, 5, 60, GREEN, 3, 30);
+        const touch = touchAt();
+        if (crossed(touch)) {
+          beat("touchdown");
+          fx.squares(HAY.cx, HAY_TOP + 10, 22, [STRAW, STRAW_DARK, PAPER], 380);
+          fx.puff(HAY.cx, HAY_TOP + 12, 10, 50);
+        }
+        if (crossed(touch + 420)) fx.hearts(HAY.cx, seat - HALF, 4, 50, 120);
         break;
-      case "cloud":
-        if (crossed(T.cloud.land)) { fx.puff(CLOUD9.cx, CLOUD9_TOP + 20, 12, 70); fx.sparkles(CLOUD9.cx, CLOUD9_TOP - 40, 5, 70, GREEN, 3, 30); }
-        if (crossed(T.cloud.settle)) fx.hearts(CLOUD9.cx, CLOUD9_TOP - BOX, 4, 50, 140);
-        if (every(1500)) fx.hearts(CLOUD9.cx + 20, CLOUD9_TOP - BOX, 1, 30);
-        break;
-      case "orbit":
-        if (crossed(T.orbit.land)) { const p = orbitPoint(Math.PI); fx.sparkles(p.x, p.y, 6, 70, GREEN, 3, 30); }
-        if (every(ORBIT.period)) { const p = orbitPoint(Math.PI); fx.sparkles(p.x, p.y, 2, 30, WHITE, 3, 40); }
-        break;
+      }
       case "moon": {
-        const ground = MOON_TOP.y;
-        if (crossed(T.moon.land)) { fx.puff(MOON_TOP.x, ground, 14, 50); fx.dust(MOON_TOP.x - 30, ground, 1, 1.4); fx.dust(MOON_TOP.x + 30, ground, -1, 1.4); }
-        if (crossed(T.moon.flag)) fx.puff(MOON_TOP.x + 86, ground, 6, 24);
-        if (crossed(T.moon.title)) {
-          fx.confetti(MOON_TOP.x, ground - 160, [...PRISM, "#FFE27A"], 110, 1.3);
-          fx.sparkles(MOON_TOP.x, ground - 80, 12, 200, "#FFE27A", 3, 40);
-          fx.ring(MOON_TOP.x, ground - 70, 210, "#FFE27A", 6, 520);
+        const M = END.moon, ground = MOON_TOP.y;
+        if (crossed(M.land)) { beat("touchdown"); fx.puff(MOON_TOP.x, ground, 14, 50); fx.dust(MOON_TOP.x - 30, ground, 1, 1.4); fx.dust(MOON_TOP.x + 30, ground, -1, 1.4); }
+        if (crossed(M.flag)) fx.puff(MOON_TOP.x + 86, ground, 6, 24);
+        if (crossed(M.rays)) {
+          beat("moon");
+          fx.confetti(MOON_TOP.x, ground - 160, [...PRISM, GOLD], 110, 1.3);
+          fx.sparkles(MOON_TOP.x, ground - 80, 12, 200, GOLD, 3, 40);
+          fx.ring(MOON_TOP.x, ground - 70, 210, GOLD, 6, 520);
           fx.ring(MOON_TOP.x, ground - 70, 140, WHITE, 4, 420, 90);
         }
-        if (every(700)) fx.sparkles(MOON_TOP.x + (Math.random() - 0.5) * 300, ground - 60 - Math.random() * 200, 2, 30, Math.random() < 0.5 ? "#FFE27A" : GREEN, 3, 60);
         break;
       }
     }
-    if (crossed(plan.end)) finish();
+    const splash = splashAt();
+    if (crossed(splash)) {
+      beat("splash");
+      fx.squares(SPLASH_X, POND.surface - 6, 16, [WHITE, GRID], 230, INK, 560);
+    }
+    if (crossed(splash + END.pond.duck)) fx.squares(DUCK_X, POND.surface - 4, 6, [WHITE, GRID], 200, INK, 420);
+    if (crossed(splash + END.pond.surface)) fx.squares(SPLASH_X - 16, POND.surface - 6, 8, [WHITE, GRID], 220, INK, 450);
+    if (crossed(splash + duckHit)) fx.squares(DUCK_X - 10, POND.surface - 50, 8, [WHITE, GRID], 200, INK, 420);
+    if (crossed(endTotal)) finish();
   }
 
   function finish() {
-    if (finished) return;
-    finished = true;
-    const done = resolvePlay; resolvePlay = null;
+    const done = resolveEnd; resolveEnd = null;
     done?.();
   }
 
   function step(dt: number) {
-    const previous = t;
-    t += dt;
-    if (reducedMotion) {
-      if (previous === 0) beat("launch");
-      if (t >= 500) { beat("land"); finish(); }
-    } else events(previous, t);
+    const previous = since();
+    clock += dt;
+    if (phase === "ready" && !reducedMotion && Math.floor((clock - dt) / 900) !== Math.floor(clock / 900)) {
+      // The fuse fizzes a little: it is waiting to be lit.
+      fx.sparkles(FLIGHT_X, PAD_Y + ROCKET.bottom + 18, 1, 8, GOLD, 3, 0);
+    }
+    if (phase === "flying" && !reducedMotion && Math.floor((clock - dt) / 50) !== Math.floor(clock / 50)) {
+      fx.puff(FLIGHT_X + (Math.random() - 0.5) * 12, flightY(flightMs) + ROCKET.bottom + 36, 2, 9);
+    }
+    if (phase === "ending") {
+      if (reducedMotion) { if (since() >= 500) { beat(ending === "jump" ? "touchdown" : ending === "moon" ? "moon" : "splash"); finish(); } }
+      else events(previous, since());
+    }
     fx.update(dt);
   }
 
@@ -1285,29 +1220,52 @@ export function createLaunchSequence(options: LaunchSequenceOptions): LaunchSequ
     raf = requestAnimationFrame(loop);
     const dt = last ? Math.min(50, now - last) : 16;
     last = now;
-    // The landed frame keeps animating gently (bobbing, kicking legs, orbiting) for IDLE_MS, lets the last particles
-    // settle, then holds still under the result card; reduced motion stays still.
-    const live = started && (reducedMotion ? t < 700 : t < plan.end + IDLE_MS || fx.count > 0);
-    if (live) step(dt);
-    if (live || dirty || view.sync()) { dirty = false; render(started ? t : 0); }
+    // The final frame keeps animating gently for IDLE_MS, lets the last particles settle, then holds still under the
+    // result card. Reduced motion draws only when something changes (and the final fade).
+    const live = reducedMotion ? phase === "ending" && since() < 700 : phase !== "ending" || since() < endTotal + IDLE_MS || fx.count > 0;
+    step(dt);
+    if (live || dirty || view.sync()) { dirty = false; render(); }
   }
   raf = requestAnimationFrame(loop);
 
   return {
-    play() {
-      if (playPromise) return playPromise;
-      playPromise = new Promise<void>(resolve => { resolvePlay = resolve; });
-      if (destroyed) { resolvePlay?.(); resolvePlay = null; return playPromise; }
-      started = true; t = 0; last = 0;
-      return playPromise;
+    ignite() {
+      if (destroyed || phase !== "ready") return;
+      phase = "flying"; flightMs = 0; dirty = true;
+      beat("ignite");
+      if (reducedMotion) return;
+      fx.puff(FLIGHT_X, RAFT.top, 10, 44);
+      fx.ring(FLIGHT_X, PAD_Y + ROCKET.bottom + 20, 90, WHITE, 3, 320);
+      fx.squares(FLIGHT_X, PAD_Y + ROCKET.bottom + 20, 8, [GREEN, GOLD, WHITE], 240, INK, 500);
+    },
+    fly(ms) {
+      if (destroyed || phase !== "flying" || !Number.isFinite(ms)) return;
+      const next = clamp(ms, 0, FLIGHT_MS);
+      for (const mark of [200, 400]) if (flightHundredths(flightMs) < mark && flightHundredths(next) >= mark) beat("pass", `pass:${mark}`);
+      flightMs = next;
+    },
+    end(kind, jumpedAt) {
+      if (endPromise) return endPromise;
+      endPromise = new Promise<void>(resolve => { resolveEnd = resolve; });
+      if (destroyed) { finish(); return endPromise; }
+      const airborne = phase === "flying" && !reducedMotion;
+      from = { x: FLIGHT_X, y: airborne ? flightY(flightMs) : PAD_Y };
+      fromCam = airborne ? Math.min(GROUND_CAM, from.y - climbScreenY(flightMs)) : GROUND_CAM;
+      fromFocus = airborne ? climbFocus(flightMs) : FOCUS.ready;
+      ending = kind; exit = jumpedAt; endAt = clock; phase = "ending"; dirty = true;
+      fallMs = clamp(350 + (contact - from.y) * 0.3, 380, 1100);
+      descentMs = clamp(900 + (seat - from.y) * 0.35, 1000, 1900);
+      endTotal = kind === "fizzle" ? END.pad.land + END.pond.end : kind === "crash" ? END.air.pop + fallMs + END.pond.end
+        : kind === "jump" ? END.jump.hop + descentMs + END.jump.settle : END.moon.end;
+      if (kind === "jump") beat("jump"); else if (kind !== "moon") beat("sputter");
+      if (reducedMotion) fx.clear();
+      return endPromise;
     },
     skip() {
-      if (destroyed) return;
-      if (!started) { started = true; playPromise ??= Promise.resolve(); }
+      if (destroyed || phase !== "ending") return;
       fx.clear();
-      if (!fired.has("land")) beat("land");
-      fired.add("launch"); fired.add("apex");
-      t = Math.max(t, reducedMotion ? 700 : plan.end + 1);
+      beat(ending === "jump" ? "touchdown" : ending === "moon" ? "moon" : "splash");
+      clock = endAt + Math.max(since(), reducedMotion ? 700 : endTotal + 1);
       finish();
       dirty = true;
     },

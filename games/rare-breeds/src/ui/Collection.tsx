@@ -1,5 +1,5 @@
 import type { TierId } from "../types.ts";
-import { ALL_FAMILIES, ALL_TIERS, familiesComplete, tiersComplete, type Collection } from "./collection.ts";
+import { ALL_BREEDS, ALL_FAMILIES, ALL_TIERS, familiesComplete, tiersComplete, type Collection } from "./collection.ts";
 import { PixelIcon } from "./PixelIcon.tsx";
 import { cx, tierLabel, tierVars } from "./shared.ts";
 
@@ -15,6 +15,8 @@ type Row = Readonly<{ id: string; label: string; items: readonly Readonly<{ key:
 /**
  * Collection progress: families bred (of 9) and tiers found (of 4). Wide layouts show named chips,
  * compact layouts turn them into pips (names stay available to screen readers). A finished set gets a badge.
+ * Below them, the breed count (of 45) and a collapsible breed book in family order: found names over their family
+ * pair, and for the rest the dimmed pair with "???", so the book says which parents to try.
  */
 export function CollectionMeter({ collection, hint = true, className }: CollectionMeterProps) {
   const rows: Row[] = [
@@ -41,6 +43,24 @@ export function CollectionMeter({ collection, hint = true, className }: Collecti
         </ul>
       </div>;
     })}
-    {hint && <p className="rb-collection-hint">Both families in a baby's family line count. Tiers come from the hatch odds.</p>}
+    <div className="rb-collection-row rb-collection-breeds">
+      <p className="rb-collection-label">
+        <span>Breeds</span>
+        <strong className="rb-collection-count">{collection.breeds.length}<span>/{ALL_BREEDS.length}</span></strong>
+      </p>
+      <details className="rb-breed-book">
+        <summary>Breed book</summary>
+        <ul aria-label={`Breeds found: ${collection.breeds.length} of ${ALL_BREEDS.length}`}>
+          {ALL_BREEDS.map(breed => {
+            const found = collection.breeds.includes(breed.name), pair = breed.families[0] === breed.families[1] ? `Pure ${breed.families[0]}` : breed.families.join(" × ");
+            return <li key={breed.name} className={cx(found && "rb-found")}>
+              {found ? <><strong>{breed.name}</strong><span className="rb-breed-pair"><span className="rb-sr-only">, </span>{pair}</span></>
+                : <><span className="rb-breed-pair">{pair}</span><span className="rb-breed-unknown" aria-hidden="true"> ???</span><span className="rb-sr-only">, not found yet</span></>}
+            </li>;
+          })}
+        </ul>
+      </details>
+    </div>
+    {hint && <p className="rb-collection-hint">Both families in a baby's family line count. Tiers come from the hatch odds. Every family pair is a named breed.</p>}
   </section>;
 }

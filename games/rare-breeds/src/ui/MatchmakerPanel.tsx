@@ -1,4 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
+import { PASS_ON_ODDS, passableShapes } from "../genetics.ts";
 import type { Creature } from "../types.ts";
 import { Panel } from "./Panel.tsx";
 import { PixelIcon } from "./PixelIcon.tsx";
@@ -138,6 +139,8 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
   const fun = a && b ? chemistry(a, b) : null;
   const isNew = (creature: Creature) => !!collectedFamilies && creature.kind !== "baby" && !collectedFamilies.includes(familyOf(creature));
   const newCount = collectedFamilies && a && b ? new Set([a, b].filter(isNew).map(familyOf)).size : 0;
+  // Shape mutations the chosen parents can pass on (measured rate in tests/genetics.test.ts).
+  const passOn = a && b ? passableShapes(a, b) : [];
 
   const reason = disabledReason
     ?? (needsEgg && !canAfford ? `Not enough simulated RF. An egg costs ${price}.` : undefined)
@@ -177,6 +180,8 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
         : !error && <p className={cx("rb-foot-msg rb-foot-hint", newCount ? "rb-foot-new" : "rb-muted")}>{newCount
           ? `This pair adds ${newCount === 1 ? "a new family" : `${newCount} new families`} to your collection.`
           : needsEgg ? "You confirm the purchase in Rare Friends." : "Pick a pair, then hatch."}</p>}
+      {passOn.length > 0 && <p className="rb-foot-msg rb-foot-pass"><PixelIcon name="dna" />
+        <span>Can pass on: {passOn.map(item => `${item.label} from ${item.name}`).join(", ")} ({PASS_ON_ODDS}{passOn.length > 1 ? " each" : ""})</span></p>}
     </div>
     {stockUp}
     <button type="button" className="rb-button rb-button-primary rb-button-lg rb-breed" aria-busy={busy || undefined}
@@ -199,7 +204,7 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
     {broodMates.map(creature => <Pick key={creature.key} creature={creature} name={`${id}-parent-b`} variant="chip" disabled={busy}
       checked={creature.key === b?.key} onPick={() => setBKey(creature.key)} />)}
   </div>;
-  // Phones: kept babies as Parent B come last, after Parent A, so the real wild Friends and your own pick both show first.
+  // Phones: Parent A, then Parent B (the real wild Friends), then kept babies as Parent B last, so the order reads like the guide.
   const broodSection = broodChips && <div key="brood" className="rb-section rb-section-brood" role="radiogroup" aria-labelledby={`${id}-brood`}>
     <p className="rb-section-sub" id={`${id}-brood`}>Or Parent B from your brood</p>
     {broodChips}
@@ -255,8 +260,8 @@ export function MatchmakerPanel({ parents, candidates, eggs, price, needsEgg, ca
       <span><strong>Parent A</strong> is yours: your Friend or a kept baby. <strong>Parent B</strong> is the mate: a real Rare Friend or one of your babies.</span>
     </p>}
 
-    <div ref={node} className={cx("rb-match-pickers", "rb-match-v2", aRow && "rb-match-stacked", compact && "rb-match-b-first")}>
-      {compact ? [sectionB(false), sectionA, broodSection] : [sectionA, sectionB(true)]}
+    <div ref={node} className={cx("rb-match-pickers", "rb-match-v2", aRow && "rb-match-stacked", compact && "rb-match-phone")}>
+      {compact ? [sectionA, sectionB(false), broodSection] : [sectionA, sectionB(true)]}
     </div>
   </Panel>;
 }

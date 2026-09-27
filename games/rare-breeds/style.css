@@ -1835,7 +1835,7 @@
   .rb-world:has(.rb-hud-sling) .rb-toast { top: calc(var(--rb-edge) + 2 * var(--rb-hud) + 12px); }
 }
 
-/* Station panel: pick a baby, see its stake and where it can land, hold the button to pull. */
+/* Station panel: pick a baby, see its stake and its exits (chance and payout), then launch. */
 /* Sized so everything, fine print included, fits a 960 x 640 frame without scrolling. */
 .rb-sling .rb-panel-body { gap: 10px; padding-bottom: 10px; }
 .rb-sling .rb-short, .rb-sling-tiny { display: none; }
@@ -1884,9 +1884,8 @@
 .rb-sling-pick .rb-pick-text { flex: 1; }
 .rb-sling-pick .rb-tier-dot { display: inline-block; margin-right: 5px; }
 
-/* The slingshot: the baby sits in the band; holding the button pulls it down (--rb-pull, 0 to 1). */
+/* The slingshot: the baby sits in the band, ready to be tossed onto its rocket. */
 .rb-sling-stage {
-  --rb-pull: 0;
   grid-area: stage;
   position: relative;
   display: flex;
@@ -1917,10 +1916,9 @@
   inset: 0;
   z-index: 3;
   background: var(--rb-ink);
-  clip-path: polygon(6px 43px, 12px 43px, 50% calc(51px + var(--rb-pull) * 34px), 65px 43px, 71px 43px, 50% calc(57px + var(--rb-pull) * 34px));
+  clip-path: polygon(6px 43px, 12px 43px, 50% 51px, 65px 43px, 71px 43px, 50% 57px);
 }
-.rb-sling-baby { position: absolute; z-index: 2; left: 50%; top: 2px; margin-left: -27px; transform: translateY(calc(var(--rb-pull) * 34px)); }
-.rb-animate.rb-full .rb-sling-baby { animation: rb-sling-shake 140ms steps(2) infinite; }
+.rb-sling-baby { position: absolute; z-index: 2; left: 50%; top: 2px; margin-left: -27px; }
 .rb-sling-caption {
   align-self: stretch;
   display: flex;
@@ -1936,7 +1934,7 @@
 .rb-sling-caption strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 800 15px/1.2 var(--rb-font); }
 .rb-sling-worth { font: 700 12px/1.2 var(--rb-mono); color: #5E5A52; white-space: nowrap; }
 
-/* The ladder: farthest zone on top, a dashed flight path through the rungs, each row tinted by its chance. */
+/* The exits ladder: the Moon on top, a dashed flight path through the rungs, each row tinted by its chance. */
 .rb-sling-ladder { grid-area: ladder; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .rb-sling-zones { list-style: none; position: relative; display: flex; flex-direction: column; gap: 3px; }
 .rb-sling-zones::before { content: ""; position: absolute; left: 9px; top: 14px; bottom: 14px; border-left: 2px dashed var(--rb-rule); }
@@ -1986,7 +1984,6 @@
 .rb-zone-moon .rb-sling-mult { border-color: var(--rb-ink); background: var(--rb-ink); color: #FFE27A; font-size: 16px; }
 .rb-zone-moon .rb-sling-rung { left: -23px; width: auto; height: auto; background: none; box-shadow: none; color: #FFE27A; }
 .rb-sling-jackpot { flex: none; background: var(--rb-ink); color: #FFE27A; }
-.rb-sling-ev { font: 12px/1.35 var(--rb-mono); color: var(--rb-muted-2); }
 .rb-sling-fine { list-style: none; display: flex; flex-direction: column; gap: 3px; flex: none; font: 11px/1.4 var(--rb-mono); color: var(--rb-muted); }
 
 .rb-sling-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -1994,32 +1991,10 @@
 .rb-sling-status .rb-icon { flex: none; margin-top: 2px; color: var(--rb-signal); }
 .rb-sling-status.rb-warn { color: var(--rb-panel-text); }
 .rb-sling-status.rb-warn .rb-icon { color: var(--rb-danger); }
-/* Hold to pull: the stripes fill with the pull; the label says when to let go. */
-.rb-button.rb-sling-pull {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  flex: none;
-  min-width: 290px;
-  max-width: 62%;
-  touch-action: none;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  box-shadow: 3px 3px 0 rgba(0, 0, 0, .45);
-}
-.rb-sling-pull > :not(.rb-sling-meter) { position: relative; z-index: 1; }
-.rb-sling-pull > .rb-sling-meter {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  transform: scaleX(var(--rb-pull, 0));
-  transform-origin: left center;
-  background: repeating-linear-gradient(-45deg, #A6D800 0 6px, #BCEB14 6px 12px);
-  border-right: 2px solid var(--rb-ink);
-}
-.rb-sling-pull > .rb-sr-only { position: absolute; }
-.rb-button.rb-sling-pull.rb-pulling { transform: translate(1px, 2px); box-shadow: 1px 1px 0 rgba(0, 0, 0, .45); }
-.rb-button.rb-sling-pull:disabled { box-shadow: none; }
+/* Launch: the trade-in confirmation, then the flight overlay. */
+.rb-button.rb-sling-go { flex: none; min-width: 240px; max-width: 62%; box-shadow: 3px 3px 0 rgba(0, 0, 0, .45); }
+.rb-sling-go > .rb-sr-only { position: absolute; }
+.rb-button.rb-sling-go:disabled { box-shadow: none; }
 .rb-sling-empty .rb-empty-art .rb-icon { animation: none; }
 @container rb (max-height: 300px) { .rb-sling-more { display: none; } }
 @container rb (max-height: 250px) { .rb-sling-empty .rb-muted { display: block; } }
@@ -2052,12 +2027,11 @@
   .rb-zone-moon :is(.rb-sling-mult, .rb-sling-pay) { font-size: 12px; }
   .rb-zone-moon .rb-sling-rung { left: -17px; }
   .rb-sling-jackpot { padding: 2px 3px 1px; font-size: 7px; }
-  .rb-sling-ev { font-size: 11px; }
   .rb-sling-fine { font-size: 10px; }
   .rb-sling-foot { gap: 8px; }
   .rb-sling-status { font-size: 11px; line-height: 1.3; gap: 5px; }
   .rb-sling-status .rb-icon { margin-top: 1px; }
-  .rb-button.rb-sling-pull { min-width: 136px; max-width: 58%; padding: 0 12px; }
+  .rb-button.rb-sling-go { min-width: 136px; max-width: 58%; padding: 0 12px; }
 }
 /* Narrow and tall (portrait phones): one column, no slingshot art, babies in one row (name and value). */
 @container rb (max-width: 599px) {
@@ -2079,7 +2053,7 @@
    The stake moves into the footer line, so every zone stays in view without scrolling. */
 @container rb (max-height: 300px) {
   .rb-sling .rb-panel-body { padding-block: 4px; gap: 4px; }
-  .rb-sling-lead, .rb-sling-stake, .rb-sling-gone, .rb-sling-ev, .rb-sling-zones::before, .rb-sling-rung { display: none; }
+  .rb-sling-lead, .rb-sling-stake, .rb-sling-gone, .rb-sling-zones::before, .rb-sling-rung { display: none; }
   .rb-sling-tiny { display: inline; }
   .rb-sling-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "pick" "ladder"; grid-template-rows: auto; gap: 4px; }
   .rb-sling-pickers .rb-section-label, .rb-sling-ladder .rb-section-label { display: none; }
@@ -2113,7 +2087,96 @@
   .rb-zone-moon .rb-sling-pay { font-size: 11px; }
 }
 
-/* Launch overlay: the flight canvas, then the result card over the landed frame. */
+/* Launch overlay: the flight canvas with the live multiplier on top and the big hold button below (Crash style),
+   then the result card over the final frame. Holding must not scroll, zoom or select anything on phones. */
+.rb-launch { background: var(--rb-ink); }
+.rb-launch-aloft { touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.rb-launch .rb-hatch-skip { min-height: 44px; }
+.rb-flight-meter {
+  position: absolute;
+  z-index: 2;
+  top: var(--rb-edge);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 180px;
+  max-width: calc(100% - 300px);
+  padding: 8px 16px 9px;
+  border: 2px solid var(--rb-ink);
+  border-radius: 4px;
+  background: rgba(17, 17, 17, .88);
+  color: var(--rb-panel-text);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, .35);
+  text-align: center;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+.rb-flight-mult { font: 900 44px/1 var(--rb-mono); letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rb-flight-pay { display: flex; align-items: center; gap: 6px; color: var(--rb-signal); font: 800 18px/1.1 var(--rb-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rb-flight-sim { padding: 2px 4px 1px; border-radius: 2px; background: var(--rb-signal); color: var(--rb-ink); font: 700 9px/1 var(--rb-mono); letter-spacing: .12em; text-transform: uppercase; }
+.rb-flight-hint { color: var(--rb-muted-2); font: 600 11px/1.3 var(--rb-font); }
+.rb-flight-meter.rb-idle .rb-flight-mult { color: var(--rb-muted-2); }
+.rb-flight-meter.rb-up { border-color: var(--rb-signal); }
+.rb-flight-meter.rb-up .rb-flight-mult { color: var(--rb-signal); }
+.rb-flight-meter.rb-down .rb-flight-mult { color: var(--rb-danger); text-decoration: line-through 3px; }
+.rb-flight-meter.rb-down .rb-flight-pay { color: var(--rb-muted); }
+/* Reduced motion: the rocket stays on the pad, so the counter carries the climb. */
+.rb-launch:not(.rb-animate) .rb-flight-mult { font-size: 64px; }
+.rb-flight-controls {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: var(--rb-safe-bottom);
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 8px;
+  width: min(460px, calc(100% - 2 * var(--rb-edge)));
+  transform: translateX(-50%);
+}
+.rb-button.rb-flight-hold {
+  width: 100%;
+  max-width: 340px;
+  min-height: 64px;
+  gap: 12px;
+  padding: 0 22px;
+  font: 850 21px/1 var(--rb-font);
+  letter-spacing: -.01em;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  box-shadow: 4px 4px 0 var(--rb-ink);
+}
+.rb-animate .rb-flight-hold:not(.rb-holding):not(:disabled) { animation: rb-pulse 1.6s ease-out infinite; }
+.rb-button.rb-flight-hold.rb-holding { background: #D9FF40; transform: translate(2px, 3px); box-shadow: 1px 1px 0 var(--rb-ink); }
+.rb-flight-cancel { position: absolute; z-index: 2; top: var(--rb-edge); right: var(--rb-edge); display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 200px; }
+.rb-flight-cancel .rb-button { min-height: 44px; border-color: var(--rb-panel-text); gap: 10px; }
+.rb-flight-cancel p, .rb-flight-stay { padding: 3px 7px; border-radius: 3px; background: rgba(17, 17, 17, .82); color: #D9D5CB; font: 600 11px/1.3 var(--rb-font); text-align: right; }
+/* Phones: the "Don't fly" note moves above the hold button (the top band is the meter's). */
+.rb-flight-stay { display: none; position: absolute; z-index: 2; left: 50%; bottom: calc(var(--rb-safe-bottom) + 64px); max-width: calc(100% - 2 * var(--rb-edge)); text-align: center; white-space: nowrap; transform: translateX(-50%); }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  /* Phones: the meter sits below the top buttons, in the band above the letterboxed flight. */
+  .rb-flight-meter { top: calc(var(--rb-edge) + 52px); min-width: 140px; max-width: calc(100% - 2 * var(--rb-edge)); padding: 5px 12px 6px; gap: 2px; border-color: var(--rb-rule); box-shadow: none; }
+  .rb-flight-mult { font-size: 32px; }
+  .rb-launch:not(.rb-animate) .rb-flight-mult { font-size: 42px; }
+  .rb-flight-pay { font-size: 14px; }
+  .rb-flight-hint { font-size: 10px; }
+  .rb-button.rb-flight-hold { min-height: 56px; font-size: 18px; box-shadow: 3px 3px 0 var(--rb-ink); }
+  .rb-flight-hint .rb-long { display: none; }
+  .rb-flight-cancel p { display: none; }
+  .rb-flight-stay { display: block; font-size: 10px; }
+}
+/* Phone landscape: everything overlaps the flight, so the meter moves to the top-left corner. */
+@container rb (max-height: 300px) {
+  .rb-flight-meter { top: var(--rb-edge); left: var(--rb-edge); flex-direction: row; gap: 8px; max-width: calc(100% - 150px); transform: none; }
+  .rb-flight-mult { font-size: 26px; }
+  .rb-launch:not(.rb-animate) .rb-flight-mult { font-size: 30px; }
+  .rb-flight-hint { display: none; }
+  .rb-button.rb-flight-hold { max-width: 240px; min-height: 44px; font-size: 16px; }
+  .rb-flight-stay { display: none; }
+}
 .rb-launch .rb-confetti { --rb-tier-accent: #FFB800; }
 .rb-launch-card {
   position: relative;
@@ -2169,12 +2232,12 @@
 .rb-launch-buttons { display: flex; gap: 10px; }
 .rb-launch-buttons .rb-button { flex: 1 1 auto; }
 .rb-launch-card .rb-short { display: none; }
-.rb-launch-card.rb-zone-pond { border-color: var(--rb-muted); }
-.rb-zone-pond .rb-launch-stamp { color: #9FE8FF; }
-.rb-launch-card.rb-zone-orbit { border-color: var(--rb-signal); }
-.rb-launch-card.rb-zone-moon { border-color: #FFB800; box-shadow: 0 0 0 3px #FFE27A, 8px 8px 0 var(--rb-ink); }
-.rb-zone-moon .rb-launch-zone { color: #FFE27A; }
-.rb-zone-moon .rb-launch-stamp {
+.rb-launch-card.rb-end-pond { border-color: var(--rb-muted); }
+.rb-end-pond .rb-launch-stamp { color: #9FE8FF; }
+.rb-launch-card.rb-end-jump { border-color: var(--rb-signal); }
+.rb-launch-card.rb-end-moon { border-color: #FFB800; box-shadow: 0 0 0 3px #FFE27A, 8px 8px 0 var(--rb-ink); }
+.rb-end-moon .rb-launch-zone { color: #FFE27A; }
+.rb-end-moon .rb-launch-stamp {
   border-color: var(--rb-ink);
   background: linear-gradient(90deg, #FFE27A, #FFB800, #FF8FD8, #FFE27A) 0 0 / 300% 100%;
   color: var(--rb-ink);
@@ -2183,7 +2246,7 @@
 
 @container rb (max-width: 599px) or (max-height: 479px) {
   .rb-launch-card { gap: 8px; padding: 10px 12px; border-width: 2px; box-shadow: 4px 4px 0 var(--rb-ink); }
-  .rb-launch-card.rb-zone-moon { box-shadow: 0 0 0 2px #FFE27A, 4px 4px 0 var(--rb-ink); }
+  .rb-launch-card.rb-end-moon { box-shadow: 0 0 0 2px #FFE27A, 4px 4px 0 var(--rb-ink); }
   .rb-launch-top { gap: 10px; }
   .rb-launch-baby { width: 48px; height: 48px; }
   .rb-launch-head { gap: 2px; }
@@ -2227,7 +2290,6 @@
   .rb-sling-about { font-size: 12px; }
 }
 
-@keyframes rb-sling-shake { 0% { transform: translate(-1px, calc(var(--rb-pull) * 34px)); } 100% { transform: translate(1px, calc(var(--rb-pull) * 34px + 1px)); } }
 @keyframes rb-stamp { 0% { opacity: 0; transform: scale(2.2) rotate(-18deg); } 100% { opacity: 1; transform: rotate(-8deg); } }
 
 /* ---------- Compact action bar: room for the station prompt ---------- */
@@ -2862,10 +2924,10 @@ button.rb-tree-item:disabled { opacity: .5; cursor: not-allowed; }
 @container rb (max-width: 599px) or (max-height: 479px) {
   .rb-match-v2 .rb-chip-scroll > .rb-pick:has(input[value^="friend:"]) { max-width: 200px; }
 }
-/* Phones: Parent B (the real wild Friends) comes first; a single Parent A sits beside it on short frames. */
+/* Phones: Parent A, then Parent B (the real wild Friends); a single Parent A sits beside it on short frames. */
 @container rb (max-height: 300px) {
-  .rb-match-b-first:not(.rb-match-stacked) .rb-section-a { grid-column: 1; grid-row: 1; }
-  .rb-match-b-first:not(.rb-match-stacked) .rb-section-b { grid-column: 2; grid-row: 1; }
+  .rb-match-phone:not(.rb-match-stacked) .rb-section-a { grid-column: 1; grid-row: 1; }
+  .rb-match-phone:not(.rb-match-stacked) .rb-section-b { grid-column: 2; grid-row: 1; }
   .rb-match-pickers.rb-match-stacked { gap: 6px; }
   .rb-match-v2 .rb-chip-list.rb-chip-scroll { gap: 4px; padding-bottom: 5px; }
   .rb-match-v2 .rb-chip-scroll .rb-pick-meta { display: none; }
@@ -2964,3 +3026,312 @@ button.rb-tree-item:disabled { opacity: .5; cursor: not-allowed; }
 /* Polish 2 (lead): with a brood the Parent A row takes the space of the pair preview, so the three wild mates stay fully visible. */
 .rb-match:has(.rb-match-stacked) .rb-match-stage { display: none; }
 .rb-match-stacked .rb-pick-card .rb-slot { height: 68px; }
+
+/* ==========================================================================================
+   Depth (collect): inherited mutations, lineage titles, hatch numbers and the breed book.
+   Appended block with its own selectors; it never edits the rules above.
+   ========================================================================================== */
+
+/* Result card: lineage titles (cosmetic) beside the tier and hatch badges; the breed name leads the family label.
+   Each title is a button (a 32 px touch target around the pill) that explains itself below the badges. */
+.rb-title-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.rb-title-badge:focus-visible { outline: none; }
+.rb-title-badge:focus-visible .rb-title-pill { outline: 2px solid var(--rb-signal); outline-offset: 2px; }
+.rb-title-badge:hover .rb-title-pill, .rb-title-badge.rb-on .rb-title-pill { background: rgba(255, 226, 122, .24); }
+.rb-title-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px 0 6px;
+  border: 1px solid #FFE27A;
+  border-radius: 3px;
+  background: rgba(255, 226, 122, .1);
+  font: 700 12px/1 var(--rb-mono);
+  color: #FFE27A;
+  white-space: nowrap;
+}
+.rb-title-pill .rb-icon { flex: none; }
+.rb-title-note { flex-basis: 100%; margin: 0; padding: 4px 8px; border-left: 2px solid #FFE27A; background: rgba(255, 226, 122, .08); color: #D9D5CB; font: 12px/1.35 var(--rb-mono); }
+.rb-title-note strong { color: #FFE27A; }
+.rb-card-breed { font-weight: 800; color: var(--rb-panel-text); }
+/* The badges flow one by one beside the name, so a long breed and family label wraps alone, not the whole group. */
+.rb-card-v2 .rb-card-badges { display: contents; }
+.rb-card-v2 .rb-card-titlebar { column-gap: 8px; }
+.rb-card-v2 .rb-card-name { margin-right: 6px; }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-title-pill { height: 22px; padding: 0 6px 0 4px; gap: 4px; font-size: 11px; }
+  .rb-title-note { font-size: 11px; }
+  .rb-card-v2 .rb-card-titlebar { column-gap: 6px; }
+  .rb-card-v2 .rb-card-name { margin-right: 4px; }
+}
+/* Portrait phones: name, tier, hatch and titles share the first line; breed and family get their own. With news the
+   eyebrow yields its row (the name says it hatched) and the finds flow as one wrapping line of text, each led by its
+   sparkle, so four finds take about two lines. */
+@container rb (max-width: 599px) {
+  .rb-card-v2 .rb-card-scroll { gap: 6px; }
+  .rb-card-v2 .rb-card-family { flex-basis: 100%; }
+  .rb-card-v2 .rb-card-head:has(.rb-card-news) { grid-template-areas: "news news" "title title" "line line"; }
+  .rb-card-v2 .rb-card-head:has(.rb-card-news) > .rb-eyebrow { display: none; }
+  .rb-card-v2 .rb-card-head .rb-card-news { display: block; line-height: 1.35; }
+  .rb-card-v2 .rb-card-head .rb-card-news li { display: inline; margin-right: 8px; font-size: 10px; }
+  .rb-card-v2 .rb-card-head .rb-card-news li > span { overflow-wrap: normal; }
+  .rb-card-v2 .rb-card-head .rb-card-news .rb-icon { display: inline-block; margin-right: 3px; vertical-align: -1px; }
+}
+/* 360 px frames: the Keep bonus is already in the line above the buttons, so the trade-in button keeps its whole label. */
+@container rb (max-width: 380px) {
+  .rb-card-v2 .rb-keep .rb-keep-bonus { display: none; }
+}
+/* Phone landscape frames (about 390 x 260) keep their one-line title with the news beside it, as before; the hatch
+   number and titles drop out there (the brood card shows them). */
+@container rb (max-height: 300px) {
+  .rb-card-v2 .rb-card-head:has(.rb-card-news) { grid-template-areas: "title news" "line line"; }
+  .rb-card-v2 .rb-card-head .rb-card-news { display: flex; justify-content: flex-end; }
+  .rb-card-v2 .rb-card-head .rb-card-news li { display: flex; margin-right: 0; }
+  .rb-card-v2 .rb-card-head .rb-card-news .rb-icon { display: block; margin-right: 0; }
+  .rb-hatch-no, .rb-card-v2 .rb-title-badge, .rb-title-note { display: none; }
+}
+
+/* Intro goal: the breed book as a quieter second clause after the main goal. */
+.rb-intro-breeds { font-weight: 400; }
+
+/* Brood grid: a titled baby's short title names. */
+.rb-brood-title { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; font: 700 10px/1.2 var(--rb-mono); color: #FFE27A; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-brood-title .rb-icon { flex: none; }
+
+/* Matchmaker footer: what the chosen parents can pass on. */
+.rb-foot-pass { display: flex; align-items: flex-start; gap: 6px; color: var(--rb-mut); }
+.rb-foot-pass .rb-icon { flex: none; margin-top: 1px; }
+
+/* Collection: the breed count and the breed book (found names, ??? for the rest). */
+.rb-collection-breeds { flex-wrap: wrap; align-items: center; }
+.rb-breed-book { flex: 1 1 180px; min-width: 0; }
+.rb-breed-book[open] { flex-basis: 100%; }
+.rb-breed-book summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--rb-rule);
+  border-radius: 3px;
+  list-style: none;
+  cursor: pointer;
+  font: 700 11px/1 var(--rb-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--rb-signal);
+}
+.rb-breed-book summary::-webkit-details-marker { display: none; }
+.rb-breed-book summary::before { content: "+"; width: 10px; font-size: 14px; text-align: center; }
+.rb-breed-book[open] summary::before { content: "-"; }
+.rb-breed-book summary:focus-visible { outline: 2px solid var(--rb-signal); outline-offset: 2px; }
+.rb-breed-book ul { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 3px 12px; margin-top: 8px; }
+.rb-breed-book li { font: 11px/1.35 var(--rb-mono); color: var(--rb-muted); overflow-wrap: anywhere; }
+.rb-breed-book li.rb-found { font-weight: 700; color: var(--rb-panel-text); }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-collection-breeds { flex-basis: 100%; }
+  .rb-breed-book summary { min-height: 28px; font-size: 10px; }
+  .rb-breed-book ul { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 8px; margin-top: 6px; }
+  .rb-breed-book li { font-size: 10px; }
+}
+
+/* ==========================================================================================
+   Review fixes: the flight's hold button while it cannot fly, the record line, inherited rows in the DNA trio,
+   inherited news, the breed book's family pairs and the slingshot picker's marks. Appended block.
+   ========================================================================================== */
+
+/* Paused (or unlit): still focusable, so Space never lands on "Don't fly", but visibly off. */
+.rb-launch .rb-button.rb-flight-hold[aria-disabled="true"] { cursor: not-allowed; opacity: .45; animation: none; }
+.rb-button.rb-flight-hold[aria-disabled="true"]:hover { background: var(--rb-signal); }
+.rb-button.rb-flight-hold[aria-disabled="true"]:active { transform: none; }
+
+/* Panel lead: the average-return line may wrap on phones. */
+@container rb (max-width: 599px) or (max-height: 479px) { .rb-sling-lead strong { white-space: normal; } }
+
+/* Result card: the record to chase. */
+.rb-launch-record { display: inline-flex; align-items: center; gap: 6px; font: 700 12px/1.3 var(--rb-mono); color: var(--rb-muted-2); }
+.rb-launch-record.rb-new { color: #FFE27A; }
+.rb-launch-record .rb-icon { flex: none; }
+@container rb (max-width: 599px) or (max-height: 479px) { .rb-launch-record { font-size: 11px; } }
+/* Phone landscape: no room for another line above the buttons (the screen reader still hears the record). */
+@container rb (max-height: 300px) { .rb-launch-record { display: none; } }
+
+/* Reveal news: an inherited shape reads in the mutation violet, apart from the green collection finds. */
+.rb-card-news li.rb-news-inherited { color: var(--rb-mut); }
+
+/* DNA trio: rows of an inherited shape get a violet mark on the baby's right edge (mutated rows: the left edge). */
+.rb-trio-row.rb-inh::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: max(3px, calc(var(--rb-px) * .6));
+  border: 1px solid var(--rb-mut);
+  border-right-width: max(2px, calc(var(--rb-px) * .3));
+  background: rgba(180, 140, 255, .35);
+}
+.rb-trio-inh-note { display: inline-flex; align-items: center; gap: 6px; color: var(--rb-mut); font-weight: 700; }
+.rb-trio-inh-pip { display: block; width: 4px; height: 10px; border: 1px solid var(--rb-mut); background: rgba(180, 140, 255, .35); }
+
+/* Breed book: found names over their pair; the rest show the pair to try, dimmed, with ???. */
+.rb-breed-book li { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 5px; }
+.rb-breed-book li strong { font-weight: 700; }
+.rb-breed-pair { color: var(--rb-muted); }
+.rb-breed-book li.rb-found .rb-breed-pair { flex-basis: 100%; font-size: 10px; font-weight: 400; }
+.rb-breed-book li:not(.rb-found) .rb-breed-pair { opacity: .75; }
+.rb-breed-unknown { font-weight: 700; color: var(--rb-muted-2); }
+
+/* Slingshot picker: a title (gold sparkle) or a shape it can pass on (violet DNA) next to the name. */
+.rb-sling-marks { display: inline-flex; align-items: center; gap: 3px; margin-left: 5px; vertical-align: -1px; }
+.rb-sling-mark-title { color: #FFE27A; }
+.rb-sling-mark-shape { color: var(--rb-mut); }
+
+/* ==========================================================================================
+   Tall portrait frames (host.css steps the frame from 3:4 down to 1:2 on portrait phones) and phone review fixes.
+   Appended block: overrides only, through later or more specific selectors.
+   ========================================================================================== */
+
+/* HUD: on portrait phones the Slingshot net pill sits in the bottom band, left of Find a match, instead of wrapping
+   into a second HUD row over the room (fixed: the game document is exactly the game area). Narrow frames drop its
+   word; the moon, the Sim tag, the title and the accessible name still say what it counts. */
+@container rb (max-width: 599px) and (orientation: portrait) {
+  .rb-hud .rb-hud-sling { position: fixed; left: var(--rb-edge); bottom: var(--rb-safe-bottom); height: 36px; }
+  /* Same height as the buttons beside it, with a halo that makes its tap area 44 px. */
+  .rb-hud .rb-hud-sling-button::after { content: ""; position: absolute; inset: -6px; }
+  .rb-world:has(.rb-hud-sling) .rb-toast { top: calc(var(--rb-edge) + var(--rb-hud) + 6px); }
+}
+@container rb (max-width: 380px) and (orientation: portrait) {
+  .rb-hud .rb-hud-sling-word { display: none; }
+}
+
+/* Slingshot panel on portrait phones: three babies per row (44 px chips), and when the frame runs short the picker
+   gives up rows first (down to one) and scrolls inside, so the ladder with its fizzle row, the fine print and Launch
+   stay in view. The stacked grid becomes plain flex items of the panel body, so only the picker shrinks. */
+@container rb (max-width: 599px) and (orientation: portrait) {
+  .rb-sling .rb-sling-main { display: contents; }
+  .rb-sling .rb-sling-stake, .rb-sling .rb-sling-ladder { flex: none; }
+  .rb-sling .rb-sling-pickers { flex: 0 1 auto; min-height: 52px; }
+  .rb-sling .rb-sling-picks {
+    flex: 0 1 auto;
+    min-height: 0;
+    margin: -4px;
+    padding: 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--rb-rule) transparent;
+    background:
+      linear-gradient(var(--rb-panel) 40%, rgba(17, 17, 17, 0)) top / 100% 18px no-repeat local,
+      linear-gradient(rgba(17, 17, 17, 0), var(--rb-panel) 60%) bottom / 100% 18px no-repeat local,
+      linear-gradient(rgba(244, 241, 234, .16), rgba(244, 241, 234, 0)) top / 100% 10px no-repeat scroll,
+      linear-gradient(rgba(244, 241, 234, 0), rgba(244, 241, 234, .16)) bottom / 100% 10px no-repeat scroll,
+      var(--rb-panel);
+  }
+  .rb-sling-pick { flex-basis: 92px; }
+  .rb-sling-pick .rb-pick-body { gap: 5px; padding-right: 4px; }
+  .rb-sling-pick .rb-slot { width: 36px; height: 36px; }
+  .rb-sling-pick .rb-tier-dot { margin-right: 3px; }
+}
+
+/* Breed book on compact frames: an unfound pair wraps like a line of text, so its ??? stays with the last family
+   instead of dropping onto a line of its own. */
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-breed-book li:not(.rb-found) { display: block; }
+  .rb-breed-book .rb-breed-unknown { white-space: nowrap; }
+}
+
+/* Short portrait frames (the 3:4 fallback, e.g. 360 x 480): step 5 drops its lead (the title says it) and step 6
+   puts the goal and the first action above the HUD legend, so neither sits below the fold. */
+@container rb (max-width: 599px) and (orientation: portrait) and (max-height: 540px) {
+  .rb-intro-step-5 > .rb-intro-lead { display: none; }
+  .rb-intro-step-5 .rb-intro-options { gap: 6px; }
+  .rb-intro-step-5 .rb-intro-option { padding-block: 6px; }
+  .rb-intro-step-5 .rb-intro-option p { line-height: 1.3; }
+  .rb-intro-step-6 > .rb-intro-goal { order: -1; }
+}
+/* ... and the reveal card drops the DNA trio's tap hint, as phone landscape does, so its stats clear the buttons. */
+@container rb (max-width: 599px) and (orientation: portrait) and (max-height: 540px) {
+  .rb-trio-caption { min-height: 0; }
+  .rb-trio-hint { display: none; }
+}
+@container rb (max-width: 340px) and (orientation: portrait) and (max-height: 540px) {
+  .rb-intro-step-5 .rb-intro-options { gap: 4px; }
+  .rb-intro-step-5 .rb-intro-option { padding-block: 4px; }
+  .rb-intro-step-5 .rb-intro-option h3 { font-size: 14px; }
+  .rb-intro-step-5 .rb-intro-option p { font-size: 11px; line-height: 1.25; }
+}
+
+/* Matchmaker on phone landscape (390 x 260 up to the 585 x 390 frame of an 844 x 390 phone) with a brood: Parent A's
+   row turns into a column that scrolls on its own beside Parent B (its size never stretches the rows), so the real
+   mates are in view without scrolling. */
+@container rb (max-height: 479px) and (orientation: landscape) {
+  .rb-match-phone.rb-match-stacked { grid-template-columns: minmax(96px, 30%) minmax(0, 1fr); gap: 6px 8px; }
+  .rb-match-phone.rb-match-stacked .rb-section-a { grid-column: 1; grid-row: 1 / span 2; contain: size; min-height: 0; }
+  .rb-match-phone.rb-match-stacked .rb-section-b { grid-column: 2; grid-row: 1; }
+  .rb-match-phone.rb-match-stacked .rb-section-brood { grid-column: 2; grid-row: 2; }
+  .rb-match-v2.rb-match-phone.rb-match-stacked .rb-section-a .rb-chip-scroll {
+    flex: 1 1 auto;
+    flex-flow: column nowrap;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scroll-snap-type: y proximity;
+  }
+  .rb-match-v2.rb-match-phone.rb-match-stacked .rb-section-a .rb-chip-scroll > .rb-pick { max-width: none; }
+  .rb-match-phone.rb-match-stacked .rb-section-a .rb-section-hint { display: none; }
+  .rb-match-phone.rb-match-stacked .rb-pick-card .rb-slot { height: 36px; }
+  /* Without a brood too: your Friend beside the three mates, as on the smallest landscape frames. */
+  .rb-match-phone:not(.rb-match-stacked) { grid-template-columns: minmax(100px, 132px) minmax(0, 1fr); gap: 8px; }
+  .rb-match-phone:not(.rb-match-stacked) .rb-section-a { grid-column: 1; grid-row: 1; }
+  .rb-match-phone:not(.rb-match-stacked) .rb-section-b { grid-column: 2; grid-row: 1; }
+  /* The narrow Parent A column names your Friend "You", as on the smallest frames. */
+  .rb-match-phone .rb-section-a .rb-pick-long { display: none; }
+  .rb-match-phone .rb-section-a .rb-pick-short { display: inline; }
+}
+/* Landscape phone frames (up to about 585 x 390): the pair preview (just for fun) makes way for the mates. */
+@container rb (max-height: 400px) and (orientation: landscape) {
+  .rb-match .rb-match-stage { display: none; }
+}
+
+/* Slingshot panel on wide frames (960 x 640): the body is one grid (same columns and spacing as before), so when
+   two rows of babies would push the fine print out of view, the picker gives up height first (down to one row) and
+   scrolls inside. */
+@container rb (min-width: 600px) and (min-height: 480px) {
+  .rb-sling .rb-panel-body:has(> .rb-sling-main) {
+    display: grid;
+    grid-template-columns: minmax(170px, 210px) minmax(0, 1fr);
+    grid-template-areas: "lead lead" "stake stake" "pick pick" "stage ladder" "fine fine";
+    grid-template-rows: max-content max-content minmax(44px, max-content) max-content max-content;
+    align-content: start;
+    align-items: start;
+    gap: 6px 16px;
+  }
+  .rb-sling .rb-sling-main { display: contents; }
+  .rb-sling .rb-sling-lead { grid-area: lead; margin-bottom: 4px; }
+  .rb-sling .rb-sling-fine { grid-area: fine; margin-top: 4px; }
+  /* Two rows at most (the picker's 104 px scroll box less its focus-ring margins), shrinking to one when needed. */
+  .rb-sling .rb-sling-pickers { align-self: stretch; min-height: 0; max-height: 94px; }
+  .rb-sling .rb-sling-picks { align-self: stretch; max-height: none; }
+  /* Two rows of babies: a little less air around the art, the lead and the fine print. */
+  .rb-sling .rb-panel-body:has(.rb-sling-pick:nth-child(4)) .rb-sling-rig { margin-top: 4px; }
+  .rb-sling .rb-panel-body:has(.rb-sling-pick:nth-child(4)) :is(.rb-sling-lead, .rb-sling-fine) { margin-block: 0; }
+}
+
+/* Flight on landscape phone frames (e.g. the 585 x 390 frame of an 844 x 390 phone): Don't fly and Skip sit at the
+   right, so the meter can use the top edge instead of covering the rocket's nose on the pad. */
+@container rb (max-height: 479px) and (orientation: landscape) {
+  .rb-flight-meter { top: var(--rb-edge); }
+}

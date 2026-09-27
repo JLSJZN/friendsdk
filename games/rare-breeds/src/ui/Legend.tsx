@@ -1,16 +1,15 @@
 // Legends shared by the intro tour and the "?" panel: the four stations on a picture of the real room, and the HUD.
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { PICTURE_HEIGHT, PICTURE_MARKERS, PICTURE_WIDTH, paintRoomPicture } from "../scene/picture.ts";
-import { LAUNCH_ZONES, multiplierLabel } from "../slingshot.ts";
+import { MOON_HUNDREDTHS, multiplierLabel } from "../slingshot.ts";
 import type { Creature, StationId } from "../types.ts";
 import { PixelIcon } from "./PixelIcon.tsx";
 import { signedRF } from "./SlingshotPanel.tsx";
 import { ALL_FAMILIES } from "./collection.ts";
 import { cx, useDevicePixelRatio } from "./shared.ts";
 
-const multipliers = LAUNCH_ZONES.map(zone => zone.multiplierBps);
-/** "x0 to x10": the Moon Slingshot's lowest and highest landing. */
-export const MULTIPLIER_RANGE = `${multiplierLabel(Math.min(...multipliers))} to ${multiplierLabel(Math.max(...multipliers))}`;
+/** "x0 to x10": the Moon Slingshot's pond and its Moon. */
+export const MULTIPLIER_RANGE = `${multiplierLabel(0)} to ${multiplierLabel(MOON_HUNDREDTHS)}`;
 
 /** The stations in tour order (the numbers on the room picture). */
 const STATION_ORDER: readonly StationId[] = ["matchmaker", "incubator", "sanctuary", "slingshot"];
@@ -20,7 +19,7 @@ function stationItems(price: string): Readonly<Record<StationId, { name: string;
     matchmaker: { name: "Matchmaker", detail: "Pick a mate for your Friend and breed." },
     incubator: { name: "Incubator", detail: `Optional: stock up on eggs. Find a match buys one for you (${price}, simulated).` },
     sanctuary: { name: "Sanctuary", detail: "Trade a baby in for fixed simulated RF." },
-    slingshot: { name: "Moon Slingshot", detail: `Launch a kept baby: where it lands pays ${MULTIPLIER_RANGE} its value.` },
+    slingshot: { name: "Moon Slingshot", detail: "Hold to fly, let go to jump. Up to x10, or the pond." },
   };
 }
 

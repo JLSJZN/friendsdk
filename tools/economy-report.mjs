@@ -3,8 +3,8 @@
 //   node tools/economy-report.mjs [game-directory] [--sessions 5000] [--seed 7730]
 // Uses parseChanceGame / expectedReward / maximumPrize / createGamePreview from dist/game.js and reads
 // the preview stake and balance from the shipped runtime (dist/game-host.js), so nothing is assumed.
-// Games with src/slingshot.ts (Rare Breeds) also get the Moon Slingshot section: exact zone and payout
-// tables, the Moon Fund backing rule, exact session odds and a Monte Carlo of launching every baby.
+// Games with src/slingshot.ts (Rare Breeds) also get the Moon Slingshot section: the exact exits table (crash
+// odds and payouts), the Moon Fund backing rule and a Monte Carlo of launching every baby per exit strategy.
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -99,110 +99,110 @@ const slingshotPath = join(gameDirectory, "src/slingshot.ts");
 if (await stat(slingshotPath).then(() => true, () => false)) await slingshotReport(await import(pathToFileURL(slingshotPath).href));
 
 async function slingshotReport({
-  LAUNCH_ZONES, MOON_FUND_START, expectedMultiplierBps, initialLedger, launchBlocker, launchExpectedValue, launchPayout,
-  maxLaunchPayout, multiplierLabel, resolveLaunch, slingshotNet, zoneForRoll,
+  FIZZLE_BPS, LADDER_EXITS, MAX_RETURN_BPS, MOON_FUND_START, MOON_HUNDREDTHS, START_HUNDREDTHS, crashPoint, exitExpectedValue, exitPayout,
+  initialLedger, launchBlocker, maxLaunchPayout, msToReach, multiplierLabel, reachBps, resolveLaunch, slingshotNet,
 }) {
-  const bps = 10_000n, top = LAUNCH_ZONES.at(-1), item = definition.consumable.toLowerCase();
+  const bps = 10_000n, item = definition.consumable.toLowerCase();
   const order = (a, b) => a < b ? -1 : a > b ? 1 : 0, about = value => `${(Number(value) / Number(RF)).toFixed(3)} RF`;
   console.log(`\n## Moon Slingshot (${relativeToRoot(slingshotPath)}, simulated side ledger)\n`);
   console.log("A launch first trades the baby in through the SDK (client.redeem: tier token burned, its fixed value lands in the spendable RF balance); that value is the stake. " +
-    "One roll in 0-9999 then picks the landing zone (cumulative weights, like outcomeForRoll), which multiplies the stake. " +
+    "The baby then rides a rocket like the casino game Crash: while the player holds, the multiplier climbs as 10^(t / 9 s); letting go jumps at floor(m x 100) / 100. " +
+    "One roll in 0-9999, drawn at ignition, fixes the crash point C = floor(900000 / (roll + 1)) hundredths (capped at x10): a jump at h pays stake x h when C >= h, else x0 (the pond); x10 jumps onto the Moon by itself. " +
     "The side ledger books only payout - stake (the net); it is not spendable.\n");
-  console.log("| Zone | Landing | Rolls | Weight (bps) | Chance | Multiplier | EV share |");
-  console.log("| --- | --- | --- | ---: | ---: | ---: | ---: |");
-  let first = 0, weights = 0;
-  for (const zone of LAUNCH_ZONES) {
-    const last = first + zone.chanceBps - 1;
-    assert.equal(zoneForRoll(first), zone.id);
-    assert.equal(zoneForRoll(last), zone.id);
-    console.log(`| ${zone.id} | ${zone.label} | ${first}-${last} | ${zone.chanceBps} | ${zone.chanceBps / 100}% | ${multiplierLabel(zone.multiplierBps)} | ${multiplierLabel(zone.chanceBps * zone.multiplierBps / 10_000)} |`);
-    first = last + 1;
-    weights += zone.chanceBps;
+  // Exact over all 10000 rolls: how many reach each exit.
+  const reach = new Map();
+  for (let roll = 0; roll < 10_000; roll++) { const crash = crashPoint(roll); reach.set(crash, (reach.get(crash) ?? 0) + 1); }
+  const reaching = h => [...reach].reduce((sum, [crash, count]) => sum + (crash >= h ? count : 0), 0);
+  const fizzles = 10_000 - reaching(START_HUNDREDTHS);
+  assert.equal(fizzles, FIZZLE_BPS, "fizzle rolls");
+  const exits = [START_HUNDREDTHS, ...LADDER_EXITS];
+  console.log(`| Exit | Rolls | Chance | Reached after | EV (x stake) | ${definition.outcomes.map(outcome => outcome.name.replace(/ hatchling$/, "")).join(" | ")} |`);
+  console.log(`| --- | --- | ---: | ---: | ---: | ${definition.outcomes.map(() => "---:").join(" | ")} |`);
+  console.log(`| Fizzles on the pad (x0) | ${10_000 - FIZZLE_BPS}-9999 | ${FIZZLE_BPS / 100}% | at ignition | x0 | ${definition.outcomes.map(() => rf(0n)).join(" | ")} |`);
+  for (const h of exits) {
+    const rolls = reaching(h);
+    assert.equal(rolls, reachBps(h), `reach x${h / 100}`);
+    assert.equal(rolls, Math.floor(900_000 / h), `P(C >= ${h}) = floor(900000 / h) / 10000`);
+    const label = h === MOON_HUNDREDTHS ? `Moon, auto jump (${multiplierLabel(h)})` : `Jump at ${multiplierLabel(h)}`;
+    console.log(`| ${label} | 0-${rolls - 1} | ${rolls / 100}% | ${(Math.round(msToReach(h) / 10) / 100).toFixed(2)} s | ${multiplierLabel(h * rolls / 10_000)} | ${definition.outcomes.map(outcome => rf(exitPayout(outcome.reward, h))).join(" | ")} |`);
   }
-  let multiplierSum = 0;
-  for (let roll = 0; roll < 10_000; roll++) multiplierSum += LAUNCH_ZONES.find(zone => zone.id === zoneForRoll(roll)).multiplierBps;
-  assert.equal(multiplierSum, expectedMultiplierBps() * 10_000, "expected multiplier is exact over all 10000 rolls");
-  console.log(`| | **Total** | 0-9999 | ${weights} | 100% | | **${multiplierLabel(expectedMultiplierBps())}** |\n`);
-
-  console.log(`| Outcome | Stake (value) | ${LAUNCH_ZONES.map(zone => `${zone.id} ${multiplierLabel(zone.multiplierBps)}`).join(" | ")} | Payout EV | Net EV |`);
-  console.log(`| --- | ---: | ${LAUNCH_ZONES.map(() => "---:").join(" | ")} | ---: | ---: |`);
-  for (const outcome of definition.outcomes) {
-    const payoutEV = launchExpectedValue(outcome.reward);
-    console.log(`| ${outcome.name} | ${rf(outcome.reward)} | ${LAUNCH_ZONES.map(zone => rf(launchPayout(outcome.reward, zone.id))).join(" | ")} | ${rf(payoutEV)} | ${rf(payoutEV - outcome.reward)} |`);
+  let worst = { h: 0, back: Infinity };
+  for (let h = START_HUNDREDTHS; h <= MOON_HUNDREDTHS; h++) {
+    const back = h * reaching(h);
+    assert(back <= 100 * MAX_RETURN_BPS, `x${h / 100} returns more than x0.9`);
+    if (back < worst.back) worst = { h, back };
   }
-  const combined = definition.outcomes.reduce((sum, outcome) => sum + launchExpectedValue(outcome.reward) * BigInt(outcome.chanceBps), 0n) / bps;
-  assert.equal(combined, ev * BigInt(expectedMultiplierBps()) / bps, "launch EV composes with the egg EV");
-  const fundStart = maxLaunchPayout(max) * multiplier;
+  const combined = definition.outcomes.reduce((sum, outcome) => sum + exitExpectedValue(outcome.reward, 200) * BigInt(outcome.chanceBps), 0n) / bps;
+  assert.equal(combined, ev * BigInt(MAX_RETURN_BPS) / bps, "launch EV composes with the egg EV");
+  const top = maxLaunchPayout(max), fundStart = top * multiplier;
   assert.equal(MOON_FUND_START, fundStart, "Moon Fund follows the preview-stake convention");
-  const drain = definition.outcomes.reduce((worst, outcome) => LAUNCH_ZONES.reduce((most, zone) => {
-    const loss = launchPayout(outcome.reward, zone.id) - outcome.reward;
-    return loss > most ? loss : most;
-  }, worst), 0n);
-  const safe = (MOON_FUND_START - maxLaunchPayout(max)) / drain + 1n;
+  const drain = definition.outcomes.reduce((worstDrain, outcome) => {
+    const loss = maxLaunchPayout(outcome.reward) - outcome.reward;
+    return loss > worstDrain ? loss : worstDrain;
+  }, 0n);
+  const safe = (MOON_FUND_START - top) / drain + 1n;
   let fastest = initialLedger(), fastestLaunches = 0;
-  while (!launchBlocker(fastest, max)) { fastest = resolveLaunch(fastest, "worst", max, 9999).ledger; fastestLaunches++; }
+  while (!launchBlocker(fastest, max)) { fastest = resolveLaunch(fastest, "worst", max, 0, null).ledger; fastestLaunches++; }
   const stillFly = definition.outcomes.filter(outcome => !launchBlocker(fastest, outcome.reward)).map(outcome => outcome.name);
 
-  console.log(`\nExpected multiplier: sum(chance x multiplier) / 10000 = ${expectedMultiplierBps()} bps = ${multiplierLabel(expectedMultiplierBps())} of the stake (exact over all 10000 rolls), so the expected net per launch is ${(expectedMultiplierBps() - 10_000) / 10_000} x stake; the difference stays in the Moon Fund`);
-  console.log(`Launch every baby: trade-in ${rf(ev)} per ${item} (spendable) + net ${rf(combined - ev)} (side ledger) = ${rf(combined)} per ${item} (${Number(combined * 100_000n / definition.price) / 1000}% of the ${rf(definition.price)} price, exact over all 10^8 egg and launch roll pairs)`);
-  console.log(`Moon Fund at session start: top ${top.id} payout ${rf(maxLaunchPayout(max))} (${rf(max)} ${multiplierLabel(top.multiplierBps)}) x ${multiplier} (GameHost preview-stake multiplier) = ${rf(MOON_FUND_START)}`);
-  console.log(`Backing rule: a baby worth v flies only while fund >= its ${top.id} payout (${multiplierLabel(top.multiplierBps)} v). The stake joins the fund, so fund' = fund + v - payout >= v > 0 and fund = ${rf(MOON_FUND_START)} - net at all times.`);
-  console.log(`  Largest drain per launch: ${rf(drain)} (${definition.outcomes.find(outcome => outcome.reward === max).name} on the ${top.id}); the first ${safe} launches of a session can never be blocked.`);
-  console.log(`  Fastest pause: ${fastestLaunches} ${top.id} landings of ${rf(max)} babies in a row leave ${rf(fastest.fund)}; only ${stillFly.join(", ") || "nothing"} can still fly.`);
+  console.log(`\nExpected payback of always jumping at h: h x floor(900000 / h) / 10^6 <= x${MAX_RETURN_BPS / 10_000} of the stake, exact over all 10000 rolls for every h from x1.00 to x10.00; exactly x0.9 where h divides 900000 (x1, x1.5, x2, x4, x10), lowest at ${multiplierLabel(worst.h, true)} (x${worst.back / 1e6}). Timing changes the risk, not the payback; the difference stays in the Moon Fund`);
+  console.log(`Launch every baby and jump at a round exit: trade-in ${rf(ev)} per ${item} (spendable) + net ${rf(combined - ev)} (side ledger) = ${rf(combined)} per ${item} (${Number(combined * 100_000n / definition.price) / 1000}% of the ${rf(definition.price)} price, exact over all 10^8 egg and crash roll pairs)`);
+  console.log(`Moon Fund at session start: top payout ${rf(top)} (${rf(max)} x10, the Moon) x ${multiplier} (GameHost preview-stake multiplier) = ${rf(MOON_FUND_START)}`);
+  console.log(`Backing rule: a baby worth v flies only while fund >= its Moon payout (10 v), whatever exit the player picks. The stake joins the fund, so fund' = fund + v - payout >= v > 0 and fund = ${rf(MOON_FUND_START)} - net at all times.`);
+  console.log(`  Largest drain per launch: ${rf(drain)} (${definition.outcomes.find(outcome => outcome.reward === max).name} on the Moon); the first ${safe} launches of a session can never be blocked.`);
+  console.log(`  Fastest pause: ${fastestLaunches} Moon landings of ${rf(max)} babies in a row leave ${rf(fastest.fund)}; only ${stillFly.join(", ") || "nothing"} can still fly.`);
 
-  // Monte Carlo of the real flow: SDK preview ledger for eggs and trade-ins, slingshot ledger for the launches.
-  // Launch rolls come from their own seeded stream, so the egg rolls match the "sell every baby" strategy above.
-  const eggDraw = random(seed), launchDraw = random(seed + 1), runs = [];
-  for (let index = 0; index < sessions; index++) {
-    const { client } = createGamePreview(definition, { friendId: 7730n, stake, rfBalance: balance, draw: eggDraw });
-    let ledger = initialLedger(), hatches = 0, moons = 0, blocked = false, low = ledger.fund;
-    for (;;) {
-      const snapshot = await client.read();
-      if (snapshot.rfBalance < definition.price || !(await client.canBuy(1n))) break;
-      await client.buy(1n);
-      const [entry] = await client.play(1n);
-      const { outcomeId } = await client.settle(entry.id);
-      hatches++;
-      const value = definition.outcomes[outcomeId - 1].reward, blocker = launchBlocker(ledger, value);
-      // Trade-in first: the value returns to the spendable balance. A refused launch still sells the baby.
-      await client.redeem(outcomeId, 1n);
-      if (blocker) { blocked ||= blocker === "backing"; continue; }
-      const next = resolveLaunch(ledger, `baby:${entry.id}`, value, launchDraw());
-      if (next.result.zone === top.id) moons++;
-      ledger = next.ledger;
-      if (ledger.fund < low) low = ledger.fund;
-    }
-    assert.equal(ledger.fund, MOON_FUND_START - slingshotNet(ledger), "fund = start - net");
-    runs.push({ hatches, launches: ledger.launches, moons, staked: ledger.staked, net: slingshotNet(ledger), fund: ledger.fund, low, blocked });
-  }
+  // Monte Carlo of the real flow: SDK preview ledger for eggs and trade-ins, slingshot ledger for the flights, one
+  // run per exit strategy. Crash rolls come from their own seeded stream, so the egg rolls match "sell every baby" above.
+  const strategies = [...LADDER_EXITS.filter(h => h < MOON_HUNDREDTHS).map(h => [`Jump at ${multiplierLabel(h)}`, h]), ["Ride to the Moon", null]];
   const sellEvery = hatchesByStrategy.get("sell every baby");
-  assert.deepEqual(runs.map(run => run.hatches).sort((a, b) => a - b), sellEvery, "same egg rolls as the sell every baby strategy");
-  const share = test => `${(runs.filter(test).length / runs.length * 100).toFixed(1)}%`;
+  const summary = [];
+  for (const [name, exit] of strategies) {
+    const eggDraw = random(seed), launchDraw = random(seed + 1), runs = [];
+    for (let index = 0; index < sessions; index++) {
+      const { client } = createGamePreview(definition, { friendId: 7730n, stake, rfBalance: balance, draw: eggDraw });
+      let ledger = initialLedger(), hatches = 0, wins = 0, moons = 0, blocked = false, low = ledger.fund;
+      for (;;) {
+        const snapshot = await client.read();
+        if (snapshot.rfBalance < definition.price || !(await client.canBuy(1n))) break;
+        await client.buy(1n);
+        const [entry] = await client.play(1n);
+        const { outcomeId } = await client.settle(entry.id);
+        hatches++;
+        const value = definition.outcomes[outcomeId - 1].reward, blocker = launchBlocker(ledger, value);
+        // Trade-in first: the value returns to the spendable balance. A refused launch still sells the baby.
+        await client.redeem(outcomeId, 1n);
+        if (blocker) { blocked ||= blocker === "backing"; continue; }
+        const next = resolveLaunch(ledger, `baby:${entry.id}`, value, launchDraw(), exit);
+        if (next.result.payout > 0n) wins++;
+        if (next.result.end === "moon") moons++;
+        ledger = next.ledger;
+        if (ledger.fund < low) low = ledger.fund;
+      }
+      assert.equal(ledger.fund, MOON_FUND_START - slingshotNet(ledger), "fund = start - net");
+      runs.push({ hatches, launches: ledger.launches, wins, moons, staked: ledger.staked, net: slingshotNet(ledger), fund: ledger.fund, low, blocked });
+    }
+    assert.deepEqual(runs.map(run => run.hatches).sort((a, b) => a - b), sellEvery, "same egg rolls as the sell every baby strategy");
+    summary.push({ name, runs });
+  }
+  const share = (runs, test) => `${(runs.filter(test).length / runs.length * 100).toFixed(1)}%`;
   const meanOf = values => typeof values[0] === "bigint"
     ? about(values.reduce((sum, value) => sum + value, 0n) / BigInt(values.length))
     : (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1);
-  const row = (label, key, format) => {
-    const values = runs.map(run => run[key]), sorted = [...values].sort(order), at = q => format(sorted[Math.floor(sorted.length * q)]);
-    console.log(`| ${label} | ${format(sorted[0])} | ${at(0.05)} | ${at(0.5)} | ${meanOf(values)} | ${at(0.95)} | ${format(sorted.at(-1))} |`);
-  };
-  const count = value => String(value);
-  const meanStaked = runs.reduce((sum, run) => sum + run.staked, 0n) / BigInt(runs.length);
-  const meanNet = runs.reduce((sum, run) => sum + run.net, 0n) / BigInt(runs.length);
-  const netFactor = BigInt(expectedMultiplierBps()) - bps;
-
-  console.log(`\nMonte Carlo: ${sessions} sessions (seed ${seed}; launch rolls seed ${seed + 1}) on createGamePreview, each from ${rf(balance)}: breed while the runtime sells an ${item}, trade every baby in (redeem) and launch it\n`);
-  console.log("| Per session | Min | p5 | Median | Mean | p95 | Max |");
-  console.log("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
-  row("Hatches", "hatches", count);
-  row("Launches", "launches", count);
-  row(`${top.id[0].toUpperCase()}${top.id.slice(1)} landings`, "moons", count);
-  row("Staked (traded-in value)", "staked", rf);
-  row("Slingshot net (payout - stake)", "net", rf);
-  row("Moon Fund at the end", "fund", rf);
-  row("Moon Fund, lowest point", "low", rf);
-  console.log(`\nHatches reproduce the "sell every baby" row above exactly (same egg rolls; the net never reaches the spendable balance).`);
-  console.log(`P(at least one ${top.id[0].toUpperCase()}${top.id.slice(1)} landing) = ${share(run => run.moons > 0)}, P(net > 0) = ${share(run => run.net > 0n)}, ` +
-    `P(Moon Fund ever blocks a launch) = ${runs.filter(run => run.blocked).length} of ${runs.length}`);
-  console.log(`Exact identity: E[net] = ${Number(netFactor) / 10_000} x E[staked] (every launch returns ${multiplierLabel(expectedMultiplierBps())} of its stake on average, whatever ends the session). ` +
-    `Here: ${Number(netFactor) / 10_000} x mean staked = ${about(meanStaked * netFactor / bps)}, simulated mean net = ${about(meanNet)}.`);
+  const quantile = (values, q) => [...values].sort(order)[Math.floor(values.length * q)];
+  const netFactor = BigInt(MAX_RETURN_BPS) - bps;
+  console.log(`\nMonte Carlo: ${sessions} sessions per exit strategy (seed ${seed}; crash rolls seed ${seed + 1}) on createGamePreview, each from ${rf(balance)}: breed while the runtime sells an ${item}, trade every baby in (redeem) and launch it\n`);
+  console.log("| Strategy | Launches (mean) | Paid launches | Moon landings (mean) | P(at least one Moon) | Staked (mean) | Net (mean) | Net p5 | Net median | Net p95 | P(net > 0) | Fund lowest | Blocked |");
+  console.log("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+  for (const { name, runs } of summary) {
+    const launches = runs.reduce((sum, run) => sum + run.launches, 0), wins = runs.reduce((sum, run) => sum + run.wins, 0);
+    const nets = runs.map(run => run.net), lows = runs.map(run => run.low);
+    console.log(`| ${name} | ${meanOf(runs.map(run => run.launches))} | ${(wins / launches * 100).toFixed(1)}% | ${meanOf(runs.map(run => run.moons))} | ${share(runs, run => run.moons > 0)} | ` +
+      `${meanOf(runs.map(run => run.staked))} | ${meanOf(nets)} | ${rf(quantile(nets, 0.05))} | ${rf(quantile(nets, 0.5))} | ${rf(quantile(nets, 0.95))} | ${share(runs, run => run.net > 0n)} | ` +
+      `${rf(quantile(lows, 0))} | ${runs.filter(run => run.blocked).length} of ${runs.length} |`);
+  }
+  const first = summary[0].runs, meanStaked = first.reduce((sum, run) => sum + run.staked, 0n) / BigInt(first.length);
+  console.log(`\nHatches and launches reproduce the "sell every baby" row above exactly (same egg rolls; the net never reaches the spendable balance), so every strategy stakes the same.`);
+  console.log(`Exact identity at the round exits: E[net] = ${Number(netFactor) / 10_000} x E[staked] (every jump returns x0.9 of its stake on average, whatever ends the session). ` +
+    `Here: ${Number(netFactor) / 10_000} x mean staked = ${about(meanStaked * netFactor / bps)}.`);
 }

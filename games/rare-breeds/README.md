@@ -5,8 +5,8 @@
 A FriendSDK **v0.1.2** game. Your verified Rare Friend picks a mate from real Rare Friends,
 an egg hatches, and the baby inherits whole pixel rows from both parents, walk cycle included.
 Kept babies follow you around the nursery, earn Hearts for hats and wishes, and can become parents
-themselves (F1, F2, F3), or ride the **Moon Slingshot** out of the window, where the landing zone multiplies
-their value. **All RF, eggs, outcomes and payouts are simulated. Hearts are game points, never RF.** The
+themselves (F1, F2, F3), or ride the **Moon Slingshot**: strapped to a tiny firework rocket, a baby climbs from x1
+to x10 until you let go, like the casino game Crash. **All RF, eggs, outcomes and payouts are simulated. Hearts are game points, never RF.** The
 wallet, the NFT ownership check and the character art are real.
 
 ![Rare Breeds gameplay](docs/media/gameplay.gif)
@@ -20,37 +20,54 @@ wallet, the NFT ownership check and the character art are real.
 2. **Matchmaker** (left station, or **Find a match**). Parent A is your Friend or one of your babies. Parent B
    is one of three real wild Friends, or another baby from your brood. **New faces** rerolls the wild Friends
    for free; **Wish** (15 Hearts) offers three from a family you pick. A strip above the button shows what can
-   hatch.
+   hatch. When a chosen parent carries a shape mutation, the footer says so: "Can pass on: Horns from Zibu (about 1
+   in 2)".
 3. **Breed.** Uses one Egg. With no egg waiting, the button reads **Buy egg & breed · 1 RF** and buys one first.
    The runtime shows its own confirmations (**Buy egg**, then **Use egg**). A wild mate walks in first, then the
    egg wobbles, cracks, both parents' rows fly in and merge, and the baby is revealed.
-4. **Result card.** Name, tier, parents, a DNA strip (16 rows, coloured by parent, with row counts), traits,
-   what it adds to your collection, and both choices side by side: **Keep** (+5 Hearts now, then Hearts every
-   10 s) or **Trade in at the Sanctuary** for its fixed Simulated RF value (runtime confirmation
-   **Redeem reward**).
+4. **Result card.** Name, tier, hatch number and generation ("Hatch #7 · F2"), its breed ("Ghost Bones" for Skeleton
+   × Hollow), any lineage titles (tap one for its meaning), parents, a DNA strip (16 rows, coloured by parent, with row
+   counts), traits (inherited ones name their source: "Horns (from Zibu)"), the news: an inherited shape first
+   ("Inherited: Horns from Zibu!", its rows marked violet in the DNA strip with "Rows 2-4: Zibu's Horns" and its pixels
+   tinted on the baby's portrait), then what it adds to your collection ("New breed: Ghost Bones · 4/45"), and both
+   choices side by side: **Keep** (+5 Hearts now, then Hearts every 10 s) or **Trade in at the Sanctuary** for its
+   fixed Simulated RF value (runtime confirmation **Redeem reward**). Baby names are never reused within a session.
 5. **Spend Hearts.** The heart counter (top left) opens the **Hearts shop**: hats for your Friend and your babies,
    and the Wish match.
 6. **Breed again.** Any kept baby can be parent A or B. A baby's generation is one more than its older parent.
-   The goal: babies from all 9 Friend families and all 4 tiers.
+   Its shape mutations pass on about 1 in 2 each, whatever the new egg's tier (the first kept baby with one says so:
+   "Zibu can pass on its Horns (about 1 in 2): pick it as a parent"), and lines earn titles (Echo, Purebred, Chimera). The goal: babies from all 9 Friend families and all 4 tiers; on the side, the breed book
+   of 45 named family pairs.
 
 The **Egg incubator** (centre station) sells 1, 3 or 5 eggs in one confirmation. The **Sanctuary** (right
 station) opens your brood, where you can inspect, breed or trade in any baby.
 
 The **Moon Slingshot** stands in front of the back-wall window, between the incubator and the Sanctuary. Walk to
 it and press E (prompt **Load the slingshot**) or tap it. Once you have a kept baby, a **Moon Slingshot: x0 to
-x10** prompt (with a ! badge) also opens it; it goes away the first time the panel opens. Its panel lists your
-kept babies and, for the one you pick, every landing zone with its chance, multiplier and exact payout, plus what
-the launch does to your money: the trade-in pays the baby's value into the balance as usual, and the landing adds
-to or takes from the Slingshot net (for example pond -6 RF, Moon +54 RF for a Prismatic). Hold the pull button to
-stretch the band, then let go. The launch first trades the baby in: the runtime asks you to confirm **Redeem
-reward**, and its fixed Sanctuary value lands in your simulated RF balance as the stake. Only then is the landing
-zone drawn: the baby hops into the slingshot and is shot out through the window, a flight overlay shows where it
-lands, and the zone multiplies the stake from x0 to x10 (simulated, see
-[Moon Slingshot](#moon-slingshot-simulated-side-ledger)). **The baby is gone afterwards, even in the pond.** A
-result card shows the payout, the stake and the net, and says where the money went: the trade-in is in your
-balance, and the difference (payout minus stake, negative below x1) goes to its own HUD counter, **Slingshot net**
-(a moon pill reading "Slingshot +54 RF", "Net" on phones, with a Sim tag, shown from the first landing; tapping it
-reopens the slingshot), never to the RF balance. Cancelling the confirmation changes nothing.
+x10** prompt (with a ! badge) also opens it; it goes away the first time the panel opens. It plays like the casino
+game Crash: **hold to fly, let go to jump.** The panel lists your kept babies (a gold sparkle marks one with a
+lineage title, a violet DNA mark one with a shape it can pass on, and the "gone after the launch" line names them)
+and, for the one you pick, the exits ladder with exact chances and this baby's total payouts: fizzles on the pad 10%
+(x0), x1.5 60%, x2 45%, x4 22.5% and the Moon (automatic jump at x10) 9%. Jump early for a likely small win, hold
+for a rare big one: on average every exit pays back about 0.9x (exactly 0.9x at the round exits). The panel also says
+what you risk: your balance gets the baby's value either way (the trade-in), and the flight only moves the Slingshot
+net: below x1 it takes, above x1 it adds (for example pond -6 RF, Moon +54 RF for a Prismatic); after the first jump
+it shows the best jump so far. **Trade in, then fly** first trades the baby in: the runtime asks you to confirm
+**Redeem reward**, and its fixed Sanctuary value lands in your simulated RF balance as the stake. The slingshot tosses the baby out of the
+window onto a tiny firework rocket on a raft in the pond, and the flight overlay opens: **Hold to fly**. Pressing
+lights the rocket, and only then is its crash point drawn. While you hold, the multiplier climbs (x2 after about
+2.7 s, x4 after 5.4 s, x10 at 9 s) with the live payout under it, and the rocket climbs past the nursery roof
+(x1.5), cloud nine (x2) and the orbit (x4) towards the Moon. Let go and the baby jumps and parachutes into the hay,
+paid at the multiplier it jumped at. If the rocket gives out first, it sputters and the baby plops into the pond
+(x0); 10% of rockets fizzle on the pad; a rocket that reaches x10 drops the baby on the Moon by itself (simulated,
+see [Moon Slingshot](#moon-slingshot-simulated-side-ledger)). **The baby is gone afterwards, even in the pond.** A
+result card shows the payout, the stake, the net, where the rocket would have given out ("Your rocket would have
+given out at x3.41"), the record to chase ("New record: x3.12!" or "Best so far: x5.23") and where the money went:
+the trade-in is in your balance, and the difference (payout minus stake, negative below x1) goes to its own HUD counter, **Slingshot net** (a moon pill reading "Slingshot +54 RF",
+"Net" on phones, where it sits in the bottom band beside **Find a match**, with a Sim tag, shown from the first landing;
+tapping it reopens the slingshot), never to the RF
+balance. Cancelling the confirmation changes nothing. **Don't fly** (before lighting the rocket) leaves it a plain
+Sanctuary trade-in: nothing is booked in the Slingshot net.
 
 ## Controls
 
@@ -64,8 +81,8 @@ reopens the slingshot), never to the RF balance. Cancelling the confirmation cha
 | Intro | Left / Right arrows step, Escape skips | Next, Back, Skip intro |
 | Panels | Tab / Shift+Tab, Enter or Space, Escape closes | Tap; tap outside to close |
 | Hatch animation | Escape or **Skip**; on the result card Escape means **Keep** | **Skip** |
-| Moon Slingshot: pull and launch | Hold Space or Enter on the pull button, release to launch, then confirm **Redeem reward**; Escape while pulling cancels | Press and hold the pull button, let go, then confirm **Redeem reward**; a quick tap also launches |
-| Slingshot flight | Escape or **Skip** jumps to the landing; on the result card Escape goes back to the nursery | **Skip** |
+| Moon Slingshot: launch | **Trade in, then fly** (Enter or Space), then confirm **Redeem reward** | Tap **Trade in & fly**, then confirm **Redeem reward** |
+| Slingshot flight | Hold Space or Enter on **Hold to fly**, release to jump; Escape or **Skip** also jump (and then skip to the result); Escape before lighting = **Don't fly** | Press and hold **Hold to fly**, let go to jump; **Skip** jumps |
 | Sound, help | HUD buttons, top right | HUD buttons, top right |
 
 The bottom-left and bottom-right corners stay free for the SDK runtime's wallet/Friend control and menu.
@@ -86,6 +103,22 @@ no front or back art, so any baby with a Colossus (or Side-walker) parent shows 
 every side, through every generation. Everything is deterministic from `(your Friend ID, parent A, parent B,
 play ID)` and takes a few milliseconds per baby (test budget: under 5 ms on average). See
 [`src/genetics.ts`](src/genetics.ts) and [`docs/media/genetics-sheet.png`](docs/media/genetics-sheet.png).
+
+**The ledger decides the rarity, you decide the genes.** New shape mutations (antennae, horns, ears, crest, a tail and
+their bold variants) still grow only on Mutant and Prismatic hatches. But a shape lives in its parent's own pixel rows,
+so a baby that takes all of those rows carries it, in any tier, Common included, and passes it on again (grandparent,
+parent, baby). A shape bobs and walks with the body, so its rows are the rows it covers in any of the 16 frames (idle
+and walk) of every facing it grew on, and a baby counts as carrying it only when it is whole in every one of those
+frames. The mask ranking adds one seeded wish per parent trait (take it or leave it, 1 in 2) after the hard checks (ink
+floor, connectivity, symmetry, coherent walk cycle) and before the score, so the measured pass-on rate is **49.1%**
+(1,609 of 3,275 passable traits in a sample of 3,000 pool pairs; 47 to 51% in every tier; 47.0% one generation later,
+755 of 1,607), shown as "about 1 in 2" (the unit test keeps it between 42 and 58%). Detection is a pure check of real
+pixels: every row of the trait came from that parent and every trait cell is ink in the baby's own frame, frame by
+frame (`inheritedShapes`; `Dna.shapes` records each shape with its cells in every frame and its source).
+A Mutant or Prismatic that already carries a head mutation grows a tail instead of a second head (or nothing new
+when no tail fits or it carries one). A patterned parent's kind (spots, stripes, patch) is tried first when the
+baby's tier shows a pattern. Babies of two Friends are unchanged, pixel for pixel. See
+[`docs/media/genetics-inherit.png`](docs/media/genetics-inherit.png).
 
 ### Hearts (game points, never RF)
 
@@ -130,24 +163,50 @@ Breed babies from all **9 Friend families** and find all **4 tiers**. A family c
 finds ("New family: Hollow · 3/9"), the brood shows the set, and the Wish match marks families you still need.
 No reward is attached; it is a goal.
 
+### Breed book, lineage titles and hatch numbers (cosmetic)
+
+- **Breed book** ([`src/breeds.ts`](src/breeds.ts)): each of the 45 unordered family pairs (9 purebreds, 36 crosses) has
+  a name, from Skeleton × Hollow "Ghost Bones" and Colossus × Hoverer "Blimp" to Cellular × Cellular "Cell Division". A
+  baby's breed comes from the two families in its label. The card shows it beside the family, a first find reads "New
+  breed: Ghost Bones · 4/45", and the brood's collection box counts "Breeds 4/45" with a breed book in family order
+  (found names over their pair; the rest show the pair to try, dimmed, "Skeleton × Mask ???").
+- **Lineage titles** ([`src/titles.ts`](src/titles.ts)), traced row by row to the real Friends they came from
+  ([`src/legacy.ts`](src/legacy.ts)): **Echo of #id** (at least 12 of 16 rows from your own Friend, e.g. a
+  backcross), **Purebred <Family>** (all 16 rows from one family), **Chimera** (rows from at least 4 distinct
+  Friends). Titles stack in that order and show on the card and in the brood. A first one explains itself ("First Echo:
+  12 of 16 rows from your Friend, just for show"), and tapping a title badge on the card shows its meaning.
+- **Hatch number:** this session's settled hatches, oldest first, with the generation: "Hatch #7 · F2".
+
+None of these changes a tier, an odd or a value: the Sanctuary pays by tier only.
+
 ### Onboarding
 
 The six-step intro uses your own Friend and a real wild mate, with example babies bred by the same genetics
 (presentation only, never kept or counted). Its nursery step paints the real room art (walls, props, the four stations
-at rest and your Friend) into a canvas and pins numbered markers on the stations; its last step shows copies of the HUD
-chips with their live values. The **?** panel repeats both legends ("Stations" and "Your screen") next to the rules. First-time hints: a "Start here" coach on **Find a match**, a note in
-the Matchmaker about the runtime confirmations to expect, and a Keep or trade-in hint on the first reveal card.
+at rest and your Friend) into a canvas and pins numbered markers on the stations; its "What to do with a baby" step
+shows Keep and the Sanctuary as the same Common to Prismatic range (6 to 60 Hearts a minute, 0.5 to 6 RF) and says a
+kept baby passes on its mutations; its last step shows copies of the HUD chips with their live values. The **?** panel
+repeats both legends ("Stations" and "Your screen") next to the rules. First-time hints: a "Start here" coach on
+**Find a match**, a note in the Matchmaker about the runtime confirmations to expect, a Keep or trade-in hint on the
+first reveal card, and a toast when the first kept baby with a shape can pass it on.
 
 ### Phone layout
 
-[`host.css`](host.css) gives the runtime frame a 3:4 aspect ratio on portrait screens up to 600 px wide, so the
-nursery is not a thin strip. Frames narrower than 600 or lower than 400 CSS px zoom in with a follow camera that
-keeps your Friend centred between the HUD and the action bar.
+[`host.css`](host.css) gives portrait screens up to 600 px wide the tallest runtime frame that fits them, in steps
+from 3:4 down to 1:2 (a 390 x 664 iPhone Safari view gets 390 x 650, a 360 x 640 Android phone 360 x 640, a 390 x 844
+view 390 x 780), so the nursery is not a thin strip. Where the browser supports small viewport units the frame never
+outgrows the visible height with its bars shown, so the page does not scroll and the runtime's toolbar and
+confirmations (inside the frame) stay on screen; landscape phones keep the 3:2 frame, narrowed to fit the height.
+Frames narrower than 600 or lower than 400 CSS px zoom in with a follow camera that keeps your Friend centred between
+the HUD and the action bar; on tall portrait frames the room's full height sits between them. The flight shows a
+taller slice of its scene on portrait phones (the baby about 90 px tall on a 390 px phone), panned from the window
+to the landmarks and the landing.
 
 ## Rules and rewards (RF, simulated)
 
 Source of truth: [`game.json`](game.json). One Egg hatches exactly one baby. The tier (outcome) is decided by
-the SDK ledger when the egg is settled. Which parents you pick never changes the odds.
+the SDK ledger when the egg is settled. Which parents you pick never changes the odds: an inherited shape changes
+the look, never the tier or its value.
 
 | outcomeId | Outcome | Weight | Chance | Sanctuary value | Base units | EV share | Look |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
@@ -183,56 +242,67 @@ In 20 hatches: P(at least one Prismatic) = 1 - 0.975^20 = 39.7%; P(at least one 
 ### Moon Slingshot (simulated side ledger)
 
 Source of truth: [`src/slingshot.ts`](src/slingshot.ts); every number below is proven exactly in
-[`tests/slingshot.test.ts`](tests/slingshot.test.ts) (16 tests) and printed by `node tools/economy-report.mjs`.
-A launch is a Sanctuary trade-in plus a multiplier. First the SDK redeems the baby (`redeem(outcomeId, 1)`,
+[`tests/slingshot.test.ts`](tests/slingshot.test.ts) (21 tests) and printed by `node tools/economy-report.mjs`.
+A launch is a Sanctuary trade-in plus a Crash-style multiplier. First the SDK redeems the baby (`redeem(outcomeId, 1)`,
 runtime confirmation **Redeem reward**): its tier token is burned and its fixed Sanctuary value, the **stake**, lands
-in the simulated RF balance. Then one roll in 0-9999 picks the landing zone against the cumulative weights (like
-the SDK's `outcomeForRoll`), and the zone multiplies the stake. The side ledger books only the difference, payout
-minus stake. **How hard you pull is cosmetic; the zone is drawn once, after you let go and confirm the trade-in.**
+in the simulated RF balance. Then the baby rides the rocket, and the side ledger books only the difference, payout
+minus stake.
 
-| Zone | Landing | Rolls | Weight | Chance | Multiplier | EV share | Net booked (payout - stake) |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| pond | Belly flop in the pond | 0-3999 | 4,000 bps | 40% (2 in 5) | x0 | x0 | -1 x stake |
-| haystack | Haystack | 4000-6399 | 2,400 bps | 24% | x0.5 | x0.12 | -0.5 x stake |
-| rooftop | Rooftop | 6400-8199 | 1,800 bps | 18% | x1 | x0.18 | 0 |
-| cloud | Cloud nine | 8200-9399 | 1,200 bps | 12% | x2 | x0.24 | +1 x stake |
-| orbit | Orbit | 9400-9799 | 400 bps | 4% (1 in 25) | x4 | x0.16 | +3 x stake |
-| moon | The Moon | 9800-9999 | 200 bps | 2% (1 in 50) | x10 | x0.2 | +9 x stake |
-| | **Total** | 0-9999 | 10,000 bps | 100% | | **x0.9** | **-0.1 x stake** |
+- **The multiplier** while the player holds: m(t) = e^(k t) with k = ln(10) / 9 s, shown in whole hundredths
+  (floor(100 x 10^(t / 9 s))): x1.00 at ignition, x1.5 after 1.59 s, x2 after 2.71 s, x4 after 5.42 s, x10 at
+  exactly 9 s. Letting go jumps at the multiplier showing: exit = floor(m x 100) / 100.
+- **The crash point:** one roll in 0-9999, drawn once when the player presses (ignition), never redrawn:
+  C = floor(900000 / (roll + 1)) hundredths, capped at x10. A jump at h wins when C >= h and pays stake x h / 100,
+  rounded down to whole base units. If the multiplier passes C first, the rocket gives out and the baby lands in the
+  pond (x0). Rolls 9000-9999 (C below x1) fizzle on the pad; rolls 0-899 (C = x10) jump onto the Moon by themselves.
+- **Exact odds:** P(C >= h) = floor(900000 / h) / 10000 for every h. Always jumping at h therefore pays back
+  h x floor(900000 / h) / 10^6 of the stake: exactly **x0.9** whenever h divides 900000 (x1, x1.5, x2, x4, x10 and
+  every exit on the ladder), never more, and at least x0.899 for any exit (lowest: x0.899052 at x9.73). **The
+  timing changes the risk, not the payback.**
 
-Payout per tier (stake x multiplier; every value is an exact number of base units, nothing is rounded):
+| Exit | Winning rolls | Chance | Reached after | Payback | Common (0.5 RF) | Spotted (1 RF) | Mutant (1.5 RF) | Prismatic (6 RF) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Fizzles on the pad | none (rolls 9000-9999 fizzle) | 10% | at ignition | x0 | 0 RF | 0 RF | 0 RF | 0 RF |
+| Jump at x1 | 0-8999 | 90% | 0 s | x0.9 | 0.5 RF | 1 RF | 1.5 RF | 6 RF |
+| Jump at x1.5 | 0-5999 | 60% | 1.59 s | x0.9 | 0.75 RF | 1.5 RF | 2.25 RF | 9 RF |
+| Jump at x2 | 0-4499 | 45% | 2.71 s | x0.9 | 1 RF | 2 RF | 3 RF | 12 RF |
+| Jump at x4 | 0-2249 | 22.5% | 5.42 s | x0.9 | 2 RF | 4 RF | 6 RF | 24 RF |
+| Moon, automatic jump at x10 | 0-899 | 9% | 9 s | x0.9 | 5 RF | 10 RF | 15 RF | 60 RF |
 
-| Outcome | Stake | Pond x0 | Haystack x0.5 | Rooftop x1 | Cloud nine x2 | Orbit x4 | The Moon x10 | EV per launch | Expected net |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Common hatchling | 0.5 RF | 0 RF | 0.25 RF | 0.5 RF | 1 RF | 2 RF | 5 RF | 0.45 RF (`450000000000000000`) | -0.05 RF |
-| Spotted hatchling | 1 RF | 0 RF | 0.5 RF | 1 RF | 2 RF | 4 RF | 10 RF | 0.9 RF (`900000000000000000`) | -0.1 RF |
-| Mutant hatchling | 1.5 RF | 0 RF | 0.75 RF | 1.5 RF | 3 RF | 6 RF | 15 RF | 1.35 RF (`1350000000000000000`) | -0.15 RF |
-| Prismatic hatchling | 6 RF | 0 RF | 3 RF | 6 RF | 12 RF | 24 RF | 60 RF | 5.4 RF (`5400000000000000000`) | -0.6 RF |
+Any other exit works the same way, for example a Common jumping at x2.37 wins 1.185 RF on rolls 0-3796 (37.97%).
 
 | Rule | Exact value |
 | --- | --- |
-| Expected multiplier | (0 x 4000 + 0.5 x 2400 + 1 x 1800 + 2 x 1200 + 4 x 400 + 10 x 200) / 10000 = 9000 / 10000 = **x0.9** of the stake: 90% return, 10% edge (the same edge as the SDK fishing reference), which stays in the Moon Fund. Exact over all 10000 rolls |
-| Launch every baby | 0.8875 RF per egg x 0.9 = **0.79875 RF per egg** (`798750000000000000`), 79.875% of the 1 RF price. Exact over all 10^8 egg and launch roll pairs |
+| Expected payback | At most **x0.9** of the stake for every exit from x1.00 to x10.00, exactly x0.9 at the round exits (exact over all 10000 rolls): 90% return, 10% edge (the same edge as the SDK fishing reference), which stays in the Moon Fund |
+| Launch every baby | Jumping at any round exit: 0.8875 RF per egg x 0.9 = **0.79875 RF per egg** (`798750000000000000`), 79.875% of the 1 RF price. Exact over all 10^8 egg and crash roll pairs |
 | Moon Fund | Simulated, **600 RF** (`600000000000000000000`) at session start: 10 x the top payout (Prismatic 6 RF x10 = 60 RF), the same x10 convention `GameHost` uses for the egg stake |
-| Backing rule | A baby worth v flies only while the Moon Fund holds at least its Moon payout (10 v); the panel checks this before the trade-in. The fund takes the stake and pays the payout, so it moves by the negative net: fund' = fund + v - payout >= v, and it never goes negative |
+| Backing rule | A baby worth v flies only while the Moon Fund holds at least its Moon payout (10 v), whatever exit the player will pick; the panel checks this before the trade-in. The fund takes the stake and pays the payout, so it moves by the negative net: fund' = fund + v - payout >= v, and it never goes negative |
 | Backing pause | The largest drain per launch is 54 RF (a Prismatic on the Moon), so the first 11 launches of a session can never be blocked. 11 Prismatic Moon landings in a row leave 6 RF; then only Commons (Moon payout 5 RF) still fly. The panel names the reason when a baby cannot fly |
-| One draw, final | The zone is drawn once, after the trade-in is confirmed. No reroll, and every result is final: the launched baby is gone for good, even in the pond. Cancelling the confirmation changes nothing |
+| One draw, final | The crash point is drawn once, at ignition, after the trade-in is confirmed. No reroll, and every result is final: the launched baby is gone for good, even in the pond. Cancelling the confirmation changes nothing; **Don't fly** before ignition books nothing in the side ledger (a plain Sanctuary trade-in) |
+| Paused or hidden | If the runtime pauses (menu, confirmation) or the tab is hidden mid-flight, the baby jumps at once at the multiplier showing |
 | Slingshot net | Its own HUD counter (simulated, can be negative): the sum of payout minus stake over all launches. Never added to the runtime RF balance, so it cannot buy eggs in the preview. The stakes are ordinary Sanctuary redemptions and stay in the balance |
 
-A session that launches every baby (`node tools/economy-report.mjs`: 5,000 sessions on the SDK's
-`createGamePreview`, seeds 7730 and 7731, each from 20 RF: breed while the runtime sells an egg, trade every baby in
-and launch it, so the trade-ins keep paying for eggs): 173.7 hatches and launches on average (median 143, the same
-egg rolls as "Trade in every baby" above, because the net never reaches the spendable balance), 3.5 Moon landings
-on average, P(at least one Moon landing) = 92.5%. The stakes (traded-in values) average 154.236 RF per session and
-the Slingshot net averages -15.578 RF (median -14.5 RF, p5 -61.25 RF, p95 +28 RF), in line with the exact identity
-E[net] = -0.1 x E[staked] (-0.1 x 154.236 = -15.424 RF). P(net > 0) = 24.0%. The Moon Fund ends at 615.578 RF on
-average, its lowest point in any session was 421 RF, and it never blocked a launch in 5,000 sessions.
+Sessions that launch every baby (`node tools/economy-report.mjs`: 5,000 sessions per exit strategy on the SDK's
+`createGamePreview`, egg rolls seed 7730, crash rolls seed 7731, each from 20 RF: breed while the runtime sells an
+egg, trade every baby in and launch it, so the trade-ins keep paying for eggs). Every strategy makes 173.7 launches
+and stakes 154.236 RF on average (the same egg rolls as "Trade in every baby" above, because the net never reaches
+the spendable balance); the exact identity is E[net] = -0.1 x E[staked] = -15.424 RF.
+
+| Strategy | Paid launches | Mean net | Net p5 / median / p95 | P(net > 0) | Moon landings | Moon Fund lowest | Blocked |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Jump at x1.5 | 60.0% | -15.470 RF | -45.75 / -12 / +3.5 RF | 10.8% | 0 | 569.5 RF | 0 of 5,000 |
+| Jump at x2 | 45.0% | -15.419 RF | -51.5 / -12.5 / +9.5 RF | 18.6% | 0 | 539.5 RF | 0 of 5,000 |
+| Jump at x4 | 22.5% | -15.222 RF | -67.5 / -12.5 / +28.5 RF | 28.4% | 0 | 465.5 RF | 0 of 5,000 |
+| Ride to the Moon | 9.0% | -15.202 RF | -91.5 / -15.5 / +67.5 RF | 33.3% | 15.7 per session | 322.5 RF | 0 of 5,000 |
+
+Same payback, different risk: the later you jump, the wider the spread and the lower the Moon Fund's low point, and
+the fund never blocked a launch.
 
 ## What is simulated and what is real
 
 | Simulated (SDK preview ledger) | Game state only (this session) | Real |
 | --- | --- | --- |
-| RF balance, prize stake, eggs, plays, tiers, Sanctuary payouts | Hearts, hats, the collection, the brood's lineage | Wallet connection and a fresh ownership/eligibility read by the SDK runtime (Robinhood mainnet, chain 4663) |
+| RF balance, prize stake, eggs, plays, tiers, Sanctuary payouts | Hearts, hats, the collection, the brood's lineage, titles and the breed book | Wallet connection and a fresh ownership/eligibility read by the SDK runtime (Robinhood mainnet, chain 4663) |
 | Every **Buy egg**, **Use egg** and **Redeem reward** confirmation ("Simulated RF. No transaction will be sent.") | | Your Friend's 64 canonical frames, read on-chain through the SDK's `createFriendReader` |
 | | | The wild mates' art: canonical frames of 73 real Friends (see Credits) |
 
@@ -252,21 +322,27 @@ wearable NFTs are implemented.
   over the sandbox bridge. The FriendSDK guide welcomes mechanics beyond the chance-game API when they are backed
   by or integrated with RF, labelled as simulated, funded and documented ("mechanics beyond its current
   capabilities need their own integration"). So [`src/slingshot.ts`](src/slingshot.ts) keeps a session-local
-  ledger (Moon Fund, Slingshot net, launches) that applies the SDK's rules to a second table:
+  ledger (Moon Fund, Slingshot net, launches) that applies the SDK's rules to the flight:
   - **Backing:** a launch needs the simulated Moon Fund (600 RF at session start, 10 x the top payout) to cover the
     baby's x10 payout, like the SDK's rule that free stake must cover the maximum prize. The fund takes the stake
     and pays the payout, so it never goes negative.
-  - **One draw, no reroll:** the zone is drawn once, after the trade-in is confirmed, and the result is final.
+  - **One draw, no reroll:** the crash point is drawn once, at ignition (after the trade-in is confirmed), and the
+    result is final. The multiplier curve and the resolve rule are pure functions shared by the UI and the tests.
   - **Randomness:** in this preview the roll is browser randomness: the SDK's own `samplePreviewRoll` (Web Crypto,
     rejection sampling to 0-9999), the same draw the preview ledger uses for eggs. The FriendSDK rules are
     explicit that contracts determine paid outcomes and that browser randomness and local balances are preview
-    only. Live, the zone would come from a separate Slingshot contract with Dice randomness
-    ([design](docs/SUBMISSION.md#what-would-be-on-chain)); no such contract exists or is deployed.
+    only. Live, the flight would run on a separate Slingshot contract with Dice randomness
+    ([design](docs/SUBMISSION.md#what-would-be-on-chain)); no such contract exists or is deployed. A real-time jump
+    is only safe if the crash point does not exist before it: live, the jump transaction fixes the exit multiplier
+    (from the time since launch) and only then is the Dice word requested (same odds), or the player sets an
+    automatic jump target before launch.
   - **Labelled and separate:** the net is its own simulated HUD counter, **Slingshot net**, never mixed into the
     runtime RF balance.
-  - **Checked against the SDK:** the tests write each tier's launch table as an SDK chance game (price = the
-    stake, reward = the payout per zone) and show that the SDK's `createGamePreview` ledger, staked with the same
-    600 RF, gives the same backing verdict and the same fund as the side ledger on every launch.
+  - **Checked against the SDK:** the tests write "always jump at h" for each tier and ladder exit as an SDK chance
+    game (price = the stake, outcome 1 = the jump pays on the rolls that reach h, outcome 2 = the pond) and show that
+    the SDK's `createGamePreview` ledger, staked with the same 600 RF, picks the same winning rolls and keeps the same
+    fund as the side ledger on every launch; for the ride to the Moon (the largest payout) it also gives the same
+    backing verdict.
 
 ## Run, build and test
 
@@ -286,16 +362,18 @@ network add `--host 0.0.0.0 --port 4173` and open `http://YOUR_LAN_IP:4173` in a
 | --- | --- |
 | Static build | `node scripts/dev-game.mjs build games/rare-breeds` (output `games/rare-breeds/.friendsdk/`) |
 | Game validation | `node scripts/dev-game.mjs check games/rare-breeds` |
-| Unit tests | `node --test "games/rare-breeds/tests/*.test.ts"` (economy, genetics, accessories, slingshot; use the glob, a bare directory fails on Node 22) |
+| Unit tests | `node --test "games/rare-breeds/tests/*.test.ts"` (economy, genetics incl. inheritance, accessories, legacy, titles, breeds, slingshot; use the glob, a bare directory fails on Node 22) |
 | Typecheck | `npx tsc -p games/rare-breeds/tsconfig.json` |
 | Browser test | `npx playwright install chromium` once, then `node tools/test-game.mjs` (960 x 800 and 390 x 844 touch) |
 | Economy report | `node tools/economy-report.mjs` |
 | GitHub Pages folder | `node tools/build-pages.mjs --smoke --base <repository>` (output `.friendsdk/site/`) |
 
 The browser test drives the real sandboxed runtime with the SDK's mock wallet and sample Friend #7730: the intro,
-two full hatch loops with the runtime confirmations, the Keep bonus, buying and wearing a hat, a trade-in, and a
-Moon Slingshot launch (a cancelled **Redeem reward** that changes nothing, a confirmed one, Skip, the result card,
-the brood and balance afterwards and the HUD net).
+two full hatch loops with the runtime confirmations (the card's "Hatch #1 · F1" and first "New breed" line), the Keep
+bonus, the one-time tip that the kept Prismatic can pass on its shapes, the Matchmaker naming what it can pass on, "Breeds 2/45" in the brood, buying and wearing a hat, a trade-in, and a
+Moon Slingshot launch (a cancelled **Redeem reward** that changes nothing, a confirmed one, holding **Hold to fly**
+for 2.4 s with a real mouse or touch press while the multiplier climbs, letting go, Skip, the result card with the
+revealed crash point, the brood and balance afterwards and the HUD net).
 Mocks exist only in automated tests, never in a build. Details: [`tools/README.md`](../../tools/README.md).
 
 ## Accessibility
@@ -304,18 +382,24 @@ Mocks exist only in automated tests, never in a build. Details: [`tools/README.m
   gesture.
 - **Reduced motion:** follows the system `prefers-reduced-motion` setting and can be toggled in Settings. It
   removes screen shake, hops and walk bobbing, keeps the camera on your Friend alone, turns the 4.75 s hatch
-  into a 0.5 s fade to the reveal, and turns the slingshot shot into a quick fade in the nursery and its flight into a short fade to the landing.
-- **Skip:** the hatch and the slingshot flight both have a **Skip** button (and Escape) that jumps straight to
-  the result.
+  into a 0.5 s fade to the reveal, and turns the slingshot shot into a quick fade in the nursery. The rocket flight
+  then has no motion or shake: the baby stays on its rocket, a big live multiplier counter carries the climb and
+  holding still works; the ending is a short fade to the final frame.
+- **Skip:** the hatch and the slingshot flight both have a **Skip** button (and Escape). In the air it means
+  "jump now"; after that it skips to the result.
 - **Keyboard:** every action works without a pointer. Panels are modal dialogs with a focus trap, Escape to close
-  and visible focus rings. The slingshot's pull button is held with Space or Enter; Escape cancels a pull. The
-  world canvas has a text label with the controls.
+  and visible focus rings. The slingshot's **Hold to fly** button is held with Space or Enter (release to jump);
+  Escape before lighting the rocket is **Don't fly**. A key still held when the rocket ends the flight by itself
+  presses nothing (not Skip, not the result card) until it is released, and while the game is paused the hold
+  button keeps focus (aria-disabled) instead of handing it to **Don't fly**. The world canvas has a text label with
+  the controls.
 - **Screen readers:** HUD values (including Hearts, labelled "not RF", and the Slingshot net, labelled
-  simulated), hatch progress and results, the slingshot's zones (chance, multiplier and payout) and its flight
-  and landing have text labels or live status messages. A plain click from assistive technology launches with
-  the minimum pull, which, like every pull, does not change the odds.
-- **Small screens:** compact HUD and panels, the 3:4 portrait frame and the follow camera. The full loop is tested
-  at 390 x 844 with touch.
+  simulated), hatch progress and results and the slingshot's exits (chance, multiplier and payout) have text
+  labels. The flight has a live region that announces lift-off, x2, x4, the ending (jump, pond or Moon) and the
+  result, not every frame. A plain click from assistive technology lights the rocket and the next one jumps.
+- **Small screens:** compact HUD and panels, the tall portrait frame and the follow camera. The full loop is tested
+  at 390 x 844 with touch. The flight's hold button is at least 44 px tall (56 px on portrait phones, 64 px on
+  desktop), and holding it cannot scroll, zoom or select text.
 
 ## Known limitations
 
@@ -325,7 +409,8 @@ Mocks exist only in automated tests, never in a build. Details: [`tools/README.m
 - **The slingshot ledger lives in the game frame.** When the frame remounts inside the same runtime session (for
   example after switching Friends and back), the Slingshot net and the Moon Fund reset. The player keeps the
   traded-in stakes, which are ordinary Sanctuary redemptions in the runtime ledger; only the simulated multiplier
-  result of earlier launches is lost.
+  result of earlier launches is lost. A remount mid-flight leaves only the trade-in: the flight in the air is
+  never booked.
 - **The multiplier is simulated, not an SDK outcome.** Its roll is browser randomness and its balance is local
   (see [What is simulated and what is real](#what-is-simulated-and-what-is-real)); a live version needs the
   Slingshot contract described in the submission.

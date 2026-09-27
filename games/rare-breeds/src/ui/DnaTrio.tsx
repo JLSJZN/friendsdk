@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { drawCreature } from "../draw.ts";
-import { isSideWalker } from "../genetics.ts";
-import { FRAME_SIZE, PARENT_TINT, type Creature, type Facing } from "../types.ts";
+import { isSideWalker, shapeRows } from "../genetics.ts";
+import { FRAME_SIZE, PARENT_TINT, TIER_STYLE, type Creature, type Facing } from "../types.ts";
 /** Parent A's tint is paper white, invisible on the paper portraits: its row highlight there is a darker paper band. */
 const A_ROW_ON_PAPER = "#D6CFBF";
+/** Inherited shape cells on the baby's portrait: a violet wash over the ink, full violet while one of its rows is traced. */
+const INHERIT_WASH = "rgba(138, 77, 255, .5)", INHERIT_HOT = TIER_STYLE.mutant.accent;
 import { PixelIcon } from "./PixelIcon.tsx";
 import { cx, pixelMetrics, subscribeTick, useDevicePixelRatio, useReducedMotion, useRootSize } from "./shared.ts";
 
@@ -13,6 +15,8 @@ export type DnaTrioProps = Readonly<{
   parentB?: Creature | null;
   /** Upper bound for the CSS pixels per sprite pixel. The trio picks the largest scale that fits its width. */
   maxScale?: number;
+  /** Steps below that scale (never below 3), e.g. so a busy result card fits without scrolling. */
+  shrink?: number;
   /** Rendered inside the baby's slot, e.g. confetti. */
   babyExtra?: ReactNode;
   /** Reveal: the baby lands with a squash. */
@@ -45,15 +49,32 @@ export function mutatedRows(mutations: readonly number[]) {
   return [...new Set(mutations.map(index => Math.floor(index / FRAME_SIZE)))].filter(row => row >= 0 && row < FRAME_SIZE).sort((x, y) => x - y);
 }
 
+/** "Row 3", "Rows 12-14", "Rows 2-3, 5" (1-based, runs joined with a hyphen). */
+export function rowsLabel(rows: readonly number[]) {
+  const runs: string[] = [];
+  for (let k = 0; k < rows.length;) {
+    let end = k;
+    while (end + 1 < rows.length && rows[end + 1] === rows[end] + 1) end++;
+    runs.push(end === k ? `${rows[k] + 1}` : `${rows[k] + 1}-${rows[end] + 1}`);
+    k = end + 1;
+  }
+  return `${rows.length === 1 ? "Row" : "Rows"} ${runs.join(", ")}`;
+}
+
+/** A shape the baby inherited: its rows (any frame, any facing), the cells per walk frame of the facing shown, its caption. */
+type InheritedShape = Readonly<{ rows: readonly number[]; cells: readonly (readonly number[])[]; label: string }>;
+
 /**
  * One portrait on the shared 16 row grid, drawn without accessories so every row reads clearly.
  * `faded` rows (the ones the baby did not take) are washed out. All portraits step through the same
  * walk frame at the same time, so the baby's rows line up with its parents' on every frame.
  */
-function RowSprite({ creature, device, css, facing, faded, highlight, animate, label }: {
+function RowSprite({ creature, device, css, facing, faded, highlight, marks, hotMark, animate, label }: {
   creature: Creature; device: number; css: number; facing: Facing; faded: readonly boolean[] | null;
   /** Row painted behind the sprite in a tint while it is being traced. */
-  highlight: Readonly<{ row: number; color: string }> | null; animate: boolean; label?: string;
+  highlight: Readonly<{ row: number; color: string }> | null;
+  /** Inherited shapes to tint on this portrait (the baby's), and the one whose row is traced. */
+  marks?: readonly InheritedShape[]; hotMark?: InheritedShape | null; animate: boolean; label?: string;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = BOX * device;
@@ -78,6 +99,11 @@ function RowSprite({ creature, device, css, facing, faded, highlight, animate, l
         ctx.fillRect(0, (1 + highlight.row) * device, size, device);
       }
       drawCreature(ctx, creature, { clip: "walk", facing, frame, x: (FRAME_SIZE / 2 + 1) * device, y: (FRAME_SIZE + 1) * device, scale: device, time, accessory: null });
+      // The shape follows the walk: this frame's own cells (walk frames are lists 8-15).
+      for (const mark of marks ?? []) {
+        ctx.fillStyle = mark === hotMark ? INHERIT_HOT : INHERIT_WASH;
+        for (const cell of mark.cells[8 + frame] ?? []) ctx.fillRect((1 + cell % FRAME_SIZE) * device, (1 + Math.floor(cell / FRAME_SIZE)) * device, device, device);
+      }
       if (faded) {
         ctx.fillStyle = "rgba(244, 241, 234, .74)";
         faded.forEach((off, row) => { if (off) ctx.fillRect(0, (1 + row) * device, size, device); });
@@ -97,7 +123,7 @@ function RowSprite({ creature, device, css, facing, faded, highlight, animate, l
       paint(frame, now);
     });
     return () => { stop(); observer?.disconnect(); };
-  }, [creature, size, device, facing, faded, highlight?.row, highlight?.color, animate]);
+  }, [creature, size, device, facing, faded, highlight?.row, highlight?.color, marks, hotMark, animate]);
   return <canvas ref={canvas} className="rb-trio-canvas" style={{ width: BOX * css, height: BOX * css }}
     role={label ? "img" : undefined} aria-label={label || undefined} aria-hidden={label ? undefined : true} />;
 }
@@ -108,7 +134,7 @@ function RowSprite({ creature, device, css, facing, faded, highlight, animate, l
  * rows a parent did not give are washed out in its portrait. Hover, tap or use the arrow keys on a row
  * to trace it across all three.
  */
-export function DnaTrio({ baby, parentA, parentB, maxScale = 7, babyExtra, reveal, reducedMotion, className }: DnaTrioProps) {
+export function DnaTrio({ baby, parentA, parentB, maxScale = 7, shrink = 0, babyExtra, reveal, reducedMotion, className }: DnaTrioProps) {
   const node = useRef<HTMLElement>(null);
   const reduced = useReducedMotion(reducedMotion);
   const ratio = useDevicePixelRatio();
@@ -135,11 +161,17 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, babyExtra, revea
   const heightCap = root.height >= 620 ? 8 : root.height >= 560 ? 7 : root.height >= 470 ? 5 : root.height >= 300 ? 4 : 3;
   let scale = Math.max(2, Math.min(maxScale, heightCap));
   while (scale > 2 && width > 0 && trioWidth(scale) > width) scale--;
+  scale = Math.max(Math.min(scale, 3), scale - shrink);
   const { device, css } = pixelMetrics(scale, ratio);
   const facing: Facing = [parentA, parentB].some(parent => parent && isSideWalker(parent)) ? "right" : "down";
   const fadedA = useMemo(() => ROWS.map(row => source[row] !== 0), [source]);
   const fadedB = useMemo(() => ROWS.map(row => source[row] !== 1), [source]);
   const mutated = useMemo(() => new Set(mutatedRows(dna?.mutations ?? [])), [dna]);
+  // Shapes the baby inherited (Dna.shapes with a source): their rows in any frame, and their cells in the facing shown.
+  const shapes = useMemo(() => (dna?.shapes ?? []).flatMap((shape): InheritedShape[] => shape.from
+    ? [{ rows: shapeRows(shape), cells: shape.cells[facing] ?? [], label: `${shape.from.name}'s ${shape.label}` }] : []), [dna, facing]);
+  const inherited = useMemo(() => new Map(shapes.flatMap(shape => shape.rows.map(row => [row, shape] as const))), [shapes]);
+  const hotShape = active ? inherited.get(active.row) ?? null : null;
   const fromA = source.filter(side => side === 0).length, fromB = FRAME_SIZE - fromA;
   const nameA = parentA?.name ?? "Parent A", nameB = parentB?.name ?? "Parent B";
   const animate = !reduced;
@@ -184,7 +216,7 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, babyExtra, revea
     if (!active) return null;
     const { row, side } = active;
     const from = source[row], parentName = from === 0 ? nameA : nameB, role = from === 0 ? "Parent A" : "Parent B";
-    if (side === "baby") return <span><strong>Row {row + 1}</strong> of {baby.name}: from {parentName} ({role}){mutated.has(row) ? ", then mutated" : ""}.</span>;
+    if (side === "baby") return <span><strong>Row {row + 1}</strong> of {baby.name}: from {parentName} ({role}){inherited.has(row) ? `, part of ${inherited.get(row)!.label}` : ""}{mutated.has(row) ? ", then mutated" : ""}.</span>;
     const mine = side === "a" ? 0 : 1, name = side === "a" ? nameA : nameB;
     return from === mine ? <span><strong>Row {row + 1}</strong> of {name}: passed on to {baby.name}.</span>
       : <span><strong>Row {row + 1}</strong> of {name}: not passed on. {baby.name} got {from === 0 ? nameA : nameB}'s.</span>;
@@ -195,7 +227,7 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, babyExtra, revea
       const hot = active?.row === row;
       const src = hot && (side === "baby" || (side === "a" ? source[row] === 0 : source[row] === 1));
       return <span key={row} className={cx("rb-trio-row", hot && "rb-hot", src && `rb-src rb-src-${source[row] === 0 ? "a" : "b"}`,
-        side === "baby" && mutated.has(row) && "rb-mut")} />;
+        side === "baby" && mutated.has(row) && "rb-mut", side === "baby" && inherited.has(row) && "rb-inh")} />;
     })}
   </span>;
   const link = (side: "a" | "b") => <span className={`rb-trio-link rb-trio-link-${side}`} aria-hidden="true">
@@ -205,7 +237,8 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, babyExtra, revea
   const slot = (side: Side, creature: Creature | null | undefined, faded: readonly boolean[] | null, label?: string) =>
     <span className={cx("rb-trio-slot", `rb-trio-slot-${side}`)} onPointerMove={hover(side)} onPointerLeave={leave} onPointerDown={tap(side)}>
       {creature ? <RowSprite creature={creature} device={device} css={css} facing={facing} faded={faded} animate={animate} label={label}
-        highlight={active && source[active.row] === 0 && side !== "b" ? { row: active.row, color: A_ROW_ON_PAPER } : null} />
+        highlight={active && source[active.row] === 0 && side !== "b" ? { row: active.row, color: A_ROW_ON_PAPER } : null}
+        marks={side === "baby" ? shapes : undefined} hotMark={side === "baby" ? hotShape : null} />
         : <span className="rb-trio-missing" style={{ width: BOX * css, height: BOX * css }}><PixelIcon name="help" /></span>}
       {rowsLayer(side)}
       {side === "baby" && babyExtra}
@@ -216,6 +249,7 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, babyExtra, revea
     "--rb-tint-a": PARENT_TINT[0], "--rb-tint-b": PARENT_TINT[1],
   } as CSSProperties;
   const summary = `DNA: ${fromA} of 16 rows from ${nameA} (Parent A), ${fromB} from ${nameB} (Parent B)` +
+    shapes.map(shape => `, ${rowsLabel(shape.rows).toLowerCase()} carry ${shape.label}`).join("") +
     (mutated.size ? `, ${mutated.size === 1 ? "1 row" : `${mutated.size} rows`} mutated.` : ".") + " Use the arrow keys to trace a row.";
 
   return <figure ref={node} className={cx("rb-trio", reveal && !reduced && "rb-trio-reveal", width === 0 && "rb-trio-measuring", className)} style={style}
@@ -235,8 +269,9 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, babyExtra, revea
     </div>
     <figcaption className="rb-trio-caption" aria-live="polite">
       {caption ?? <><span className="rb-trio-hint">Hover or tap a row to trace it.</span>
+        {shapes.map(shape => <span key={shape.label} className="rb-trio-inh-note"><i className="rb-trio-inh-pip" aria-hidden="true" />{rowsLabel(shape.rows)}: {shape.label}</span>)}
         {mutated.size > 0 && <span className="rb-trio-mut-note"><i className="rb-trio-mut-pip" aria-hidden="true" />
-          {mutated.size === 1 ? `Row ${[...mutated][0] + 1} mutated` : `Rows ${[...mutated].map(row => row + 1).join(", ")} mutated`}</span>}</>}
+          {rowsLabel([...mutated])} mutated</span>}</>}
     </figcaption>
   </figure>;
 }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { createRoot } from "react-dom/client";
 import { GameFrame } from "@rarefriends/friendsdk/frame";
 import "@rarefriends/friendsdk/frame.css";
-// The game's trusted host.css: a 3:4 frame on portrait phones (390 x 520), like the CLI runtime.
+// The game's trusted host.css: taller frames on portrait phones (3:4 down to 1:2 by viewport shape), like the CLI runtime.
 import "../../games/rare-breeds/host.css";
 import "../../games/rare-breeds/style.css";
 import "./harness.css";
@@ -15,10 +15,13 @@ import {
   MatchmakerPanel, PixelIcon, SettingsPanel, SlingshotPanel, SpriteThumb, Toast, WorldLayer, buildCollection, discoveriesOf, type BroodTab, type Collection,
   type HudSample, type PixelIconName,
 } from "../../games/rare-breeds/src/ui/index.ts";
-import { babies, candidates, creature, player, rerolled, tierInfo, tierRows, tiers, tierValue, wild } from "./fixtures.ts";
+import { babies, candidates, creature, echo, heir, player, rerolled, shaped, tierInfo, tierRows, tiers, tierValue, wild } from "./fixtures.ts";
+import { ALL_BREEDS, ALL_FAMILIES, ALL_TIERS } from "../../games/rare-breeds/src/ui/collection.ts";
+import { TITLE_ORDER, lineageTitles } from "../../games/rare-breeds/src/titles.ts";
 import { RF_UNIT } from "../../games/rare-breeds/src/economy.ts";
-import { initialLedger, launchBlocker, launchPayout, resolveLaunch, slingshotNet, type LaunchResult, type SlingshotLedger } from "../../games/rare-breeds/src/slingshot.ts";
-import type { LaunchZoneId } from "../../games/rare-breeds/src/types.ts";
+import { crashPoint, initialLedger, launchBlocker, resolveLaunch, slingshotNet, type SlingshotLedger } from "../../games/rare-breeds/src/slingshot.ts";
+import type { LaunchSequence } from "../../games/rare-breeds/src/api.ts";
+import { createLaunchSequence } from "../../games/rare-breeds/src/scene/launch.ts";
 import { ACCESSORIES } from "../../games/rare-breeds/src/accessories.ts";
 import { heartsPerMinute, wishFamilies } from "../../games/rare-breeds/src/hearts.ts";
 import type { AccessoryId } from "../../games/rare-breeds/src/types.ts";
@@ -26,9 +29,9 @@ import type { AccessoryId } from "../../games/rare-breeds/src/types.ts";
 const params = new URLSearchParams(location.search);
 const reduced = params.has("rm");
 
-/** Collection before a baby hatched: every other fixture baby. &full shows both sets completed. */
-const FULL: Collection = { families: ["Skeleton", "Mask", "Family", "Cellular", "Asymmetry", "Hoverer", "Colossus", "Sparkling", "Hollow"],
-  tiers: ["common", "spotted", "mutant", "prismatic"] };
+/** Collection before a baby hatched: every other fixture baby. &full shows every set completed (families, tiers, breeds, titles). */
+const FULL: Collection = { families: ALL_FAMILIES, tiers: ALL_TIERS, breeds: ALL_BREEDS.map(breed => breed.name), titles: TITLE_ORDER };
+const titlesOf = (baby: Creature) => lineageTitles(baby, creature, player);
 const collectionWithout = (baby?: Creature): Collection => params.has("full") ? FULL : buildCollection(babies.filter(item => item !== baby));
 
 /** A fake nursery floor so the HUD is seen over something world-like. */
@@ -127,16 +130,23 @@ function Hatch({ stage, baby }: { stage: "hatching" | "result"; baby: Creature }
   return <>
     <Nursery inert />
     <HatchOverlay stage={stage} canvasRef={setCanvas} onSkip={() => console.log("skip")} onClose={() => console.log("close")}>
-      <BabyCard baby={baby} parentA={creature(baby.parents![0])} parentB={creature(baby.parents![1])} creature={creature} chance={info.chance} value={info.value}
+      <BabyCard baby={baby} parentA={creature(baby.parents![0])} parentB={creature(baby.parents![1])} creature={creature} friend={player} chance={info.chance} value={info.value}
         onKeep={() => console.log("keep")} onRelease={() => console.log("release")} heartsPerMinute={heartsPerMinute(baby.tier)} keepBonus={5}
         hint={params.has("first") ? `Keep ${baby.name} to breed again (it follows your Friend), or trade it in at the Sanctuary for a fixed ${info.value} (simulated).` : undefined}
-        discoveries={discoveriesOf(baby, params.has("first") ? buildCollection([]) : collectionWithout(baby))} />
+        discoveries={discoveriesOf(baby, params.has("first") ? buildCollection([]) : collectionWithout(baby), titlesOf(baby))} />
     </HatchOverlay>
   </>;
 }
 
-function Brood({ list, detail, friend, tab }: { list: Creature[]; detail?: string; friend?: boolean; tab?: BroodTab }) {
+function Brood({ list, detail, friend, tab, book }: { list: Creature[]; detail?: string; friend?: boolean; tab?: BroodTab; book?: boolean }) {
   const [items, setItems] = useState(list);
+  // The breed book opened and in view (a <details> in the collection box).
+  useEffect(() => {
+    const details = document.querySelector<HTMLDetailsElement>(".rb-breed-book"), body = details?.closest(".rb-panel-body");
+    if (!book || !details || !body) return;
+    details.open = true;
+    body.scrollTop += details.getBoundingClientRect().top - body.getBoundingClientRect().top - 8;
+  }, [book]);
   return <>
     <Nursery brood={items.slice(0, 3)} inert />
     <BroodPanel babies={items} tiers={tiers} creature={creature} initialSelectedKey={detail} onRelease={baby => setItems(items.filter(item => item !== baby))}
@@ -168,7 +178,7 @@ function Intro({ step }: { step: number }) {
   return <>
     <Nursery inert />
     <IntroPanel player={player} mate={mate} tiers={tiers} price="1 RF" startBalance="20 RF" initialStep={step} hud={START_HUD}
-      keepHeartsPerMinute={heartsPerMinute("common")} onClose={() => console.log("close")} onStepChange={next => console.log("step", next)} />
+      keepHeartsPerMinute={[heartsPerMinute("common"), heartsPerMinute("prismatic")]} onClose={() => console.log("close")} onStepChange={next => console.log("step", next)} />
   </>;
 }
 
@@ -201,101 +211,96 @@ function Settings({ scrollTo }: { scrollTo?: string }) {
 
 // ---------- Moon Slingshot ----------
 
-const ZONE_SPOT: Record<LaunchZoneId, readonly [number, number]> = {
-  pond: [250, 540], haystack: [390, 500], rooftop: [540, 372], cloud: [680, 214], orbit: [800, 150], moon: [868, 104],
-};
-
-/** Simulates the renderer's flight on the overlay canvas: landmarks, then the baby arcs to its zone. `onLanded` fires at the end. */
-function useFakeLaunch(stage: "flying" | "result", baby: Creature | null, zone: LaunchZoneId | null, onLanded?: () => void) {
-  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
-  const landed = useRef(onLanded);
-  landed.current = onLanded;
-  useEffect(() => {
-    if (!canvas || !baby || !zone) return;
-    const { ctx } = setupPixelCanvas(canvas, 960, 640);
-    const start = performance.now(), duration = reduced || stage === "result" || !onLanded ? 0 : 1400;
-    let raf = 0;
-    const draw = (now: number) => {
-      const t = duration ? Math.min(1, (now - start) / duration) : stage === "result" ? 1 : .55;
-      ctx.fillStyle = "#F4F1EA"; ctx.fillRect(0, 0, 960, 640);
-      ctx.fillStyle = "#111"; ctx.fillRect(0, 560, 960, 80);
-      ctx.fillStyle = "#9FE8FF"; ctx.fillRect(190, 548, 130, 14);
-      ctx.fillStyle = "#E8C95A"; ctx.beginPath(); ctx.moveTo(340, 548); ctx.lineTo(390, 490); ctx.lineTo(440, 548); ctx.fill();
-      ctx.fillStyle = "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 4; ctx.strokeRect(480, 400, 120, 148); ctx.fillRect(480, 400, 120, 148);
-      ctx.beginPath(); ctx.moveTo(470, 400); ctx.lineTo(540, 360); ctx.lineTo(610, 400); ctx.closePath(); ctx.stroke();
-      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.ellipse(680, 232, 70, 26, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.ellipse(800, 150, 60, 16, -.3, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = "#FFE27A"; ctx.beginPath(); ctx.arc(880, 80, 44, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      const [tx, ty] = ZONE_SPOT[zone], sx = 90, sy = 540;
-      const x = sx + (tx - sx) * t, y = sy + (ty - sy) * t - Math.sin(t * Math.PI) * 180;
-      drawCreature(ctx, baby, { clip: "idle", facing: "right", frame: Math.floor(now / 110) % 8, x, y, scale: 3, time: now });
-      if (t < 1 && duration) raf = requestAnimationFrame(draw);
-      else if (duration) landed.current?.();
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, [canvas, baby, zone, stage]);
-  return setCanvas;
-}
-
 const withFund = (fund: bigint): SlingshotLedger => ({ ...initialLedger(), fund });
-const resultFor = (baby: Creature, zone: LaunchZoneId, roll = 4242): LaunchResult => {
-  const value = tierValue(baby.tier);
-  return { babyKey: baby.key, zone, value, payout: launchPayout(value, zone), roll };
-};
-/** &roll=0-9999 makes the harness flow land deterministically (pond 0-3999 ... moon 9800-9999). */
+/** &roll=0-9999 fixes the crash point (0-899 reach the Moon, 9000-9999 fizzle on the pad); default: random. */
 const fixedRoll = params.has("roll") ? Number(params.get("roll")) : null;
+/** Autopilot for screenshot stories: light the rocket like assistive tech (a bare click), jump after `jumpMs` (null: ride on), then skip to the result. */
+type Autopilot = Readonly<{ jumpMs: number | null; result?: boolean; unmountMs?: number }>;
 
 /**
- * The whole station flow, wired the way index.tsx should: panel -> onLaunch -> the runtime's trade-in confirmation
- * (faked here: busy for 900 ms; &hold keeps it open) -> book the result (resolveLaunch, like useSlingshot().launch) and
- * remove the baby -> overlay flies -> result card -> Launch another / Back to the nursery.
+ * The flight overlay on the real scene (src/scene/launch.ts), wired like index.tsx: the ledger draws the crash point at
+ * ignition (resolveLaunch books it once the flight is decided).
+ */
+function Flight({ baby, ledger, onBooked, roll, auto, again, paused, onAgain, onClose }: { baby: Creature; ledger: SlingshotLedger; onBooked: (next: SlingshotLedger) => void;
+  roll: number; auto?: Autopilot; again: boolean; paused?: boolean; onAgain: () => void; onClose: () => void }) {
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [sequence, setSequence] = useState<LaunchSequence | null>(null);
+  useEffect(() => {
+    if (!canvas) return;
+    const created = createLaunchSequence({ canvas, baby, reducedMotion: reduced, onBeat: beat => console.log("beat", beat) });
+    setSequence(created);
+    return () => created.destroy();
+  }, [canvas, baby]);
+  useEffect(() => {
+    if (!auto || !sequence) return;
+    const hold = () => document.querySelector<HTMLButtonElement>(".rb-flight-hold");
+    const timers = [setTimeout(() => hold()?.click(), 150)];
+    if (auto.jumpMs !== null) timers.push(setTimeout(() => hold()?.click(), 150 + auto.jumpMs));
+    const skip = setInterval(() => {
+      const button = document.querySelector<HTMLButtonElement>('.rb-launch[data-stage="ending"] .rb-hatch-skip');
+      if (auto.result !== false && button) button.click();
+    }, 100);
+    return () => { timers.forEach(clearTimeout); clearInterval(skip); };
+  }, [sequence]);
+  return <LaunchOverlay canvasRef={setCanvas} sequence={sequence} baby={baby} value={tierValue(baby.tier)} bestExit={ledger.topExit} paused={paused}
+    onIgnite={() => { console.log("ignite", roll); return crashPoint(roll); }}
+    onSettle={exit => { const next = resolveLaunch(ledger, baby.key, tierValue(baby.tier), roll, exit); onBooked(next.ledger); console.log("settle", exit, next.result.end); return next.result; }}
+    onLanded={result => console.log("landed", result.end)} onCancel={() => { console.log("cancel"); onClose(); }}
+    canLaunchAgain={again} onLaunchAgain={() => { console.log("again"); onAgain(); }} onClose={() => { console.log("close"); onClose(); }} />;
+}
+
+/**
+ * The whole station flow, wired the way index.tsx does: panel -> onLaunch -> the runtime's trade-in confirmation
+ * (faked here: busy for 900 ms; &hold keeps it open) -> remove the baby -> the flight (hold to fly, let go to jump) ->
+ * result card -> Launch another / Back to the nursery.
  */
 function SlingshotFlow({ list, fund, initialKey, busy: startBusy }: { list: Creature[]; fund?: bigint; initialKey?: string; busy?: boolean }) {
   const [ledger, setLedger] = useState(() => withFund(fund ?? initialLedger().fund));
   const [brood, setBrood] = useState(list);
   const [open, setOpen] = useState(true);
   const [busy, setBusy] = useState(!!startBusy);
-  const [flight, setFlight] = useState<{ baby: Creature; result: LaunchResult; stage: "flying" | "result" } | null>(null);
-  const land = useCallback(() => setFlight(current => current && { ...current, stage: "result" }), []);
-  const setCanvas = useFakeLaunch(flight?.stage ?? "flying", flight?.baby ?? null, flight?.result.zone ?? null, land);
-  const launch = (key: string, pull: number) => {
-    console.log("launch", key, pull.toFixed(2));
+  const [flight, setFlight] = useState<{ baby: Creature; roll: number } | null>(null);
+  const launch = (key: string) => {
+    console.log("launch", key);
     const baby = brood.find(item => item.key === key);
     if (!baby || launchBlocker(ledger, tierValue(baby.tier))) return;
     setBusy(true);
     if (params.has("hold")) return;
     setTimeout(() => {
-      const next = resolveLaunch(ledger, key, tierValue(baby.tier), fixedRoll ?? Math.floor(Math.random() * 10_000));
-      setLedger(next.ledger);
       setBrood(brood.filter(item => item !== baby));
       setBusy(false);
       setOpen(false);
-      setFlight({ baby, result: next.result, stage: "flying" });
+      setFlight({ baby, roll: fixedRoll ?? Math.floor(Math.random() * 10_000) });
     }, 900);
   };
   return <>
     <Nursery brood={brood.slice(0, 3)} inert={open || !!flight} slingshot={{ net: slingshotNet(ledger), launches: ledger.launches }}
       onOpenSlingshot={() => setOpen(true)} />
     {open && <SlingshotPanel brood={brood} tiers={tierRows} initialKey={initialKey} blocker={value => launchBlocker(ledger, value)} fund={ledger.fund} busy={busy}
+      bestExit={ledger.topExit} titles={titlesOf}
       onLaunch={launch} onFindMatch={() => console.log("find")} onClose={() => { console.log("close"); setOpen(false); }} />}
-    {flight && <LaunchOverlay stage={flight.stage} canvasRef={setCanvas} onSkip={() => { console.log("skip"); land(); }} result={flight.result} baby={flight.baby}
-      canLaunchAgain={brood.length > 0} onLaunchAgain={() => { console.log("again"); setFlight(null); setOpen(true); }}
-      onClose={() => { console.log("close"); setFlight(null); }} />}
+    {flight && <Flight key={flight.baby.key} baby={flight.baby} ledger={ledger} onBooked={setLedger} roll={flight.roll} again={brood.length > 0}
+      onAgain={() => { setFlight(null); setOpen(true); }} onClose={() => setFlight(null)} />}
   </>;
 }
 
-/** A fixed launch result (or the flight with a frozen frame) for screenshots. */
-function Landing({ baby, zone, stage = "result", again = true }: { baby: Creature; zone: LaunchZoneId; stage?: "flying" | "result"; again?: boolean }) {
-  const setCanvas = useFakeLaunch(stage, baby, zone);
+/**
+ * One flight on its own for screenshots: ready (no autopilot), in the air, or its result card. `unmountMs` removes it
+ * mid-air; `pausedMs` mounts it while the runtime is paused and unpauses after that long.
+ */
+function FlightStory({ baby, roll, auto, again = true, best = 0, pausedMs = 0 }: { baby: Creature; roll: number; auto?: Autopilot; again?: boolean; best?: number; pausedMs?: number }) {
+  const [ledger, setLedger] = useState(() => ({ ...initialLedger(), topExit: best }));
+  const [gone, setGone] = useState(false);
+  const [paused, setPaused] = useState(pausedMs > 0);
+  useEffect(() => { if (auto?.unmountMs) { const timer = setTimeout(() => { console.log("unmount"); setGone(true); }, auto.unmountMs); return () => clearTimeout(timer); } }, []);
+  useEffect(() => { if (pausedMs) { const timer = setTimeout(() => { console.log("unpause"); setPaused(false); }, pausedMs); return () => clearTimeout(timer); } }, []);
   return <>
-    <Nursery inert brood={babies.filter(item => item !== baby).slice(0, 3)} />
-    <LaunchOverlay stage={stage} canvasRef={setCanvas} onSkip={() => console.log("skip")} result={stage === "result" ? resultFor(baby, zone) : null} baby={baby}
-      canLaunchAgain={again} onLaunchAgain={() => console.log("again")} onClose={() => console.log("close")} />
+    <Nursery inert brood={babies.filter(item => item !== baby).slice(0, 3)} slingshot={{ net: slingshotNet(ledger), launches: ledger.launches }} />
+    {!gone && <Flight baby={baby} ledger={ledger} onBooked={setLedger} roll={fixedRoll ?? roll} auto={auto} again={again} paused={paused} onAgain={() => console.log("again")} onClose={() => console.log("close")} />}
   </>;
 }
 
-const ICONS: PixelIconName[] = ["heart", "heartOutline", "egg", "eggCracked", "eggBig", "eggCrackedBig", "baby", "soundOn", "soundOff", "help", "close", "dice", "sparkle", "sprout", "back", "check", "dna", "moon", "slingshot", "slingshotBig"];
+const ICONS: PixelIconName[] = ["heart", "heartOutline", "egg", "eggCracked", "eggBig", "eggCrackedBig", "baby", "soundOn", "soundOff", "help", "close", "dice", "sparkle", "sprout", "back", "check", "dna", "moon", "slingshot", "rocket", "slingshotBig"];
 
 function Thumbs() {
   return <div className="dev-thumbs">
@@ -336,9 +341,14 @@ const scenarios: Record<string, () => ReactNode> = {
   "reveal-mutant": () => <Hatch stage="result" baby={babies[0]} />,
   "reveal-prismatic": () => <Hatch stage="result" baby={babies[3]} />,
   "reveal-f3": () => <Hatch stage="result" baby={babies[5]} />,
+  // Real genetics: a Common that inherited its parent's head shape, and an Echo (first title).
+  "reveal-inherit": () => <Hatch stage="result" baby={heir} />,
+  "reveal-echo": () => <Hatch stage="result" baby={echo} />,
+  "brood-inherit": () => <Brood list={[shaped, heir, echo]} detail={heir.key} />,
   brood: () => <Brood list={babies} />,
   "brood-detail": () => <Brood list={babies} detail={babies[4].key} />,
   "brood-empty": () => <Brood list={[]} />,
+  "brood-book": () => <Brood list={[...babies, shaped, heir, echo]} book />,
   "brood-tabs": () => <Brood list={babies} friend />,
   "brood-legacy": () => <Brood list={babies} friend tab="legacy" />,
   "brood-legacy-ghost": () => <Brood list={babies.slice(1)} friend tab="legacy" />,
@@ -356,12 +366,24 @@ const scenarios: Record<string, () => ReactNode> = {
   // Seven babies: the newest (preselected) starts in the picker's hidden third row on wide frames.
   "slingshot-crowd": () => <SlingshotFlow list={[...babies, { ...babies[3], key: "baby:99", name: "Nova", playId: 99n }]} />,
   "slingshot-empty": () => <SlingshotFlow list={[]} />,
+  // Special babies are marked in the picker (a title, a shape they can pass on) and named in the "gone after" line.
+  "slingshot-marks": () => <SlingshotFlow list={[babies[1], shaped, heir, echo]} />,
   "slingshot-busy": () => <SlingshotFlow list={[babies[1], babies[0], babies[3]]} busy />,
   "slingshot-blocked": () => <SlingshotFlow list={[babies[1], babies[0], babies[3]]} fund={40n * RF_UNIT} />,
-  "slingshot-flying": () => <Landing baby={babies[3]} zone="cloud" stage="flying" />,
-  "slingshot-pond": () => <Landing baby={babies[2]} zone="pond" />,
-  "slingshot-rooftop": () => <Landing baby={babies[0]} zone="rooftop" />,
-  "slingshot-moon": () => <Landing baby={babies[3]} zone="moon" again={false} />,
+  "slingshot-ready": () => <FlightStory baby={babies[3]} roll={1500} />,
+  "slingshot-flying": () => <FlightStory baby={babies[3]} roll={0} auto={{ jumpMs: null, result: false }} />,
+  "slingshot-pond": () => <FlightStory baby={babies[2]} roll={9500} auto={{ jumpMs: null }} />,
+  "slingshot-jump": () => <FlightStory baby={babies[0]} roll={1500} auto={{ jumpMs: 700 }} />,
+  // A jump that beats the earlier best (x1.2): "New record".
+  "slingshot-record": () => <FlightStory baby={babies[0]} roll={1500} auto={{ jumpMs: 1400 }} best={120} />,
+  // A crash (x2.25 on roll 3999) after a best of x5.2: "Best so far".
+  "slingshot-crash": () => <FlightStory baby={babies[1]} roll={3999} auto={{ jumpMs: null }} best={520} />,
+  // The overlay goes away mid-air: the flight is booked at the multiplier showing.
+  "slingshot-unmount": () => <FlightStory baby={babies[2]} roll={0} auto={{ jumpMs: null, result: false, unmountMs: 1200 }} />,
+  // Mounted while the runtime is paused (menu open during the nursery shot): focus must stay on the hold button.
+  "slingshot-paused": () => <FlightStory baby={babies[2]} roll={1500} pausedMs={2500} />,
+  // Rides to the Moon: 9 s of flight before the result (dev/ui/shots.mjs waits for it).
+  "slingshot-moon": () => <FlightStory baby={babies[3]} roll={0} auto={{ jumpMs: null }} again={false} />,
   "slingshot-hud": () => <Nursery slingshot={{ net: 54n * RF_UNIT, launches: 3 }} onOpenSlingshot={() => console.log("sling")} toast="Oro: The Moon. Slingshot net +54 RF (simulated)" />,
   "slingshot-hud-down": () => <Nursery slingshot={{ net: -15n * RF_UNIT / 10n, launches: 2 }} />,
   "slingshot-hint": () => <Nursery brood={babies.slice(0, 1)} prompt={{ label: "Moon Slingshot: x0 to x10", short: "Slingshot x0-x10", keyHint: "!" }} />,

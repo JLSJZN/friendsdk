@@ -1,6 +1,7 @@
 // Module interfaces between the renderer (src/scene/) and the React UI (src/ui/, index.tsx).
 // Owned by the project lead: change only by agreement.
-import type { Creature, LaunchZoneId, StationId } from "./types.ts";
+import type { FlightEnd } from "./slingshot.ts";
+import type { Creature, StationId } from "./types.ts";
 
 export const WORLD_WIDTH = 960;
 export const WORLD_HEIGHT = 640;
@@ -36,8 +37,8 @@ export interface NurseryScene {
   playRelease(babyKey: string): Promise<void>;
   /**
    * A kept baby hops from the brood into the Moon Slingshot, the band stretches by `pull` (0 to 1,
-   * cosmetic only) and snaps, and the baby shoots out through the window. Resolves once it is out
-   * of sight (fast when reduced motion). Same brood hand-off as playRelease.
+   * cosmetic only) and snaps, and the baby shoots out through the window (onto its rocket). Resolves
+   * once it is out of sight (fast when reduced motion). Same brood hand-off as playRelease.
    */
   playLaunch(babyKey: string, pull: number): Promise<void>;
   /** Emits a short celebration burst around a creature (key) in the world. */
@@ -64,23 +65,28 @@ export interface HatchSequence {
   destroy(): void;
 }
 
+/** Sound beats of the flight: lift-off, passing x2 and x4, the rocket giving out, the jump, and the three landings. */
+export type LaunchBeat = "ignite" | "pass" | "sputter" | "jump" | "splash" | "touchdown" | "moon";
+
 export type LaunchSequenceOptions = Readonly<{
   canvas: HTMLCanvasElement;
   baby: Creature;
-  /** Already decided by src/slingshot.ts before the flight starts; the animation only shows it. */
-  zone: LaunchZoneId;
-  /** 0 to 1, how far the band was pulled. Cosmetic only (launch speed, spin), never changes the zone. */
-  pull: number;
   reducedMotion: boolean;
-  /** Called at the dramatic beats so the UI can play sounds. */
-  onBeat?: (beat: "launch" | "apex" | "land") => void;
+  onBeat?: (beat: LaunchBeat) => void;
 }>;
 
-/** Created by createLaunchSequence(options) in src/scene/launch.ts. Draws on its own overlay canvas. */
+/**
+ * Created by createLaunchSequence(options) in src/scene/launch.ts. Draws on its own overlay canvas and starts on the
+ * pad (the baby strapped to its rocket). Presentation only: the UI owns the flight clock and src/slingshot.ts every rule.
+ */
 export interface LaunchSequence {
-  /** Side view: the baby flies out of the nursery past the zones and lands in `zone` with a gag. Resolves at the end. */
-  play(): Promise<void>;
-  /** Jump to the landed frame immediately. */
+  /** Lift-off. */
+  ignite(): void;
+  /** Flight time since ignition in ms (the clock of flightHundredths): how high the rocket is. Call every frame. */
+  fly(ms: number): void;
+  /** The flight is decided: plays its ending from the current height (`exit`: the jump in hundredths). Resolves when done. */
+  end(end: FlightEnd, exit: number | null): Promise<void>;
+  /** Jump to the ending's final frame (resolves end()). */
   skip(): void;
   destroy(): void;
 }

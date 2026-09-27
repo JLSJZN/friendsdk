@@ -1,11 +1,11 @@
 // Dev tool: render Rare Breeds genetics contact sheets from the bundled wild Friend pool.
 // Run from the SDK root: node tools/genetics-sheet.mjs [--out <dir>]
-// Writes genetics-{sheet,pairs,f2}.svg and, on macOS (qlmanage), matching PNGs to games/rare-breeds/docs/media (or --out).
+// Writes genetics-{sheet,pairs,f2,inherit}.svg and, on macOS (qlmanage), matching PNGs to games/rare-breeds/docs/media (or --out).
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { breed, breedSeed } from "../games/rare-breeds/src/genetics.ts";
+import { breed, breedSeed, PASS_ON_ODDS } from "../games/rare-breeds/src/genetics.ts";
 import { familyLine } from "../games/rare-breeds/src/legacy.ts";
 import { creatureFromRecord, FAMILY_NAMES } from "../games/rare-breeds/src/sprites.ts";
 import { TIER_ORDER, TIER_STYLE } from "../games/rare-breeds/src/types.ts";
@@ -143,4 +143,27 @@ writePage("genetics-f2", "Rare Breeds genetics: later generations", "F1 babies b
   { title: "F2: baby × wild, and F3", note: "Kept babies can mate with wild Friends or their own offspring.",
     rows: [{ a: f1[0], b: byFamily[6][0], playId: 4004 }, { a: f1[3], b: pinned, playId: 4005, walkTier: "prismatic", walkFacing: "down" },
       { a: hatch(f1[0], f1[1], "mutant", 4000), b: f1[2], playId: 4006 }] },
+]);
+
+// Inherited shapes: a mutated parent passes its shape on in any tier (PASS_ON_ODDS). Rows are picked where the baby
+// carries it; the same seed gives the same rows in every tier, so all four babies of a row carry it.
+const carries = (a, b, from) => {
+  for (let play = from; play < from + 400; play++) if (hatch(a, b, "common", play).dna.shapes.some(shape => shape.from)) return play;
+  throw new Error(`no carrying seed for ${a.name} x ${b.name}`);
+};
+const mutated = [[byFamily[1][1], byFamily[5][2]], [byFamily[3][1], byFamily[0][2]], [byFamily[8][1], byFamily[2][2]], [byFamily[7][2], byFamily[4][1]]]
+  .map(([a, b], i) => ({ a, b, playId: 6000 + i, tier: i % 2 ? "prismatic" : "mutant" }));
+mutated.forEach(row => { row.baby = hatch(row.a, row.b, row.tier, row.playId); });
+const grand = mutated[0].baby, firstMate = byFamily[6][1], secondMate = byFamily[3][3];
+const parentPlay = carries(grand, firstMate, 7000), parent = hatch(grand, firstMate, "common", parentPlay);
+const childPlay = carries(secondMate, parent, 7500);
+
+writePage("genetics-inherit", "Rare Breeds genetics: inherited shapes", `A parent's horns, ears, crest, antennae or tail live in its own pixel rows, so a baby that takes those rows carries them, in any tier (${PASS_ON_ODDS}).`, [
+  { title: "Mutant and Prismatic parents", note: "New shapes still grow only on Mutant and Prismatic hatches (the ledger decides the tier).",
+    rows: mutated.map((row, i) => ({ a: row.a, b: row.b, playId: row.playId, walkTier: row.tier, walkFacing: i % 2 ? "right" : "down" })) },
+  { title: "Their babies carry the shape, even as Commons", note: "The walk strip shows the Common baby; its traits name the parent the shape came from.",
+    rows: mutated.slice(1).map((row, i) => { const mate = byFamily[(i * 2 + 5) % 9][3]; return { a: row.baby, b: mate, playId: carries(row.baby, mate, 6200 + i * 400), walkTier: "common", walkFacing: i % 2 ? "right" : "down" }; }) },
+  { title: "Grandparent -> parent -> baby", note: `${grand.name}'s shape passes to ${parent.name} (F2), then on to an F3; each step is its own 1 in 2.`,
+    rows: [{ a: mutated[0].a, b: mutated[0].b, playId: mutated[0].playId, walkTier: "mutant" }, { a: grand, b: firstMate, playId: parentPlay, walkTier: "common" },
+      { a: secondMate, b: parent, playId: childPlay, walkTier: "common" }] },
 ]);

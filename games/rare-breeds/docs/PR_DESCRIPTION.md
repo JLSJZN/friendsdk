@@ -20,9 +20,10 @@ Your Friend's 256 on-chain pixels are its DNA: pair it with a real Rare Friend, 
 - **Hearts:** session game points only kept babies earn (6 to 60 a minute by tier, +5 per Keep). Never RF, never redeemable, so no reserve.
 - **Hearts shop:** 8 hats (20 to 250 Hearts) anchored frame by frame to each Friend's own head, never covering its art; Wish match (15 Hearts) for mates from a chosen family.
 - **Collection goal:** all 9 families and all 4 tiers.
-- **Moon Slingshot:** hold to pull, let go: a kept baby is traded in through the SDK (runtime-confirmed `redeem`, its value is the stake) and shot out of the window; six zones from the pond (x0, 40%) to the Moon (x10, 2%) multiply the stake, 0.9x on average. The multiplier is a labelled simulated side ledger backed by a 600 RF Moon Fund; live it needs its own Slingshot contract (not built).
+- **Genes you breed for:** new mutations still come only from Mutant and Prismatic hatches, but babies inherit a parent's horns, ears or tail in any tier (49.1% measured, "about 1 in 2"), through generations. Cosmetic lineage titles (Echo of your Friend, Purebred, Chimera), hatch numbers, and a breed book naming all 45 family pairs ("Ghost Bones", "Blimp"). Odds and values unchanged.
+- **Moon Slingshot:** Crash with a baby on a firework rocket: a kept baby is traded in through the SDK (runtime-confirmed `redeem`, its value is the stake), then hold to fly, let go to jump. The multiplier climbs from x1 to x10 in 9 s; the crash point is drawn at ignition with exact odds (10% fizzle on the pad, x2 45%, the Moon at x10 9%), and every exit pays back about 0.9x on average: jump early for a likely small win, hold for a rare big one. The multiplier is a labelled simulated side ledger backed by a 600 RF Moon Fund; live it needs its own Slingshot contract where the jump transaction fixes the exit before Dice is asked (not built).
 - **Onboarding:** six-step intro (a map of the four stations drawn from the real room, what to do with a baby, a legend of the HUD), first-time hints, odds strip, the same legends in "?", Replay intro.
-- **Phone layout:** 3:4 portrait frame and follow camera.
+- **Phone layout:** a portrait frame as tall as the screen allows (3:4 down to 1:2) and a follow camera.
 
 **Details**
 - **Economy (simulated):** Egg 1 RF; Common 60% / 0.5 RF, Spotted 25% / 1 RF, Mutant 12.5% / 1.5 RF, Prismatic 2.5% / 6 RF; expected value 0.8875 RF per egg (11.25% house edge, kept in the game as free stake). Every egg reserves the 6 RF maximum prize; kept babies stay backed with no expiry.

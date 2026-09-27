@@ -51,8 +51,9 @@ function restoredMate(playId: bigint, exclude: bigint | undefined) {
   return pool[Number(playId % BigInt(pool.length))];
 }
 
-export function makeBaby(friendId: bigint, a: Creature, b: Creature, playId: bigint, tier: TierId): Creature {
-  const result = breed({ a, b, tier, playId, seed: breedSeed(friendId, a.key, b.key, playId) });
+/** `takenNames`: baby names already used this session, so "Horns from Lulu" never has two Lulus. */
+export function makeBaby(friendId: bigint, a: Creature, b: Creature, playId: bigint, tier: TierId, takenNames?: ReadonlySet<string>): Creature {
+  const result = breed({ a, b, tier, playId, seed: breedSeed(friendId, a.key, b.key, playId), takenNames });
   return Object.freeze({
     key: `baby:${playId}`, kind: "baby", name: result.name, family: result.family, familyId: result.familyId,
     lineage: result.lineage, sheet: result.sheet, tier, parents: [a.key, b.key] as const, dna: result.dna, playId,
@@ -74,6 +75,8 @@ export function useRareBreeds({ friendId, client, paused }: { friendId: bigint; 
   const definition = client.definition;
 
   const remember = (creature: Creature) => { lineage.current.set(creature.key, creature); return creature; };
+  /** Names of every baby this session (kept, traded in or launched), except the one about to be made. */
+  const takenNames = (key: string) => new Set([...lineage.current.values()].filter(item => item.kind === "baby" && item.key !== key).map(item => item.name));
 
   const load = useCallback(() => {
     const version = ++epoch.current;
@@ -111,7 +114,7 @@ export function useRareBreeds({ friendId, client, paused }: { friendId: bigint; 
         for (const play of chosen) {
           const key = `baby:${play.id}`;
           next.set(key, current.get(key)
-            ?? remember(makeBaby(friendId, player, remember(restoredMate(play.id, friendId)), play.id, tier)));
+            ?? remember(makeBaby(friendId, player, remember(restoredMate(play.id, friendId)), play.id, tier, takenNames(key))));
         }
       });
       const same = next.size === current.size && [...next.keys()].every(key => current.has(key));
@@ -161,7 +164,7 @@ export function useRareBreeds({ friendId, client, paused }: { friendId: bigint; 
       if (settled.outcomeId === null) throw new Error("The egg has not hatched yet. Try again in a moment.");
       const tier = TIER_ORDER[settled.outcomeId - 1];
       remember(a); remember(b);
-      const baby = remember(makeBaby(friendId, a, b, settled.id, tier));
+      const baby = remember(makeBaby(friendId, a, b, settled.id, tier, takenNames(`baby:${settled.id}`)));
       const state: HatchState = { baby, parentA: a, parentB: b, outcomeId: settled.outcomeId, stage: "hatching" };
       if (version === epoch.current) {
         setBabies(current => new Map(current).set(baby.key, baby));

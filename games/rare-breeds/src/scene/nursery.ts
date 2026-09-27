@@ -29,9 +29,11 @@ const DROP = 460, INTRO = 620;
 const MAX_INCOMES = 6, INCOME_LIFE = 1500, HEART_FLIGHT = 1150;
 
 // Camera. Displays narrower than 600 or lower than 400 CSS px zoom in so the Friend's 16-row frame is
-// about HERO_CSS CSS px tall; larger ones show the whole room with no camera motion.
+// about HERO_CSS CSS px tall; larger ones show the whole room with no camera motion. Tall portrait
+// frames zoom in a little more, until the room's full height fills the band between the default
+// compact insets (overscan: the view reaches past the room, where the ink walls continue).
 const COMPACT_WIDTH = 600, COMPACT_HEIGHT = 400;
-const HERO_CSS = 52, MAX_ZOOM = 2.5;
+const HERO_CSS = 52, MAX_ZOOM = 3;
 /**
  * UI chrome drawn over the world, CSS px: the camera centres the Friend between them. The UI can set
  * --rb-world-inset-top / --rb-world-inset-bottom (any CSS length) on an ancestor to override these.
@@ -40,8 +42,11 @@ const COMPACT_INSETS = { top: 44, bottom: 88 }, WIDE_INSETS = { top: 62, bottom:
 /** Follow easing (ms time constants) and look-ahead (seconds of the Friend's velocity). */
 const CAMERA_EASE = 170, SCENE_EASE = 260, LOOK_EASE = 420, LOOK_AHEAD = 0.32;
 
-const compactZoom = (width: number, height: number, fit: number) =>
-  width < COMPACT_WIDTH || height < COMPACT_HEIGHT ? clamp(HERO_CSS / (16 * PLAYER_SCALE * fit), 1, MAX_ZOOM) : 1;
+const compactZoom = (width: number, height: number, fit: number) => {
+  if (width >= COMPACT_WIDTH && height >= COMPACT_HEIGHT) return 1;
+  const fill = (height - COMPACT_INSETS.top - COMPACT_INSETS.bottom) / WORLD_HEIGHT;
+  return clamp(Math.max(HERO_CSS / (16 * PLAYER_SCALE), fill) / fit, 1, MAX_ZOOM);
+};
 
 /** A CSS length custom property resolved to px on `host` (null when unset or unresolvable). */
 function cssLength(host: HTMLElement, name: string): number | null {
@@ -117,7 +122,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   const { canvas, player: firstPlayer, onStationNear, onStationActivate, onCreatureActivate } = options;
   let reducedMotion = options.reducedMotion;
   let paused = false, destroyed = false, dirty = true;
-  const view = createPixelView(canvas, WORLD_WIDTH, WORLD_HEIGHT, { onResize: () => { dirty = true; }, zoomFor: compactZoom });
+  const view = createPixelView(canvas, WORLD_WIDTH, WORLD_HEIGHT, { onResize: () => { dirty = true; }, zoomFor: compactZoom, overscan: true });
   const ctx = view.ctx;
   const room = createRoom(firstPlayer);
   /** The Friend and visiting mates path with bigger feet; babies with smaller ones. */
@@ -340,11 +345,15 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     };
   }
 
-  /** Camera top-left that centres `point` in the band, clamped so the band stays inside the room. */
+  /**
+   * Camera top-left that centres `point` in the band, clamped so the band stays inside the room. The whole plane
+   * (zoom 1) stays centred; a band taller than the room (tall portrait frames) centres the room in it.
+   */
   function cameraFor(point: Point): Point {
     const { width, height, top, bottom, inner } = band();
     const x = width >= WORLD_WIDTH - 0.5 ? (WORLD_WIDTH - width) / 2 : clamp(point.x - width / 2, 0, WORLD_WIDTH - width);
-    const y = height >= WORLD_HEIGHT - 0.5 ? (WORLD_HEIGHT - height) / 2 : clamp(point.y - top - inner / 2, -top, WORLD_HEIGHT - height + bottom);
+    const y = view.zoom <= 1 ? (WORLD_HEIGHT - height) / 2 : inner >= WORLD_HEIGHT ? (WORLD_HEIGHT - inner) / 2 - top
+      : clamp(point.y - top - inner / 2, -top, WORLD_HEIGHT - height + bottom);
     return { x, y };
   }
 

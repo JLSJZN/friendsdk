@@ -6,6 +6,8 @@
 // Zoom: an optional policy picks a zoom for the displayed box. At zoom 1 the whole plane is shown
 // (letterboxed by object-fit: contain). Above 1 the visible region takes the box's aspect ratio and a
 // camera (top-left of the visible region, logical px) selects which part of the plane is drawn.
+// With `overscan`, a box taller than the zoomed plane shows more than the plane's height (the scene
+// paints what lies above and below it) instead of letterboxing.
 
 export type ViewCamera = Readonly<{ x: number; y: number }>;
 
@@ -13,6 +15,8 @@ export type PixelViewOptions = Readonly<{
   onResize?: () => void;
   /** Zoom for a displayed box: CSS size and the CSS px per logical px at zoom 1. Default: always 1. */
   zoomFor?: (cssWidth: number, cssHeight: number, fitScale: number) => number;
+  /** Above zoom 1, the visible region may be taller than the plane (tall portrait boxes). Default false. */
+  overscan?: boolean;
 }>;
 
 export type PixelView = {
@@ -43,7 +47,7 @@ export type PixelView = {
 };
 
 export function createPixelView(canvas: HTMLCanvasElement, width: number, height: number, options: PixelViewOptions | (() => void) = {}): PixelView {
-  const { onResize, zoomFor } = typeof options === "function" ? { onResize: options, zoomFor: undefined } : options;
+  const { onResize, zoomFor, overscan = false } = typeof options === "function" ? { onResize: options, zoomFor: undefined } : options;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D is not available.");
   const style = canvas.style;
@@ -89,9 +93,10 @@ export function createPixelView(canvas: HTMLCanvasElement, width: number, height
       const scale = fit * zoom;
       const device = scale * dpr;
       const next = Math.max(1, Math.min(3, Math.ceil(device - 0.05)));
-      // The visible region: the whole plane at zoom 1, otherwise the box's aspect (never beyond the plane).
+      // The visible region: the whole plane at zoom 1, otherwise the box's aspect (never beyond the plane,
+      // except past its top and bottom with overscan).
       const backingWidth = Math.max(1, Math.round(Math.min(width, cssWidth / scale) * next));
-      const backingHeight = Math.max(1, Math.round(Math.min(height, cssHeight / scale) * next));
+      const backingHeight = Math.max(1, Math.round(Math.min(overscan && zoom > 1 ? Infinity : height, cssHeight / scale) * next));
       viewWidth = backingWidth / next; viewHeight = backingHeight / next;
       cssScale = Math.min(cssWidth / viewWidth, cssHeight / viewHeight) || 1;
       // Downscaling a sharp buffer looks best smoothed; upscaling must stay pixelated.

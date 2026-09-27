@@ -21,8 +21,31 @@ export type Dna = Readonly<{
   pattern: Uint8Array;
   /** Sprite-space cells added by shape mutation (index list), for the DNA card. */
   mutations: readonly number[];
-  /** Human readable mutation labels, e.g. ["Antennae", "Stripes"]. */
+  /** Human readable mutation labels, e.g. ["Antennae", "Stripes"]; inherited shapes read "Horns (from Zibu)". */
   traits: readonly string[];
+  /** Shape mutations the baby carries, grown at this hatch or inherited (optional: absent on older data). */
+  shapes?: readonly ShapeTrait[];
+}>;
+
+/** Frames per facing: idle 0-7, then walk 0-7 (the order of ShapeTrait.cells lists). */
+export const FACING_FRAMES = 16;
+
+/**
+ * A shape mutation (antennae, horns, ears, crest, tail or a bold variant). Rows are copied in place, so its cells are
+ * the same in every descendant that carries it, and a descendant carries it when it took all of those rows from that
+ * parent. Pieces follow the body while it bobs and walks, so the rows can differ from frame to frame.
+ */
+export type ShapeTrait = Readonly<{
+  /** Trait label, e.g. "Horns", "Big Horns", "Tail". */
+  label: string;
+  kind: "head" | "tail";
+  /**
+   * Its cells in every frame of each facing it grew on: FACING_FRAMES lists per facing (idle 0-7, then walk 0-7).
+   * Side-walkers only have "right" and "left" (their front and back reuse the right frames).
+   */
+  cells: Readonly<Partial<Record<Facing, readonly (readonly number[])[]>>>;
+  /** Inherited: the parent it came from (0 = parent A, 1 = parent B) and that parent's name. Absent when it grew at this hatch. */
+  from?: Readonly<{ side: 0 | 1; name: string }>;
 }>;
 
 export type CreatureKind = "friend" | "wild" | "baby";
@@ -55,8 +78,11 @@ export type Creature = Readonly<{
   accessory?: AccessoryId;
 }>;
 
-/** Input to genetics.breed. seed must be derived deterministically from friendId, parents and playId. */
-export type BreedInput = Readonly<{ a: Creature; b: Creature; seed: number; tier: TierId; playId: bigint }>;
+/**
+ * Input to genetics.breed. seed must be derived deterministically from friendId, parents and playId. `takenNames`: baby
+ * names already used this session; the name is re-rolled (deterministically) until it is not one of them.
+ */
+export type BreedInput = Readonly<{ a: Creature; b: Creature; seed: number; tier: TierId; playId: bigint; takenNames?: ReadonlySet<string> }>;
 export type BreedResult = Readonly<{ sheet: SpriteSheet; dna: Dna; name: string; family: string; familyId: number; lineage: number }>;
 
 /** Tier visuals shared by renderer and UI. */
@@ -73,7 +99,3 @@ export const PARENT_TINT = ["#F4F1EA", "#CCFF00"] as const;
 
 /** World stations the player can walk to (scene) or open from the HUD (ui). */
 export type StationId = "matchmaker" | "incubator" | "sanctuary" | "slingshot";
-
-/** Moon Slingshot landing zones, nearest first. Odds and multipliers live in src/slingshot.ts. */
-export type LaunchZoneId = "pond" | "haystack" | "rooftop" | "cloud" | "orbit" | "moon";
-export const LAUNCH_ZONE_ORDER: readonly LaunchZoneId[] = ["pond", "haystack", "rooftop", "cloud", "orbit", "moon"];

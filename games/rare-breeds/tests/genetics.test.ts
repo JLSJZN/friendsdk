@@ -2,10 +2,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { breed, breedSeed } from "../src/genetics.ts";
+import { breed, breedSeed, inheritedShapes, passableShapes, PASS_ON_ODDS } from "../src/genetics.ts";
 import { babyName, isBlockedName } from "../src/names.ts";
 import { COLOSSUS, creatureFromRecord, FAMILY_NAMES, type WildFriendRecord } from "../src/sprites.ts";
-import { FACINGS, TIER_ORDER, type BreedResult, type Creature, type Frame, type TierId } from "../src/types.ts";
+import { FACING_FRAMES, FACINGS, TIER_ORDER, type BreedResult, type Creature, type Facing, type Frame, type ShapeTrait, type TierId } from "../src/types.ts";
 
 const records: WildFriendRecord[] = JSON.parse(readFileSync(new URL("../data/wild-friends.json", import.meta.url), "utf8")).friends;
 const pool = records.map(record => creatureFromRecord(record));
@@ -316,7 +316,170 @@ test("baby names are cute, capitalised, deterministic and clean", () => {
     assert.match(name.toLowerCase(), /^[bdfgklmnprstvz][aeiou][bdfgklmnprstvxz][aeiou]$/);
     assert.ok(!isBlockedName(name), name);
     for (const word of ["nig", "fag", "kike", "rape", "nazi", "pedo", "homo", "paki", "puta", "dago", "kaka", "tit"]) assert.ok(!name.toLowerCase().includes(word), name);
+    assert.ok(name !== "Name" && name !== "None", "no name that reads like placeholder text");
     names.add(name);
   }
   assert.ok(names.size > 1500, `variety: ${names.size} names`);
+});
+
+test("a name already used this session is re-rolled, deterministically, and changes nothing else", () => {
+  for (let k = 0; k < 60; k++) {
+    const [a, b] = randomPair(), playId = BigInt(900 + k), seed = breedSeed(77949n, a.key, b.key, playId), tier = TIER_ORDER[k % 4];
+    const plain = breed({ a, b, seed, tier, playId });
+    const taken = new Set([plain.name, "Momo"]);
+    const renamed = breed({ a, b, seed, tier, playId, takenNames: taken });
+    assert.notEqual(renamed.name, plain.name, "a taken name is never reused");
+    assert.match(renamed.name, /^[A-Z][a-z]{3}$/);
+    assert.ok(!isBlockedName(renamed.name));
+    assert.equal(breed({ a, b, seed, tier, playId, takenNames: new Set(taken) }).name, renamed.name, "same seed and taken names, same name");
+    assert.deepEqual(frames(renamed).map(frame => Array.from(frame)), frames(plain).map(frame => Array.from(frame)), "the pixels do not change");
+    assert.deepEqual([renamed.dna.rowSource, renamed.dna.traits, renamed.family], [plain.dna.rowSource, plain.dna.traits, plain.family]);
+    assert.equal(breed({ a, b, seed, tier, playId, takenNames: new Set(["Zzzz"]) }).name, plain.name, "a free name stays");
+  }
+});
+
+// Inherited shape mutations. Oracle: a parent's trait is carried when every row holding its cells, in any of the 16
+// frames (idle 0-7, walk 0-7) of any facing it grew on, came from that parent and every cell is ink in the baby's own
+// frame (rows are copied in place). A Side-walker baby is checked on its two sides only.
+const HEAD_LABELS = ["Antennae", "Horns", "Ears", "Crest", "Long Antennae", "Big Horns", "Bunny Ears", "Mohawk"];
+const frameOf = (creature: Creature, facing: Facing, k: number) => creature.sheet[k < 8 ? "idle" : "walk"][facing][k % 8];
+const traitFacings = (shape: ShapeTrait, sideWalker: boolean) => (sideWalker ? ["right", "left"] as const : FACINGS).filter(facing => shape.cells[facing]?.length);
+function carries(baby: Creature, side: 0 | 1, shape: ShapeTrait, facings: readonly Facing[]) {
+  return facings.every(facing => shape.cells[facing]!.every((cells, k) =>
+    cells.every(cell => baby.dna!.rowSource[cell >> 4] === side && frameOf(baby, facing, k)[cell] === 1)));
+}
+const mutatedParent = (k: number) => {
+  const [a, b] = randomPair();
+  return hatch(a, b, k % 5 === 0 ? "prismatic" : "mutant").baby;
+};
+
+test(`shape mutations pass on ${PASS_ON_ODDS}, in every tier, deterministically and only when the pixels are there`, t => {
+  let passable = 0, carried = 0, commons = 0;
+  const perTier = Object.fromEntries(TIER_ORDER.map(tier => [tier, [0, 0]])) as Record<TierId, number[]>;
+  for (let k = 0; k < 400; k++) {
+    const parent = mutatedParent(k), mate = pool[random(pool.length)], side = (k % 2) as 0 | 1;
+    assert.ok((parent.dna!.shapes ?? []).every(shape => !shape.from), "a hatch from Friends grows its own shapes");
+    const [a, b] = side ? [mate, parent] : [parent, mate], tier = TIER_ORDER[k % 4];
+    const offer = passableShapes(a, b).filter(item => item.side === side);
+    const { baby, result } = hatch(a, b, tier);
+    const again = breed({ a, b, tier, playId: baby.playId!, seed: breedSeed(77949n, a.key, b.key, baby.playId!) });
+    assert.deepEqual([again.dna.rowSource, again.dna.traits, again.dna.shapes], [result.dna.rowSource, result.dna.traits, result.dna.shapes], "deterministic");
+    const inherited = (result.dna.shapes ?? []).filter(shape => shape.from);
+    // The detector agrees with the oracle on every trait the parent has, both ways (no false positives or negatives).
+    const sideWalker = result.dna.traits.includes("Side-walker");
+    for (const shape of parent.dna!.shapes ?? []) {
+      const facings = traitFacings(shape, sideWalker);
+      const expected = facings.length > 0 && carries(baby, side, shape, facings);
+      const found = inherited.find(item => item.label === shape.label && item.from!.side === side);
+      assert.equal(!!found, expected, `${parent.name} ${shape.label} -> ${baby.name} (${tier})`);
+      if (found) {
+        assert.equal(found.from!.name, parent.name);
+        assert.ok(result.dna.traits.includes(`${shape.label} (from ${parent.name})`), "the trait line names the source");
+        assert.deepEqual(found.cells, Object.fromEntries(facings.map(facing => [facing, shape.cells[facing]])), "same cells as the parent");
+      }
+    }
+    assert.deepEqual(inheritedShapes(a, b, result.dna.rowSource, result.sheet).map(shape => shape.label), inherited.map(shape => shape.label));
+    passable += offer.length;
+    const got = inherited.filter(shape => shape.from!.side === side).length;
+    carried += got;
+    perTier[tier][0] += offer.length; perTier[tier][1] += got;
+    if (tier === "common" && got) commons++;
+    if (tier === "common") assert.equal(ink(result.dna.pattern), 0, "an inherited shape never gives a Common a pattern");
+    assertHealthy(result, `${parent.name} x ${mate.name} ${tier}`);
+  }
+  const rate = carried / passable;
+  t.diagnostic(`pass-on rate ${carried}/${passable} = ${rate.toFixed(3)}; per tier ${TIER_ORDER.map(tier => `${tier} ${(perTier[tier][1] / perTier[tier][0]).toFixed(2)}`).join(", ")}`);
+  assert.ok(passable > 300, `enough samples (${passable})`);
+  assert.ok(rate > 0.42 && rate < 0.58, `"${PASS_ON_ODDS}" is backed by the measured rate ${rate.toFixed(3)}`);
+  for (const tier of TIER_ORDER) assert.ok(perTier[tier][1] / perTier[tier][0] > 0.35, `${tier} babies inherit too`);
+  assert.ok(commons > 20, `Common babies inherit shapes (${commons})`);
+});
+
+test("no inherited shapes without a mutated parent", () => {
+  for (let k = 0; k < 120; k++) {
+    const [a, b] = randomPair(), tier = TIER_ORDER[k % 4];
+    const { result, baby } = hatch(a, b, tier);
+    assert.ok((result.dna.shapes ?? []).every(shape => !shape.from), "Friends carry no shapes");
+    assert.ok(result.dna.traits.every(trait => !trait.includes("(from ")));
+    assert.deepEqual(passableShapes(a, b), []);
+    // A Common or Spotted baby (no shapes) passes nothing on either.
+    if (tier === "common" || tier === "spotted") {
+      const next = hatch(baby, pool[random(pool.length)], "common").result;
+      assert.deepEqual(next.dna.shapes, []);
+      assert.ok(next.dna.traits.every(trait => !trait.includes("(from ")));
+    }
+  }
+});
+
+test("an inherited shape is whole in every frame: it bobs and walks with the body in all four facings", () => {
+  let checked = 0, moving = 0;
+  for (let k = 0; k < 200; k++) {
+    const parent = mutatedParent(k), side = (k % 2) as 0 | 1, mate = pool[random(pool.length)];
+    // The parent's body before it grew anything: the same seed as a Common (rows and repair do not depend on the tier).
+    const [pa, pb] = [parent.parents!, parent.playId!] as const, founders = pa.map(key => pool.find(item => item.key === key)!);
+    const plain = breed({ a: founders[0], b: founders[1], tier: "common", playId: pb, seed: breedSeed(77949n, pa[0], pa[1], pb) });
+    for (const shape of parent.dna!.shapes ?? []) for (const facing of FACINGS) {
+      const lists = shape.cells[facing];
+      if (!lists) continue;
+      assert.equal(lists.length, FACING_FRAMES, "one cell list per frame");
+      // The recorded cells are real growth: ink on the parent in that very frame, and paper on its plain body in the
+      // reference frame (a piece may cross body ink while the body moves).
+      lists.forEach((cells, f) => assert.ok(cells.length > 0 && cells.every(cell => frameOf(parent, facing, f)[cell] === 1), `${parent.name} ${shape.label} ${facing} frame ${f}`));
+      assert.ok(lists[0].every(cell => plain.sheet.idle[facing][0][cell] === 0), `${parent.name} ${shape.label} grew on paper (${facing})`);
+      if (new Set(lists.map(cells => Math.min(...cells.map(cell => cell >> 4)))).size > 1) moving++;
+    }
+    const [a, b] = side ? [mate, parent] : [parent, mate];
+    const { baby } = hatch(a, b, TIER_ORDER[k % 4]);
+    for (const shape of (baby.dna!.shapes ?? []).filter(item => item.from)) for (const facing of FACINGS) (shape.cells[facing] ?? []).forEach((cells, f) => {
+      assert.ok(cells.every(cell => frameOf(baby, facing, f)[cell] === 1), `${baby.name} keeps ${shape.label} in ${facing} frame ${f}`);
+      checked++;
+    });
+  }
+  assert.ok(checked > 1000, `frames checked (${checked})`);
+  assert.ok(moving > 20, `some shapes move between frames, so frame 0 alone would not do (${moving})`);
+});
+
+test("shapes travel grandparent -> parent -> baby at the same rate, and are never grown twice", t => {
+  let offered = 0, carried = 0, doubled = 0, mutantsWithHead = 0;
+  for (let k = 0; k < 500; k++) {
+    const grand = mutatedParent(k);
+    const parent = hatch(grand, pool[random(pool.length)], TIER_ORDER[k % 4]);
+    const inherited = (parent.result.dna.shapes ?? []).filter(shape => shape.from);
+    // Mutant and Prismatic babies that already carry a head mutation grow no second one (a tail at most).
+    if ((parent.baby.tier === "mutant" || parent.baby.tier === "prismatic") && inherited.some(shape => shape.kind === "head")) {
+      mutantsWithHead++;
+      const grown = (parent.result.dna.shapes ?? []).filter(shape => !shape.from);
+      if (grown.some(shape => shape.kind === "head")) doubled++;
+      assert.equal(parent.result.dna.traits.filter(trait => HEAD_LABELS.includes(trait)).length, 0, "no second head label");
+      assert.ok(grown.every(shape => shape.kind === "tail" && !inherited.some(item => item.kind === "tail")));
+    }
+    if (!inherited.length) continue;
+    const mate = pool[random(pool.length)];
+    offered += passableShapes(mate, parent.baby).filter(item => item.side === 1 && inherited.some(shape => shape.label === item.label)).length;
+    const child = hatch(mate, parent.baby, "common").result;
+    const again = (child.dna.shapes ?? []).filter(shape => shape.from?.side === 1 && inherited.some(item => item.label === shape.label));
+    for (const shape of again) {
+      assert.equal(shape.from!.name, parent.baby.name, "the source is the parent that passed it on");
+      const original = inherited.find(item => item.label === shape.label)!;
+      for (const view of ["down", "right"] as const) if (shape.cells[view]) assert.deepEqual(shape.cells[view], original.cells[view], "the grandparent's own pixels");
+    }
+    carried += again.length;
+  }
+  t.diagnostic(`second generation pass-on ${carried}/${offered} = ${(carried / offered).toFixed(3)}; ${mutantsWithHead} Mutant/Prismatic babies already had a head`);
+  assert.ok(offered > 150 && carried / offered > 0.4 && carried / offered < 0.62, `F3 rate ${(carried / offered).toFixed(3)}`);
+  assert.ok(mutantsWithHead > 50);
+  assert.equal(doubled, 0);
+});
+
+test("a patterned parent's pattern kind is preferred when the tier shows a pattern", () => {
+  const KINDS = ["Spots", "Stripes", "Patch"];
+  let same = 0, total = 0;
+  for (let k = 0; k < 200; k++) {
+    const [a, b] = randomPair();
+    const parent = hatch(a, b, "spotted").baby, kind = parent.dna!.traits.find(trait => KINDS.includes(trait))!;
+    const child = hatch(parent, pool[random(pool.length)], k % 2 ? "spotted" : "mutant").result;
+    total++;
+    if (child.dna.traits.includes(kind)) same++;
+  }
+  assert.ok(same / total > 0.75, `children show the parent's kind ${same}/${total}`);
 });

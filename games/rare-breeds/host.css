@@ -1,4 +1,29 @@
-/* Trusted runtime layout: use a taller frame on portrait phones so the nursery is not a thin strip. */
+/* Trusted runtime layout: portrait phones get a frame as tall as their screen allows, so the nursery is not a thin strip.
+   Each step is the tallest ratio whose frame still fits the viewport (its width / height at most that ratio), from 3:4
+   down to 1:2. Where small viewport units work, the frame also never outgrows the smallest visible height (browser bars
+   shown): if a browser reports a taller viewport than it shows, the frame narrows a little instead of scrolling the page.
+   Landscape phones keep the 3:2 frame, narrowed the same way. The runtime's toolbar and confirmations live inside the
+   frame, so they stay on screen. */
 @media (max-width: 600px) and (orientation: portrait) {
   :root { --rf-game-aspect-ratio: 3 / 4; }
+}
+@media (max-width: 600px) and (max-aspect-ratio: 2 / 3) {
+  :root { --rf-game-aspect-ratio: 2 / 3; --rb-frame-fit: calc(100svh * 2 / 3); }
+}
+@media (max-width: 600px) and (max-aspect-ratio: 3 / 5) {
+  :root { --rf-game-aspect-ratio: 3 / 5; --rb-frame-fit: calc(100svh * 3 / 5); }
+}
+@media (max-width: 600px) and (max-aspect-ratio: 9 / 16) {
+  :root { --rf-game-aspect-ratio: 9 / 16; --rb-frame-fit: calc(100svh * 9 / 16); }
+}
+@media (max-width: 600px) and (max-aspect-ratio: 1 / 2) {
+  :root { --rf-game-aspect-ratio: 1 / 2; --rb-frame-fit: calc(100svh / 2); }
+}
+@supports (height: 100svh) {
+  @media (max-width: 600px) and (max-aspect-ratio: 2 / 3) {
+    :root { --rf-game-max-width: var(--rb-frame-fit); }
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    :root { --rf-game-max-width: min(960px, calc(100svh * 3 / 2)); }
+  }
 }

@@ -1,11 +1,14 @@
 import type { ReactNode } from "react";
 import { formatChance, formatRF } from "../economy.ts";
-import { LAUNCH_ZONES, MOON_FUND_START, multiplierLabel } from "../slingshot.ts";
+import { PASS_ON_ODDS } from "../genetics.ts";
+import { CHIMERA_FRIENDS, ECHO_ROWS } from "../titles.ts";
+import { FIZZLE_BPS, LADDER_EXITS, MOON_FUND_START, MOON_HUNDREDTHS, multiplierLabel, reachBps } from "../slingshot.ts";
 import type { Creature } from "../types.ts";
 import { HudLegend, StationLegend, type HudSample } from "./Legend.tsx";
 import { Panel } from "./Panel.tsx";
 import { PixelIcon } from "./PixelIcon.tsx";
 import { AVERAGE_BACK } from "./SlingshotPanel.tsx";
+import { ALL_BREEDS } from "./collection.ts";
 import { tierLabel, tierVars, type TierInfo } from "./shared.ts";
 
 export type SettingsPanelProps = Readonly<{
@@ -31,7 +34,13 @@ export type SettingsPanelProps = Readonly<{
 }>;
 
 /** The top multiplier as "10x": a launch needs the Moon Fund to cover this much of the baby's value. */
-const TOP_MULTIPLIER = `${multiplierLabel(LAUNCH_ZONES[LAUNCH_ZONES.length - 1].multiplierBps).slice(1)}x`;
+const TOP_MULTIPLIER = `${multiplierLabel(MOON_HUNDREDTHS).slice(1)}x`;
+/** The exits table, farthest first, ending with the fizzle on the pad. */
+const EXIT_ROWS = [
+  ...[...LADDER_EXITS].reverse().map(hundredths => ({ id: `x${hundredths}`, label: hundredths === MOON_HUNDREDTHS ? "Moon, auto jump" : `Jump at ${multiplierLabel(hundredths)}`,
+    chanceBps: reachBps(hundredths), pays: multiplierLabel(hundredths), moon: hundredths === MOON_HUNDREDTHS })),
+  { id: "fizzle", label: "Fizzles on the pad", chanceBps: FIZZLE_BPS, pays: multiplierLabel(0), moon: false },
+];
 
 function Switch({ label, detail, checked, onToggle }: { label: string; detail: string; checked: boolean; onToggle: () => void }) {
   return <button type="button" role="switch" aria-checked={checked} className="rb-switch" onClick={onToggle}>
@@ -51,11 +60,12 @@ export function SettingsPanel({ muted, onToggleSound, reducedMotion, onToggleRed
     <ol className="rb-steps">
       <li><strong>Find a match.</strong> Pick a parent and one of three real Rare Friends. New faces are free.</li>
       <li><strong>Hatch an egg.</strong> Each egg costs {price} (simulated). Rare Friends asks you to confirm Buy egg and Use egg; both are previews.</li>
-      <li><strong>Meet the baby.</strong> Every pixel row comes from one parent, walk cycle included.</li>
-      <li><strong>Keep or trade in.</strong> Kept babies follow you, earn Hearts and can breed again; each generation counts up (F1, F2, F3). The Sanctuary trades a baby in for a fixed simulated RF value.</li>
-      <li><strong>Feeling lucky?</strong> Launch a kept baby from the Moon Slingshot. Where it lands pays x0 to x10 its value.</li>
+      <li><strong>Meet the baby.</strong> Every pixel row comes from one parent, walk cycle included. Mutations are rare, but a kept baby passes its shapes on ({PASS_ON_ODDS} each): pick it as a parent.</li>
+      <li><strong>Keep or trade in.</strong> Kept babies follow you, earn Hearts and can breed again; each generation counts up (F1, F2, F3). The Sanctuary trades a baby in for a fixed simulated RF value.
+        Titles, just for show: Echo ({ECHO_ROWS}+ of 16 rows from your Friend), Purebred (one family), Chimera (rows from {CHIMERA_FRIENDS}+ Friends). Tap a title on a card to see why.</li>
+      <li><strong>Feeling lucky?</strong> Launch a kept baby from the Moon Slingshot: hold to fly, let go to jump. Up to x10, or the pond.</li>
       <li><strong>Spend Hearts.</strong> Hearts are game points, never RF. Tap the heart counter to buy hats for your Friend and babies, or a Wish match (three mates from a family you pick).</li>
-      <li><strong>Collect them all.</strong> Hatch babies from all 9 Friend families and find all 4 tiers. Your brood tracks the set.</li>
+      <li><strong>Collect them all.</strong> Hatch babies from all 9 Friend families and find all 4 tiers. Your brood tracks the set. Each family pair is a named breed: {ALL_BREEDS.length} in the breed book, which shows the pair to try for each one you have not found.</li>
     </ol>
 
     <h3 className="rb-section-label">Stations</h3>
@@ -77,21 +87,25 @@ export function SettingsPanel({ muted, onToggleSound, reducedMotion, onToggleRed
     <p className="rb-muted rb-small">Values are in Simulated RF. The tier is decided by the game's odds when the egg hatches; which parents you pick never changes it.{note ? <> {note}</> : null}</p>
 
     <h3 className="rb-section-label"><PixelIcon name="moon" />Moon Slingshot · per launch</h3>
-    <p className="rb-sling-about">Pick a kept baby, hold to pull the band, let go. A launch trades the baby in for its Sanctuary value
-      (runtime confirmation), paid into your balance as usual; that value is the stake. Where it lands pays stake x multiplier,
-      and the difference to the stake goes to your Slingshot net.
+    <p className="rb-sling-about">Pick a kept baby and launch. The launch trades it in for its Sanctuary value (runtime confirmation),
+      paid into your balance either way; that value is the stake. Then it rides a firework rocket: hold to fly, let go to jump. The multiplier
+      climbs from x1 (x2 at about 2.7 s, x4 at 5.4 s, x10 at 9 s), a jump pays stake x multiplier, and the difference to the stake goes to
+      your Slingshot net. If the rocket gives out first, it's the pond (x0); at x10 it jumps onto the Moon by itself.
       <strong> The baby is gone after the launch, even in the pond.</strong></p>
     <table className="rb-odds rb-sling-odds">
-      <thead><tr><th scope="col">Lands on</th><th scope="col">Chance</th><th scope="col">Multiplier</th></tr></thead>
-      <tbody>{[...LAUNCH_ZONES].reverse().map(zone => <tr key={zone.id} className={`rb-zone-${zone.id}`}>
-        <th scope="row">{zone.label}</th>
-        <td>{formatChance(zone.chanceBps)}</td>
-        <td>{multiplierLabel(zone.multiplierBps)}</td>
+      <thead><tr><th scope="col">Exit</th><th scope="col">Chance</th><th scope="col">Pays</th></tr></thead>
+      <tbody>{EXIT_ROWS.map(row => <tr key={row.id} className={row.moon ? "rb-zone-moon" : undefined}>
+        <th scope="row">{row.label}</th>
+        <td>{formatChance(row.chanceBps)}</td>
+        <td>{row.pays}</td>
       </tr>)}</tbody>
     </table>
-    <p className="rb-muted rb-small">On average {AVERAGE_BACK}x the stake comes back. Payouts come from the simulated Moon Fund
-      (it starts at {formatRF(MOON_FUND_START)}{moonFund ? `, now ${moonFund}` : ""}); the Slingshot net (payouts minus stakes) is its own HUD counter, apart from
-      your balance and not spendable in this preview. A launch needs the fund to cover {TOP_MULTIPLIER} the baby's value. Where it lands is random with these odds; how hard you pull is just for fun.</p>
+    <p className="rb-muted rb-small">Chance: how often the rocket gets that far; Pays: the whole payout as a multiple of the stake. Jump early for
+      a likely small win, hold for a rare big one: any exit pays back {AVERAGE_BACK}x the stake on average (a hair less between the round
+      numbers). Where the rocket gives out is drawn once, when you light it.
+      Payouts come from the simulated Moon Fund (it starts at {formatRF(MOON_FUND_START)}{moonFund ? `, now ${moonFund}` : ""}); the Slingshot net
+      (payouts minus stakes) is its own HUD counter, apart from your balance and not spendable in this preview. A launch needs the fund to cover
+      {" "}{TOP_MULTIPLIER} the baby's value.</p>
 
     <h3 className="rb-section-label">Settings</h3>
     <div className="rb-switches">

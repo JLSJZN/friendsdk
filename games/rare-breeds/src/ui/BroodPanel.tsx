@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
 import { buildLegacy, type Legacy } from "../legacy.ts";
+import { lineageTitles, TITLE_NAME } from "../titles.ts";
 import type { Creature } from "../types.ts";
 import { BabyCard } from "./BabyCard.tsx";
 import { CollectionMeter } from "./Collection.tsx";
@@ -43,6 +44,8 @@ export type BroodPanelProps = Readonly<{
   initialTab?: BroodTab;
   /** Precomputed buildLegacy(friend, babies, creature) (src/legacy.ts); computed when omitted. */
   legacy?: Legacy;
+  /** This session's hatch number of a baby ("Hatch #7 · F2" on its card). */
+  hatchNumber?: (baby: Creature) => number | undefined;
   busy?: boolean;
   busyLabel?: string;
   error?: string;
@@ -54,7 +57,7 @@ export type BroodPanelProps = Readonly<{
  * shows the player's Friend (FriendCard) and a family tree rooted at it.
  */
 export function BroodPanel({ babies, tiers, creature, initialSelectedKey, onRelease, onUseAsParent, onFindMatch, onClose,
-  collection, sanctuary, heartsRate, onOpenShop, friend, initialTab = "brood", legacy, busy, busyLabel, error, reducedMotion }: BroodPanelProps) {
+  collection, sanctuary, heartsRate, onOpenShop, friend, initialTab = "brood", legacy, hatchNumber, busy, busyLabel, error, reducedMotion }: BroodPanelProps) {
   const id = useId();
   const income = heartsRate ? babies.reduce((sum, baby) => sum + heartsRate(baby), 0) : 0;
   const [selectedKey, setSelectedKey] = useState(initialSelectedKey ?? null);
@@ -63,6 +66,9 @@ export function BroodPanel({ babies, tiers, creature, initialSelectedKey, onRele
   const computed = useMemo(() => !showLegacy || !friend ? null : legacy ?? buildLegacy(friend, babies, creature ?? (() => null)),
     [showLegacy, legacy, friend, babies, creature]);
   const selected = babies.find(baby => baby.key === selectedKey) ?? null;
+  // Lineage titles per baby (cosmetic), for the grid; the detail card computes its own.
+  const titles = useMemo(() => new Map(creature && friend ? babies.map(baby => [baby.key, lineageTitles(baby, creature, friend)]) : []),
+    [babies, creature, friend]);
   const info = (baby: Creature) => tiers.find(row => row.tier === (baby.tier ?? "common"));
 
   if (selected) {
@@ -71,7 +77,8 @@ export function BroodPanel({ babies, tiers, creature, initialSelectedKey, onRele
       aria-label="Back to your brood"><PixelIcon name="back" /></button>;
     return <Panel eyebrow="Nursery" title={sanctuary ? "Sanctuary: pick a baby to trade in" : `Your brood · ${babies.length}`} onClose={busy ? undefined : onClose} headerStart={back} size="lg"
       focusKey={selected.key} className="rb-brood rb-brood-detail">
-      <BabyCard baby={selected} mode="detail" chance={tier?.chance ?? "?"} value={tier?.value ?? "?"} creature={creature}
+      <BabyCard baby={selected} mode="detail" chance={tier?.chance ?? "?"} value={tier?.value ?? "?"} creature={creature} friend={friend}
+        hatchNumber={hatchNumber?.(selected)}
         parentA={selected.parents && creature ? creature(selected.parents[0]) : null}
         parentB={selected.parents && creature ? creature(selected.parents[1]) : null}
         onRelease={() => onRelease(selected)} onUseAsParent={onUseAsParent && (() => onUseAsParent(selected))}
@@ -124,17 +131,19 @@ export function BroodPanel({ babies, tiers, creature, initialSelectedKey, onRele
     </div> : <>
       {error && <p className="rb-error" role="alert">{error}</p>}
       <ul className="rb-brood-grid">
-        {babies.map(baby => <li key={baby.key}>
+        {babies.map(baby => { const earned = titles.get(baby.key) ?? []; return <li key={baby.key}>
           <button type="button" className={`rb-brood-item rb-tier-${baby.tier ?? "common"}`} style={tierVars(baby.tier)} onClick={() => setSelectedKey(baby.key)}
-            aria-label={`${baby.name}, ${tierLabel(baby.tier)}, ${lineageLabel(baby)}${heartsRate ? `, earns ${heartsRate(baby)} Hearts a minute` : ""}. Show details`}>
+            aria-label={`${baby.name}, ${tierLabel(baby.tier)}, ${lineageLabel(baby)}${earned.length ? `, ${earned.map(title => title.label).join(", ")}` : ""}${heartsRate ? `, earns ${heartsRate(baby)} Hearts a minute` : ""}. Show details`}>
             <span className="rb-slot"><SpriteThumb creature={baby} scale={4} compactScale={2} reducedMotion={reducedMotion} label="" /></span>
             <span className="rb-brood-name">{baby.name}</span>
             <span className="rb-brood-meta">
               <span className="rb-tier-dot" aria-hidden="true" />{tierLabel(baby.tier)} · {lineageLabel(baby)}
             </span>
+            {earned.length > 0 && <span className="rb-brood-title" title={earned.map(title => title.label).join(", ")}>
+              <PixelIcon name="sparkle" />{earned.map(title => TITLE_NAME[title.id]).join(" · ")}</span>}
             {heartsRate && <span className="rb-brood-rate"><PixelIcon name="heart" />{heartsRate(baby)}/min</span>}
           </button>
-        </li>)}
+        </li>; })}
       </ul>
       <p className="rb-muted rb-small rb-brood-note">Tap a baby for its DNA card. Breed it again, or trade it in at the Sanctuary for its fixed simulated RF value.</p>
     </>}

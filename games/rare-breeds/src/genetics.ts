@@ -3,7 +3,7 @@
 // facing and frame index from each parent) so the walk cycle stays coherent. Every frame is then
 // repaired into one 8-connected body, and the hatch tier adds a pattern and a shape mutation.
 // Pure and deterministic (no SDK runtime import): shared by the game, node tests and dev tools.
-import { FACINGS, FRAME_SIZE, type BreedInput, type BreedResult, type Clip, type Creature, type Facing, type Frame, type SpriteSheet, type TierId } from "./types.ts";
+import { FACING_FRAMES, FACINGS, FRAME_SIZE, type BreedInput, type BreedResult, type Clip, type Creature, type Facing, type Frame, type ShapeTrait, type SpriteSheet, type TierId } from "./types.ts";
 import { COLOSSUS, FAMILY_NAMES } from "./sprites.ts";
 import { babyName } from "./names.ts";
 
@@ -239,6 +239,81 @@ function randomRows(rand: Stream): (0 | 1)[] {
   return rows;
 }
 
+/** Every mask randomRows can draw (runs of 2 to 5 rows, either parent first): 630 masks. */
+const ALL_MASKS: readonly Rows[] = (() => {
+  const out: Rows[] = [];
+  const grow = (rows: (0 | 1)[], parent: 0 | 1) => {
+    if (rows.length === N) { out.push(rows); return; }
+    for (const length of [2, 3, 4, 5]) {
+      const left = N - rows.length - length;
+      if (left === 0 || left >= 2) grow([...rows, ...Array<0 | 1>(length).fill(parent)], parent ? 0 : 1);
+    }
+  };
+  grow([], 0); grow([], 1);
+  return out;
+})();
+
+// Inherited shapes. A parent's shape mutation lives in its own pixel rows, so a baby that takes all of those rows from
+// that parent carries it, whatever the baby's tier. Pieces bob and walk with the body, so "its rows" are the rows it
+// covers in any frame of any facing it grew on. The mask ranking gets one seeded wish per trait (take it or leave it,
+// 1 in 2), so each passes on about half the time; every hard check still applies.
+
+/** The measured pass-on rate of one parent's shape trait (tests/genetics.test.ts keeps it near 50%). */
+export const PASS_ON_ODDS = "about 1 in 2";
+
+/** Facings a baby's shape is checked on: all four, or a Side-walker's two sides (its front and back reuse the right frames). */
+const shapeFacings = (sideWalker: boolean): readonly Facing[] => sideWalker ? ["right", "left"] : FACINGS;
+/** Frame k (0-15, see FACING_FRAMES) of one facing: idle 0-7, then walk 0-7. */
+const facingFrame = (sheet: SpriteSheet, facing: Facing, k: number) => sheet[k < 8 ? "idle" : "walk"][facing][k % 8];
+type Heir = Readonly<{ side: 0 | 1; parent: Creature; trait: ShapeTrait; facings: readonly Facing[]; rows: readonly number[] }>;
+
+/**
+ * The parents' shape traits a baby of this pair can carry, on every facing the baby shows them (a Side-walker baby
+ * shows only its sides), and only when some mask takes all of the trait's rows, in every frame, from that parent.
+ */
+function heirsOf(a: Creature, b: Creature, sideWalker: boolean): Heir[] {
+  const heirs: Heir[] = [];
+  [a, b].forEach((parent, side) => {
+    for (const trait of parent.dna?.shapes ?? []) {
+      const facings = shapeFacings(sideWalker).filter(facing => trait.cells[facing]?.length);
+      const rows = [...new Set(facings.flatMap(facing => trait.cells[facing]!.flatMap(list => list.map(cell => (cell / N) | 0))))].sort((p, q) => p - q);
+      if (facings.length && ALL_MASKS.some(mask => rows.every(y => mask[y] === side))) heirs.push({ side: side as 0 | 1, parent, trait, facings, rows });
+    }
+  });
+  return heirs;
+}
+const takes = (heir: Heir, rows: Rows) => heir.rows.every(y => rows[y] === heir.side);
+
+/** What a pair can pass on (the Matchmaker hint): each shape trait a baby of these parents can carry. */
+export function passableShapes(a: Creature, b: Creature): readonly Readonly<{ label: string; side: 0 | 1; name: string }>[] {
+  return heirsOf(a, b, isSideWalker(a) || isSideWalker(b)).map(heir => ({ label: heir.trait.label, side: heir.side, name: heir.parent.name }));
+}
+
+/**
+ * The parents' shape traits a baby really carries: every row of the trait came from that parent and every one of its
+ * cells is ink in the baby's own frame, in all 16 frames of every facing checked. Pure; `rowSource` and `sheet` are the baby's.
+ */
+export function inheritedShapes(a: Creature, b: Creature, rowSource: readonly (0 | 1)[], sheet: SpriteSheet): ShapeTrait[] {
+  return heirsOf(a, b, isSideWalker(a) || isSideWalker(b))
+    .filter(heir => takes(heir, rowSource) && heir.facings.every(facing =>
+      heir.trait.cells[facing]!.every((list, k) => { const frame = facingFrame(sheet, facing, k); return list.every(cell => frame[cell] === 1); })))
+    .map(({ side, parent, trait, facings }) => Object.freeze({
+      label: trait.label, kind: trait.kind, cells: Object.freeze(Object.fromEntries(facings.map(facing => [facing, trait.cells[facing]]))),
+      from: Object.freeze({ side, name: parent.name }),
+    }));
+}
+
+/** The rows a shape covers in any frame of any facing (for the DNA card), top first. Rows are shared by every facing. */
+export function shapeRows(shape: ShapeTrait): number[] {
+  return [...new Set(Object.values(shape.cells).flatMap(lists => lists!.flatMap(list => list.map(cell => (cell / N) | 0))))].sort((p, q) => p - q);
+}
+
+/** One seeded wish per heir (take it or leave it, 1 in 2); a mask's misses count the wishes it breaks. */
+function wishesOf(heirs: readonly Heir[], seed: number) {
+  const rand = stream(seed, "heirs"), wishes = heirs.map(heir => ({ heir, take: rand.next() < 0.5 }));
+  return (rows: Rows) => wishes.reduce((sum, { heir, take }) => sum + Number(takes(heir, rows) !== take), 0);
+}
+
 /** Ink extent of a row: [left, right], or null for an empty row. */
 function span(frame: Frame, y: number): readonly [number, number] | null {
   let left = -1, right = -1;
@@ -299,21 +374,32 @@ function assessRows(a: SpriteSheet, b: SpriteSheet, rows: Rows, views: readonly 
   return { ok, score };
 }
 
-/** Seeded candidate masks, best first. The caller builds with the first one whose sheet verifies. */
-function rankRows(a: SpriteSheet, b: SpriteSheet, seed: number, sideWalker: boolean, mirror: MirrorPolicy): Rows[] {
+/**
+ * Seeded candidate masks, best first: masks that pass the hard checks, then those that break the fewest inheritance
+ * wishes, then by score. The caller builds with the first one whose sheet verifies. Without heirs this is the plain
+ * ranking (misses are all 0), so babies of Friends and unmutated babies are unchanged.
+ */
+function rankRows(a: SpriteSheet, b: SpriteSheet, seed: number, sideWalker: boolean, mirror: MirrorPolicy, heirs: readonly Heir[]): Rows[] {
   const rand = stream(seed, "rows"), seen = new Set<string>(), views: Facing[] = sideWalker ? ["right"] : ["down", "right"];
   const ranked: { rows: Rows; ok: boolean; score: number }[] = [];
-  let finalists = 0;
-  for (let attempt = 0; attempt < MASK_TRIES && finalists < MASK_FINALISTS; attempt++) {
-    const rows = randomRows(rand), key = rows.join("");
-    if (seen.has(key)) continue;
+  const consider = (rows: Rows) => {
+    const key = rows.join("");
+    if (seen.has(key)) return false;
     seen.add(key);
     const result = assessRows(a, b, rows, views, mirror);
-    if (result.ok) finalists++;
     ranked.push({ rows, ...result });
+    return result.ok;
+  };
+  let finalists = 0;
+  for (let attempt = 0; attempt < MASK_TRIES && finalists < MASK_FINALISTS; attempt++) if (consider(randomRows(rand))) finalists++;
+  const misses = wishesOf(heirs, seed);
+  if (heirs.length) {
+    // A few masks that grant every wish, so a wanted trait is not left to the random draw.
+    const granted = stream(seed, "heir-rows").shuffle(ALL_MASKS.filter(rows => misses(rows) === 0));
+    for (let k = 0, tried = 0; k < granted.length && tried < MASK_FINALISTS; k++) if (!seen.has(granted[k].join(""))) { consider(granted[k]); tried++; }
   }
-  ranked.sort((p, q) => Number(q.ok) - Number(p.ok) || p.score - q.score);
-  return ranked.map(entry => entry.rows);
+  return ranked.map(entry => ({ ...entry, misses: misses(entry.rows) }))
+    .sort((p, q) => Number(q.ok) - Number(p.ok) || p.misses - q.misses || p.score - q.score).map(entry => entry.rows);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -394,7 +480,8 @@ const SIDE: Record<HeadKind, readonly Stamp[]> = {
 };
 const TAIL: readonly Stamp[] = [[[-1, 0], [-2, 0], [-3, -1], [-3, -2], [-2, -3]], [[-1, 0], [-2, -1], [-2, -2]]];
 
-type Piece = Readonly<{ anchor: "top" | "back"; line: number; ref: number; offsets: Stamp }>;
+/** `trait`: index into MutationPlan.traits, set once the plan picks the piece. */
+type Piece = Readonly<{ anchor: "top" | "back"; line: number; ref: number; offsets: Stamp; trait?: number }>;
 const flipX = (stamp: Stamp): Stamp => stamp.map(([dx, dy]) => [-dx, dy] as const);
 const topPiece = (frame: Frame, x: number, offsets: Stamp): Piece => ({ anchor: "top", line: x, ref: topOf(frame, x), offsets });
 
@@ -505,7 +592,8 @@ function facingFrames(frames: Frames, facing: Facing): FacingFrames {
   return { facing, view: facing === "down" || facing === "up" ? "front" : "side", frames: list };
 }
 
-type MutationPlan = Readonly<{ labels: readonly string[]; pieces: Partial<Record<Facing, Piece[]>> }>;
+type Grown = Readonly<{ label: string; kind: ShapeTrait["kind"] }>;
+type MutationPlan = Readonly<{ traits: readonly Grown[]; pieces: Partial<Record<Facing, Piece[]>> }>;
 
 /** Largest stamp variant of a kind that fits this facing (bold variants only for prismatic). */
 function fitHead(kind: HeadKind, set: FacingFrames, bold: boolean) {
@@ -521,14 +609,15 @@ function fitHead(kind: HeadKind, set: FacingFrames, bold: boolean) {
 /**
  * Head mutation in seeded order: the first kind that fits every facing wins, else the first that fits the
  * main facing. Prismatic babies first look for a kind whose bold variant fits the main facing, and also
- * grow a tail; mutants fall back to a tail when no head kind fits.
+ * grow a tail; mutants fall back to a tail when no head kind fits. What the baby already carries (inherited)
+ * is never grown twice: with a head mutation it grows only a tail, with a tail no second tail.
  */
-function planMutation(frames: Frames, seed: number, bold: boolean, sideWalker: boolean): MutationPlan {
+function planMutation(frames: Frames, seed: number, bold: boolean, sideWalker: boolean, carries: Readonly<{ head: boolean; tail: boolean }>): MutationPlan {
   const rand = stream(seed, "mutation"), kinds = rand.shuffle(HEAD_KINDS);
   const sets = (sideWalker ? ["right", "left"] as const : ["down", "up", "right", "left"] as const).map(facing => facingFrames(frames, facing));
   type Choice = { kind: HeadKind; bold: boolean; pieces: Partial<Record<Facing, Piece[]>> };
   let chosen: Choice | null = null;
-  for (const needBold of bold ? [true, false] : [false]) {
+  for (const needBold of carries.head ? [] : bold ? [true, false] : [false]) {
     let fallback: Choice | null = null;
     for (const kind of kinds) {
       const pieces: Partial<Record<Facing, Piece[]>> = {};
@@ -546,29 +635,41 @@ function planMutation(frames: Frames, seed: number, bold: boolean, sideWalker: b
     chosen ??= fallback;
     if (chosen) break;
   }
-  const labels: string[] = [], pieces: Partial<Record<Facing, Piece[]>> = { ...chosen?.pieces };
-  if (chosen) labels.push(HEAD_LABEL[chosen.kind][chosen.bold ? 1 : 0]);
-  if (bold || !chosen) {
+  const traits: Grown[] = [], pieces: Partial<Record<Facing, Piece[]>> = {};
+  const tag = (list: readonly Piece[]) => list.map(piece => ({ ...piece, trait: traits.length }));
+  if (chosen) {
+    for (const [facing, list] of Object.entries(chosen.pieces) as [Facing, Piece[]][]) pieces[facing] = tag(list);
+    traits.push({ label: HEAD_LABEL[chosen.kind][chosen.bold ? 1 : 0], kind: "head" });
+  }
+  if ((bold || !chosen) && !carries.tail) {
     let tailed = false;
     for (const set of sets) if (set.view === "side") for (const stamp of bold ? TAIL : TAIL.slice(1)) {
       const plan = tailPieces(stamp, set.frames[0]);
-      if (fits(plan, set.frames)) { pieces[set.facing] = [...(pieces[set.facing] ?? []), ...plan]; tailed = true; break; }
+      if (fits(plan, set.frames)) { pieces[set.facing] = [...(pieces[set.facing] ?? []), ...tag(plan)]; tailed = true; break; }
     }
-    if (tailed) labels.push("Tail");
+    if (tailed) traits.push({ label: "Tail", kind: "tail" });
   }
-  return { labels, pieces };
+  return { traits, pieces };
 }
 
-/** Grow the planned pieces on every frame (then re-check connectivity); returns each frame's new cells. */
-function applyMutation(frames: Frames, plan: MutationPlan, sideWalker: boolean, mirror: MirrorPolicy): Map<number, number[]> {
+/**
+ * Grow the planned pieces on every frame (then re-check connectivity). Returns each frame's new cells and, per planned
+ * trait, the cells its pieces cover in every frame of each facing it grew on (what descendants inherit).
+ */
+function applyMutation(frames: Frames, plan: MutationPlan, sideWalker: boolean, mirror: MirrorPolicy) {
   const added = new Map<number, number[]>();
+  const cells = plan.traits.map((): Partial<Record<Facing, number[][]>> => ({}));
   for (const clip of CLIPS) for (const facing of FACINGS) {
     const pieces = plan.pieces[facing];
     if (!pieces) continue;
     for (let i = 0; i < 8; i++) {
-      const index = slot(clip, facing, i), before = frames[index];
+      const index = slot(clip, facing, i), before = frames[index], k = (clip === "idle" ? 0 : 8) + i;
       const after = asRight(facing, before.slice(), frame => {
-        for (const piece of pieces) for (const cell of placePiece(frame, piece) ?? []) frame[cell] = 1;
+        for (const piece of pieces) for (const cell of placePiece(frame, piece) ?? []) {
+          frame[cell] = 1;
+          // Left frames are worked on mirrored: record the cell where it really is.
+          if (piece.trait !== undefined) ((cells[piece.trait][facing] ??= Array.from({ length: FACING_FRAMES }, () => []))[k]).push(facing === "left" ? mirrorIndex(cell) : cell);
+        }
         connect(frame, mirror(clip, facing, i));
       });
       const gained: number[] = [];
@@ -585,7 +686,7 @@ function applyMutation(frames: Frames, plan: MutationPlan, sideWalker: boolean, 
       added.set(slot(clip, "up", i), gained);
     }
   }
-  return added;
+  return { added, cells };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -693,10 +794,11 @@ function patchStencil(front: Ground, rand: Stream): Uint8Array | null {
 }
 
 /**
- * The tier's stencil. Spotted and mutant get one design in the accent colour; prismatic turns the whole
- * body into rainbow and keeps a dark design as structure. Mutant and prismatic also light up grown cells.
+ * The tier's stencil. Spotted and mutant get one design in the accent colour (a patterned parent's kind is tried
+ * first); prismatic turns the whole body into rainbow and keeps a dark design as structure. Mutant and prismatic
+ * also light up grown cells.
  */
-function makePattern(frames: Frames, tier: TierId, seed: number, sideWalker: boolean, mutated: Map<number, number[]>) {
+function makePattern(frames: Frames, tier: TierId, seed: number, sideWalker: boolean, mutated: Map<number, number[]>, parentKinds: readonly PatternKind[]) {
   const stencil = new Uint8Array(CELLS);
   if (tier === "common") return { stencil, label: null };
   const rand = stream(seed, "pattern"), main: Facing = sideWalker ? "right" : "down";
@@ -714,8 +816,9 @@ function makePattern(frames: Frames, tier: TierId, seed: number, sideWalker: boo
     const designs: Record<PatternKind, () => Uint8Array | null> = {
       spots: () => spotsStencil(front, side, rand, 2 + rand.int(2)), stripes: () => stripesStencil(front, side, rand, 3), patch: () => patchStencil(front, rand),
     };
-    // Seeded favourite first; spots always succeed on a body with ink, so they close the list.
-    const preferred = rand.pick(["spots", "stripes", "patch"] as const);
+    // Seeded favourite first, unless a parent shows another kind; spots always succeed on a body with ink, so they close the list.
+    const seeded = rand.pick(["spots", "stripes", "patch"] as const);
+    const preferred = !parentKinds.length || parentKinds.includes(seeded) ? seeded : parentKinds[0];
     for (const kind of [preferred, ...(["stripes", "patch", "spots"] as const).filter(kind => kind !== preferred)]) {
       const art = designs[kind]();
       if (art) { stencil.set(art); label = PATTERN_LABEL[kind]; break; }
@@ -798,7 +901,7 @@ export function breed(input: BreedInput): BreedResult {
   const sideWalker = isSideWalker(a) || isSideWalker(b);
   const mirror = mirrorPolicy(a.sheet, b.sheet);
   let rows: Rows | null = null, frames: Frames | null = null;
-  for (const candidate of rankRows(a.sheet, b.sheet, seed, sideWalker, mirror)) {
+  for (const candidate of rankRows(a.sheet, b.sheet, seed, sideWalker, mirror, heirsOf(a, b, sideWalker))) {
     frames = buildBody(a.sheet, b.sheet, candidate, sideWalker, mirror);
     if (frames) { rows = candidate; break; }
   }
@@ -807,14 +910,23 @@ export function breed(input: BreedInput): BreedResult {
     rows = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1];
     frames = fallbackBody(a.sheet, b.sheet, rows, sideWalker, mirror);
   }
-  const traits: string[] = [];
+  // Inherited shapes first (checked on the body before this hatch grows anything), then what the tier grows.
+  const shapes: ShapeTrait[] = inheritedShapes(a, b, rows, toSheet(frames));
+  const traits = shapes.map(shape => `${shape.label} (from ${shape.from!.name})`);
   let mutated = new Map<number, number[]>();
   if (tier === "mutant" || tier === "prismatic") {
-    const plan = planMutation(frames, seed, tier === "prismatic", sideWalker);
-    mutated = applyMutation(frames, plan, sideWalker, mirror);
-    traits.push(...plan.labels);
+    const carries = { head: shapes.some(shape => shape.kind === "head"), tail: shapes.some(shape => shape.kind === "tail") };
+    const plan = planMutation(frames, seed, tier === "prismatic", sideWalker, carries);
+    const grown = applyMutation(frames, plan, sideWalker, mirror);
+    mutated = grown.added;
+    plan.traits.forEach((trait, k) => {
+      const cells = Object.fromEntries(Object.entries(grown.cells[k]).map(([facing, lists]) => [facing, Object.freeze(lists.map(list => Object.freeze(list)))]));
+      shapes.push(Object.freeze({ ...trait, cells: Object.freeze(cells) }));
+      traits.push(trait.label);
+    });
   }
-  const { stencil, label } = makePattern(frames, tier, seed, sideWalker, mutated);
+  const parentKinds = [a, b].flatMap(parent => (Object.keys(PATTERN_LABEL) as PatternKind[]).filter(kind => parent.dna?.traits.includes(PATTERN_LABEL[kind])));
+  const { stencil, label } = makePattern(frames, tier, seed, sideWalker, mutated, parentKinds);
   if (label) traits.push(label);
   if (sideWalker) traits.push("Side-walker");
   const fromB = rows.reduce<number>((sum, row) => sum + row, 0);
@@ -826,8 +938,9 @@ export function breed(input: BreedInput): BreedResult {
       pattern: stencil,
       mutations: Object.freeze(mutated.get(slot("idle", "down", 0)) ?? []),
       traits: Object.freeze(traits),
+      shapes: Object.freeze(shapes),
     }),
-    name: babyName(seed),
+    name: babyName(seed, input.takenNames),
     family: familyLabel(a, b, rows, sideWalker ? "right" : "down"),
     familyId: dominant.familyId,
     lineage: Math.max(a.lineage, b.lineage) + 1,

@@ -1,6 +1,8 @@
-import { useId, useMemo, useRef, type CSSProperties } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { familyLine, type CreatureLookup } from "../legacy.ts";
+import { lineageTitles, type TitleId } from "../titles.ts";
 import { FRAME_SIZE, type Creature, type Dna } from "../types.ts";
+import { breedOfBaby, inheritedNews } from "./collection.ts";
 import { DnaTrio, mutatedRows } from "./DnaTrio.tsx";
 import { PixelIcon } from "./PixelIcon.tsx";
 import { SpriteThumb } from "./SpriteThumb.tsx";
@@ -16,6 +18,10 @@ export type BabyCardProps = Readonly<{
    * family line (familyLine in src/legacy.ts) as chips under its two-name family label.
    */
   creature?: CreatureLookup;
+  /** The player's Friend: with `creature`, the card shows lineage titles (Echo of #id, Purebred, Chimera; src/titles.ts). */
+  friend?: Creature | null;
+  /** This session's hatch number, shown with the generation: "Hatch #7 · F2". */
+  hatchNumber?: number;
   /** Preformatted chance of this baby's tier, e.g. "12%". */
   chance: string;
   /** Preformatted fixed Sanctuary value, e.g. "3 RF". */
@@ -79,7 +85,7 @@ function Confetti({ seed }: { seed: string }) {
  * The shareable result card: the baby between its two parents on one 16 row grid (every row traced to the
  * parent it came from), tier, lineage, traits, chance / value / Hearts, and the Keep vs trade-in choice.
  */
-export function BabyCard({ baby, parentA, parentB, creature, chance, value, mode = "reveal", onKeep, onRelease, onUseAsParent, discoveries, hint, heartsPerMinute, keepBonus,
+export function BabyCard({ baby, parentA, parentB, creature, friend, hatchNumber, chance, value, mode = "reveal", onKeep, onRelease, onUseAsParent, discoveries, hint, heartsPerMinute, keepBonus,
   busy, busyLabel, error, reducedMotion, className }: BabyCardProps) {
   const id = useId();
   const node = useRef<HTMLElement>(null);
@@ -90,11 +96,39 @@ export function BabyCard({ baby, parentA, parentB, creature, chance, value, mode
   const traits = dna?.traits ?? [];
   const reveal = mode === "reveal";
   const hasRate = heartsPerMinute !== undefined;
-  const line = useMemo(() => {
-    if (!creature) return [];
-    const known = new Map([parentA, parentB].filter((parent): parent is Creature => !!parent).map(parent => [parent.key, parent]));
-    return familyLine(baby, key => known.get(key) ?? creature(key));
-  }, [baby, parentA, parentB, creature]);
+  const { line, titles } = useMemo(() => {
+    if (!creature) return { line: [], titles: [] };
+    const known = new Map([parentA, parentB, friend].filter((parent): parent is Creature => !!parent).map(parent => [parent.key, parent]));
+    const lookup = (key: string) => known.get(key) ?? creature(key);
+    return { line: familyLine(baby, lookup), titles: lineageTitles(baby, lookup, friend) };
+  }, [baby, parentA, parentB, creature, friend]);
+  const breed = breedOfBaby(baby);
+  // Reveal news: inherited shapes lead (they are the baby's own story), then what it adds to the collection.
+  const news = [...(reveal ? inheritedNews(baby) : []).map(text => ({ text, inherited: true })), ...(discoveries ?? []).map(text => ({ text, inherited: false }))];
+  // A tapped title badge explains itself (touch screens have no hover tooltip).
+  const [openTitle, setOpenTitle] = useState<TitleId | null>(null);
+  const shownTitle = titles.find(title => title.id === openTitle);
+  // Fit: while the card body would need scrolling, the trio steps down a scale (at most twice), so the whole card shows
+  // at once. A new baby or card width starts over (a scrollbar's few pixels do not count). Checked a frame after any
+  // resize, so the trio has applied its own width first (it renders a first pass before measuring).
+  const scroll = useRef<HTMLDivElement>(null);
+  const [shrink, setShrink] = useState(0);
+  useEffect(() => {
+    const element = scroll.current;
+    setShrink(0);
+    if (!element || typeof ResizeObserver === "undefined") return;
+    let width = element.clientWidth, frame = 0;
+    const check = () => {
+      frame = 0;
+      if (element.querySelector(".rb-trio-measuring")) return;
+      if (Math.abs(element.clientWidth - width) > 24) { width = element.clientWidth; setShrink(0); }
+      else if (element.scrollHeight > element.clientHeight + 1) setShrink(current => Math.min(2, current + 1));
+    };
+    const observer = new ResizeObserver(() => { frame ||= requestAnimationFrame(check); });
+    observer.observe(element);
+    for (const child of element.children) observer.observe(child);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [baby.key]);
 
   const keepParts = [keepBonus ? `+${keepBonus} Hearts now` : "", hasRate ? `${heartsPerMinute} Hearts/min` : ""].filter(Boolean);
   const choice = !hasRate ? null : reveal
@@ -112,27 +146,32 @@ export function BabyCard({ baby, parentA, parentB, creature, chance, value, mode
   return <article ref={node} className={cx("rb-card", "rb-card-v2", `rb-card-${mode}`, `rb-tier-${tier}`, !reduced && "rb-animate", className)}
     style={tierVars(tier)} aria-labelledby={`${id}-name`}>
     <div className="rb-card-surface">
-      <div className="rb-card-scroll">
+      <div ref={scroll} className="rb-card-scroll">
         <header className="rb-card-head">
           <p className="rb-eyebrow">{reveal ? "It hatched!" : "In your brood"}</p>
           <div className="rb-card-titlebar">
             <h2 className="rb-card-name" id={`${id}-name`}>{baby.name}</h2>
             <p className="rb-card-badges">
               <span className="rb-tier-badge"><PixelIcon name="sparkle" />{tierLabel(tier)}</span>
-              <span className="rb-lineage" title="Generation">{lineageLabel(baby)}</span>
-              <span className="rb-card-family">{baby.family}</span>
+              <span className="rb-lineage" title={hatchNumber ? "Hatch number this session and generation" : "Generation"}>{hatchNumber ? <span className="rb-hatch-no">Hatch #{hatchNumber} ·{"\u00a0"}</span> : null}{lineageLabel(baby)}</span>
+              {titles.map(title => <button key={title.id} type="button" className={cx("rb-title-badge", openTitle === title.id && "rb-on")} aria-expanded={openTitle === title.id}
+                onClick={() => setOpenTitle(open => open === title.id ? null : title.id)} title={`${title.detail}. Titles are just for show: the Sanctuary pays by tier.`}>
+                <span className="rb-title-pill"><PixelIcon name="sparkle" />{title.label}</span><span className="rb-sr-only">, lineage title: what it means</span></button>)}
+              <span className="rb-card-family">{breed && <><strong className="rb-card-breed">{breed.name}</strong><span aria-hidden="true"> · </span>
+                <span className="rb-sr-only"> breed, </span></>}{baby.family}</span>
             </p>
+            {shownTitle && <p className="rb-title-note" role="note"><strong>{shownTitle.label}:</strong> {shownTitle.detail}. Titles are just for show: the Sanctuary pays by tier.</p>}
           </div>
           {line.length > 2 && <ul className="rb-card-line" aria-label={`Family line: ${line.join(", ")}`}>
             {line.map(name => <li key={name}>{name}</li>)}
           </ul>}
-          {discoveries && discoveries.length > 0 && <ul className="rb-card-news" aria-label="New in your collection">
-            {discoveries.map(line => <li key={line}><PixelIcon name="sparkle" /><span>{line}</span></li>)}
+          {news.length > 0 && <ul className="rb-card-news" aria-label="News">
+            {news.map(line => <li key={line.text} className={cx(line.inherited && "rb-news-inherited")}><PixelIcon name={line.inherited ? "dna" : "sparkle"} /><span>{line.text}</span></li>)}
           </ul>}
         </header>
 
         {dna ? <DnaTrio baby={baby} parentA={parentA} parentB={parentB} reveal={reveal} reducedMotion={reduced}
-          maxScale={reveal ? 8 : 6} babyExtra={reveal && !reduced ? <Confetti seed={baby.key} /> : null} />
+          maxScale={reveal ? 8 : 6} shrink={shrink} babyExtra={reveal && !reduced ? <Confetti seed={baby.key} /> : null} />
           : <div className="rb-card-hero"><SpriteThumb creature={baby} scale={compact ? 4 : 7} clip="walk" reducedMotion={reduced}
             label={`${baby.name}, ${tierLabel(tier)} baby`} className="rb-card-sprite" /></div>}
 
