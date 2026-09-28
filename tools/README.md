@@ -13,9 +13,18 @@ Mocked wallets exist only inside the automated browser runs, never in a build.
 | SDK game check | `node scripts/dev-game.mjs check games/rare-breeds` | Schema, README, import boundary. |
 | Browser test | `node tools/test-game.mjs` | SDK `testGame` at 960x800 and 390x844 (touch). Screenshots: `docs/media/test-desktop-960x800.png`, `test-phone-390x844.png`. Runs `export test` of `tools/scenarios/rare-breeds.mjs`. Flags: `--scenario file`, `--no-scenario`, `--viewport desktop\|phone`, `--media dir`, `--timeout ms`. |
 | Economy report | `node tools/economy-report.mjs` | Exact table and math, then a Monte Carlo on the SDK's own `createGamePreview` ledger. Games with `src/slingshot.ts` add a Moon Slingshot section (exits table with crash odds and payouts, Moon Fund rule, a trade-in-flow Monte Carlo per exit strategy next to the exact identity E[net] = -0.1 x E[staked]). `--sessions 5000 --seed 7730`. |
-| Gameplay video | `node tools/record-video.mjs` | 960x640, reduced motion off. Writes `docs/media/gameplay.mp4`, `gameplay.gif` (640 px, 12 fps), `gameplay-poster.png`. Runs `export video` of the scenario. Flags: `--name`, `--scenario`, `--keep-intro`, `--keep-webm`, `--no-mp4`, `--no-gif`, `--gif-width`, `--gif-fps`. |
+| Gameplay video | `node tools/record-video.mjs` | 960x640, reduced motion off. Writes `docs/media/gameplay.mp4`, `gameplay.gif` (640 px, 12 fps), `gameplay-poster.png`. Runs `export video` of the scenario. Flags: `--name`, `--scenario`, `--frames` (lossless PNG screencast instead of Playwright's VP8 WebM), `--keep-intro`, `--keep-webm`, `--no-mp4`, `--no-gif`, `--gif-width`, `--gif-fps`. |
 | GitHub Pages folder | `node tools/build-pages.mjs --smoke` | CLI `check` + `build`, copies the output to `.friendsdk/site/` (already gitignored), adds `.nojekyll`, verifies `./` relative paths and the child CSP. `--smoke` serves it under `/rare-breeds/` with plain static headers and boots it with the test fixture. `--out dir`, `--base repo-name`. |
+| Preview page | `node tools/build-preview.mjs` | The wallet-free explainer page (`games/rare-breeds/preview/`): a scroll story, the nursery map, a DNA lab, the Moon Slingshot flight and the breed book, all drawn by the game's own pure modules (genetics, sprites, room, hatch and flight scenes). esbuild bundles `preview/src/main.ts` into `.friendsdk/preview-site/` with the pool JSON and the trailer (`docs/media/trailer.mp4`, else `gameplay.mp4`). No RF, no eggs, nothing saved. `--watch --serve 4321` for local work, `--out dir`. Typecheck: `npx tsc -p games/rare-breeds/preview/tsconfig.json`. |
 | Local play (real wallet) | `node scripts/dev-game.mjs dev games/rare-breeds` | `npm run dev:game` would rebuild the SDK first. |
+
+Trailer: `node tools/record-video.mjs games/rare-breeds --scenario tools/scenarios/rare-breeds-trailer.mjs --name trailer --frames --no-gif`
+plays one take (nursery map, station walk, a Prismatic hatch kept, a Common hatch traded in, brood and Party hat, a Moon Slingshot
+flight forced to the Moon with `{ gameRolls: [0] }`), captures it as lossless frames and cuts it with the scenario's `export cut`
+(`tools/cut-video.mjs`: segments between `{ mark }` steps, speed-ups, crossfades, 2x nearest neighbour, H.264 CRF 20) into
+`docs/media/trailer.mp4` (1920x1280, about 45 s, about 9 MB) and `trailer-poster.png` (the Prismatic burst). Wild mates are random,
+so every take differs. Add `--keep-webm --media <dir>` to keep the lossless `trailer.mkv` and `trailer-marks.json`, then re-cut
+without re-recording: `node tools/cut-video.mjs <dir>/trailer.mkv --marks <dir>/trailer-marks.json --scenario tools/scenarios/rare-breeds-trailer.mjs --out trailer.mp4 --poster trailer-poster.png`.
 
 Other files: `fetch-wild-friends.mjs` (wild mate snapshot) and `genetics-sheet.mjs` belong to their owners.
 `tools/scenarios/starter.mjs` drives the SDK starter UI and proves the confirmation helpers:
@@ -114,7 +123,8 @@ Helpers: `helpers.confirm("buy" | "play" | "redeem")`, `helpers.cancel(...)` in 
 - The init script runs in every frame, the game iframe included: `crypto.getRandomValues(new Uint32Array(1))`
   always returns 1500 there (other lengths and `Math.random` stay random). The ledger draws one such value per
   settle, so every harness hatch is roll 1500 = **Common** unless a scenario queues rolls with
-  `{ tiers: ["prismatic"] }` / `helpers.forceTiers` (patches the runtime page only).
+  `{ tiers: ["prismatic"] }` / `helpers.forceTiers` (patches the runtime page only). Rolls the game draws itself
+  (`samplePreviewRoll` in the sandbox, e.g. the Moon Slingshot crash point) take `{ gameRolls: [0] }` / `helpers.forceGameRolls`.
 - `testGame` forces `reducedMotion: "reduce"`; touch below 500 px. The game document measures 958x638 at
   960 wide and 388x258 at 390 wide. `record-video` uses the same fixture with reduced motion off.
 
@@ -127,7 +137,7 @@ A scenario exports `test` and/or `video`: an array of steps or `async ctx => {}`
 `{ click }` `{ tap }` `{ hover }` `{ focus }` `{ world: [x, y] }` (canvas click/tap in 960x640 logical space)
 `{ key, hold }` `{ down, via }` `{ up }` (press and hold a target, then let go: touch on touch viewports, else mouse, or `via: "key"`)
 `{ type }` `{ wait: ms }` `{ waitFor, state }` `{ expect, contains | matches }`
-`{ confirm: "buy", expect: { description, amount } }` `{ cancel }` `{ tiers: [...] }` `{ rolls: [...] }`
+`{ confirm: "buy", expect: { description, amount } }` `{ cancel }` `{ tiers: [...] }` `{ rolls: [...] }` `{ gameRolls: [...] }` `{ mark: "name" }`
 `{ screenshot: "name" }` `{ run: async ctx => {} }` `{ log }`; any step may add `only: "desktop" | "phone"`.
 `tools/scenarios/rare-breeds.mjs` runs a smoke check until the `Find a match` button exists, then two full
 hatch loops (Spotted kept, Prismatic kept with its one-time "can pass on" tip, then sent to the Sanctuary, HUD shows
@@ -140,3 +150,7 @@ real mouse or touch press, let go, Skip, result card with the crash point; HUD s
 `node tools/build-pages.mjs --smoke`, then copy the **contents** of `.friendsdk/site/` (with `.nojekyll`)
 to the root of a `gh-pages` branch, enable Pages from that branch and `/ (root)`, and open
 `https://<account>.github.io/<repository>/` with a wallet on Robinhood mainnet holding a hardwired Friend.
+
+The preview page lives in `preview/` next to the game: `node tools/build-preview.mjs`, then copy the contents of
+`.friendsdk/preview-site/` into `preview/` on the same branch (it links the game as `../`). A game deploy must keep
+that folder: remove the old game files with `git ls-files | grep -v '^preview/' | xargs git rm -q` instead of `git rm -r .`.

@@ -108,6 +108,8 @@ export function createHelpers({ page, game, definition, viewport, mediaDirectory
     confirm: (name, options) => respond(name, "confirm", options),
     cancel: (name, options) => respond(name, "cancel", options),
     forceRolls: (rolls, fallback) => forceRolls(page, rolls, fallback),
+    /** Same queue inside the sandboxed game frame, for rolls the game draws itself (samplePreviewRoll, e.g. a crash point). */
+    forceGameRolls: async (rolls, fallback) => forceRolls(await (await page.locator("iframe").elementHandle()).contentFrame(), rolls, fallback),
     forceTiers: (tiers, fallback) => forceRolls(page, tiers.map(tier => outcomeStartRolls(definition)[outcomeIdFor(definition, tier) - 1]), fallback),
     locate: spec => locate({ page, game }, spec),
     /**
@@ -195,6 +197,8 @@ async function poll(read, test, timeout, message) {
  *   { confirm: "buy" | "play" | "redeem" | title, expect?: { title?, description?, amount? } }
  *   { cancel: "buy" | "play" | "redeem" | title }
  *   { tiers: ["prismatic", 2, "Common hatchling"] }   { rolls: [9750] }   force the next settles
+ *   { gameRolls: [0] }   queue the game frame's own next rolls (samplePreviewRoll in the game, e.g. the slingshot crash point)
+ *   { mark: "name" }   record-video: note the time of this moment in the take (ctx.mark, <name>-marks.json, cuts)
  *   { screenshot: "name", of?: "frame" | "page" | target }
  *   { run: async ctx => {} }   { log: "message" }
  */
@@ -235,6 +239,8 @@ export async function runSteps(ctx, steps, { label = "", log = console.log } = {
         case "cancel": log(`    cancelled ${describe(await helpers.cancel(step.cancel, { expect: step.expect, timeout: step.timeout }))}`); break;
         case "tiers": await helpers.forceTiers(step.tiers, step.fallback); break;
         case "rolls": await helpers.forceRolls(step.rolls, step.fallback); break;
+        case "gameRolls": await helpers.forceGameRolls(step.gameRolls, step.fallback); break;
+        case "mark": ctx.mark?.(step.mark); break;
         case "screenshot": await helpers.screenshot(step.screenshot, step.of); break;
         case "run": await step.run(ctx); break;
         case "log": log(`    ${step.log}`); break;
@@ -252,7 +258,7 @@ export async function loadScenario(path) {
   const file = resolve(path);
   await stat(file);
   const module = await import(pathToFileURL(file).href);
-  return { file, test: module.test, video: module.video, ready: module.ready, tiers: module.tiers };
+  return { file, test: module.test, video: module.video, cut: module.cut, ready: module.ready, tiers: module.tiers };
 }
 
 export async function runScenarioPart(part, ctx, options) {
