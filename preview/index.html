@@ -23,6 +23,7 @@
       <path fill="#F4F1EA" d="M3 1h2v1H3zM2 2h4v1H2zM2 3h1v1H2zM4 3h2v1H4zM1 4h4v1H1zM6 4h1v1H6zM1 5h6v1H1zM1 6h1v1H1zM3 6h4v1H3zM1 7h4v1H1zM6 7h1v1H6zM2 8h4v1H2z"/>
       <path fill="#CCFF00" d="M3 3h1v1H3zM5 4h1v1H5zM2 6h1v1H2zM5 7h1v1H5z"/>
     </symbol>
+    <symbol id="i-lock" viewBox="0 0 7 7" shape-rendering="crispEdges"><path fill="currentColor" d="M2 0h3v1H2zM1 1h1v2H1zM5 1h1v2H5zM0 3h7v1H0zM0 4h3v2H0zM4 4h3v2H4zM0 6h7v1H0z"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path fill="currentColor" d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></symbol>
     <symbol id="i-telegram" viewBox="0 0 24 24"><path fill="currentColor" d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></symbol>
     <symbol id="i-github" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></symbol>
@@ -57,7 +58,7 @@
         <div class="hero-copy">
           <p class="kicker">A Rare Friends Vibeathon game</p>
           <h1>Your Friend's pixels are its DNA.</h1>
-          <p class="lede">Breed your Rare Friend with real Friends from the chain. Every baby inherits whole pixel rows from both parents.</p>
+          <p class="lede">Breed your Rare Friend with real Friends from the chain. Every baby inherits whole pixel rows from both parents: lock the rows you want in the Gene Lab, then trace any row back to the real Friend it came from.</p>
           <div class="cta-row">
             <a class="btn btn-signal" href="../">Play Rare Breeds <span aria-hidden="true">→</span></a>
             <a class="btn-text" href="#trailer">Watch the trailer <span aria-hidden="true">↓</span></a>
@@ -77,7 +78,7 @@
         <div class="stat"><p class="stat-label">Real wild Friends to breed with</p><p class="stat-value">73</p><p class="stat-sub">All 9 families, sprites read from the chain</p></div>
         <div class="stat"><p class="stat-label">Pixel rows a baby inherits</p><p class="stat-value">16</p><p class="stat-sub">The same rows on all 64 frames</p></div>
         <div class="stat"><p class="stat-label">Named breeds to collect</p><p class="stat-value">45</p><p class="stat-sub">9 purebreds and 36 crosses</p></div>
-        <div class="stat"><p class="stat-label">A shape passes on</p><p class="stat-value">49.1%</p><p class="stat-sub">Horns, ears, crests, tails</p></div>
+        <div class="stat"><p class="stat-label">A shape passes on</p><p class="stat-value">53.7%</p><p class="stat-sub">Horns, ears, crests, tails</p></div>
       </div>
     </section>
 
@@ -131,6 +132,7 @@
               <div class="step-body">
               <h3>Sixteen rows, two parents</h3>
               <p>A Friend is 16 rows of 16 pixels. The baby takes each row from A or B, in runs of 2 to 5 rows, at least 4 from each parent. Pixels are only ever added to keep one body, never removed.</p>
+              <p>In the Gene Lab you can lock rows to a parent before the egg: the ledger rolls the rarity, you design the genes.</p>
               <p class="legend"><span class="swatch swatch-a"></span>From <b data-cast="a-short">#77949</b><span class="swatch swatch-b"></span>From <b data-cast="b-short">#190688</b></p>
               </div>
             </article>
@@ -161,13 +163,14 @@
             <article class="step" data-step="shapes">
               <div class="step-body">
               <h3>Shapes run in the family</h3>
-              <p>A Mutant's <span data-cast="shape">horns</span> live in its own pixel rows. Breed it again, and a baby that takes those rows carries them, even as a Common. Measured: 49.1%, about 1 in 2.</p>
+              <p>A Mutant's <span data-cast="shape">horns</span> live in its own pixel rows. Breed it again, and a baby that takes those rows carries them, even as a Common. Measured: 53.7% (231 of 430 in the tests), about 1 in 2.</p>
               </div>
             </article>
             <article class="step" data-step="keep">
               <div class="step-body">
               <h3>Keep it, or trade it in</h3>
               <p>Kept babies follow you around, earn Hearts for hats and can become parents themselves: F1, F2, F3. Or the Sanctuary takes one for its fixed value, 0.5 to 6 RF (simulated).</p>
+              <p>However deep the line, tap any row of a baby and it traces back to the real Friend, token ID and all, whose pixels it is.</p>
               </div>
             </article>
           </div>
@@ -195,7 +198,7 @@
       <div class="wrap">
         <header class="section-head">
           <h2 id="lab-title">DNA lab</h2>
-          <p class="section-lede">Pick any two Friends and hatch an egg with the game's own genetics and hatch animation. A demo: nothing is kept and no RF moves. In the game, parent A is always your own Friend.</p>
+          <p class="section-lede">Pick any two Friends, lock the rows you want, and hatch an egg with the game's own genetics and hatch animation. Then tap a row of the baby to trace it to its real Friend. A demo: nothing is kept and no RF moves. In the game, parent A is always your own Friend.</p>
         </header>
         <div class="lab-grid">
           <div class="lab-controls">
@@ -215,6 +218,34 @@
             <p class="hint" id="lab-hint">Tap a slot, then pick a Friend below.</p>
             <div class="family-tabs" role="tablist" aria-label="Family"></div>
             <div class="pool-grid" id="pool-grid" role="listbox" aria-label="Wild Friends"></div>
+            <div class="genelab" id="genelab">
+              <div class="gl-head">
+                <h3>Gene Lab</h3>
+                <p>The ledger rolls the rarity, you design the genes: <b>RF buys the roll, Hearts buy the genes.</b></p>
+              </div>
+              <figure class="gl-bench" id="gl-bench" tabindex="0" role="group" aria-label="Gene Lab">
+                <div class="gl-grid">
+                  <span class="gl-role">Parent A</span><span class="gl-role gl-role-baby">Baby</span><span class="gl-role">Parent B</span>
+                  <span class="gl-slot" data-side="0"><canvas aria-hidden="true"></canvas><span class="gl-band" aria-hidden="true"></span></span>
+                  <span class="gl-rail" data-side="0" aria-hidden="true"></span>
+                  <span class="gl-slot gl-slot-baby" data-side="baby"><canvas aria-hidden="true"></canvas><span class="gl-band" aria-hidden="true"></span></span>
+                  <span class="gl-rail" data-side="1" aria-hidden="true"></span>
+                  <span class="gl-slot" data-side="1"><canvas aria-hidden="true"></canvas><span class="gl-band" aria-hidden="true"></span></span>
+                  <span class="gl-name gl-name-a"></span><span class="gl-name gl-name-baby"></span><span class="gl-name gl-name-b"></span>
+                </div>
+                <figcaption class="gl-caption" aria-live="polite"></figcaption>
+              </figure>
+              <div class="gl-foot">
+                <p class="fine">Free here. In the game a locked row costs 2 Hearts (the first 3 are free), never RF, and the tier still comes from the roll alone.</p>
+                <button class="btn btn-dark btn-sm" type="button" id="gl-free" disabled>Free all rows</button>
+              </div>
+              <aside class="gl-dream" aria-labelledby="gl-dream-title">
+                <h3 id="gl-dream-title">Make the dream child</h3>
+                <p>In the game, your Friend has a daily dream child and a hint: the mate's family. Find that mate, then use the Gene Lab to copy the dream. Each hatch with the dream pair shows how many of its 16 rows match.</p>
+                <p>Match all 16 to earn <b>50 Hearts</b> once per dream and the <b>Dreamchild</b> title. Progress and rewards last for the session; egg tiers and odds stay the same.</p>
+                <p class="fine">The dream challenge is in the game. This page's lab is a free demo with no Hearts.</p>
+              </aside>
+            </div>
             <div class="lab-actions">
               <div class="chip-row" role="group" aria-label="Tier of the egg">
                 <button class="chip" type="button" data-lab-tier="roll" aria-pressed="true">Roll it</button>
@@ -325,7 +356,7 @@
       <div class="wrap">
         <header class="section-head">
           <h2 id="rules-title">The rules, in short</h2>
-          <p class="section-lede">Every RF amount in the game is simulated and labelled. Hearts are game points and never RF.</p>
+          <p class="section-lede">Every RF amount in the game is simulated and labelled. Hearts are game points and never RF: they buy hats and Gene Lab locks (2 Hearts a row, the first 3 free), and a lock never touches the tier roll.</p>
         </header>
         <div class="tier-row" id="tier-row">
           <div class="tier-card" data-tier="common"><div class="tier-art"><canvas aria-hidden="true"></canvas></div><h3>Common</h3><p class="tier-odds">60%</p><dl><div><dt>Sanctuary</dt><dd>0.5 RF</dd></div><div><dt>If kept</dt><dd>6 Hearts a minute</dd></div></dl></div>
@@ -356,7 +387,7 @@
         <div class="checks">
           <h3>Checked before every release</h3>
           <ul>
-            <li><b>77 of 77</b> unit tests: genetics, economy, slingshot, titles, breeds, hats, lineage</li>
+            <li><b>101 of 101</b> unit tests: genetics, Gene Lab, dream child, economy, slingshot, titles, breeds, hats, lineage, provenance</li>
             <li><b>friendsdk check</b> valid: 0.8875 RF expected value, 6 RF top prize</li>
             <li><b>Browser runs</b> on desktop (960 x 800) and phone (390 x 844, touch), full hatches and a flight</li>
             <li><b>Typecheck</b> clean, Pages build smoke-tested</li>
