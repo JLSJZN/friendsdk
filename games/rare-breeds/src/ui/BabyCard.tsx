@@ -1,10 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
-import { familyLine, type CreatureLookup } from "../legacy.ts";
+import { familyLine, rowSources, type CreatureLookup } from "../legacy.ts";
 import { lineageTitles, type TitleId } from "../titles.ts";
 import { FRAME_SIZE, type Creature, type Dna } from "../types.ts";
 import { breedOfBaby, inheritedNews } from "./collection.ts";
 import { DnaTrio, mutatedRows } from "./DnaTrio.tsx";
 import { PixelIcon } from "./PixelIcon.tsx";
+import { RowSources, TRACE_HINT } from "./Provenance.tsx";
 import { SpriteThumb } from "./SpriteThumb.tsx";
 import { cx, hashString, lineageLabel, tierLabel, tierVars, useCompact, useReducedMotion } from "./shared.ts";
 
@@ -15,7 +16,8 @@ export type BabyCardProps = Readonly<{
   parentB?: Creature | null;
   /**
    * Resolves ancestor keys (e.g. the controller's `creature`). From F2 on the card then lists the baby's whole
-   * family line (familyLine in src/legacy.ts) as chips under its two-name family label.
+   * family line (familyLine in src/legacy.ts) as chips under its two-name family label, beside the real Friends its
+   * 16 rows come from ("Rows from 3 real Friends: #77949 x10 · ..."), and a tapped DNA row is traced down to one.
    */
   creature?: CreatureLookup;
   /** The player's Friend: with `creature`, the card shows lineage titles (Echo of #id, Purebred, Chimera; src/titles.ts). */
@@ -40,6 +42,8 @@ export type BabyCardProps = Readonly<{
    * with it, the card writes its own Keep vs trade-in line ("Keep: +5 Hearts now, 12 Hearts/min. ...").
    */
   hint?: string;
+  /** First-run tip in the DNA trio: tap a row to see which real Friend it came from. */
+  traceHint?: boolean;
   /** Hearts this baby earns per minute while kept (game points, never RF). Shown next to the Sanctuary value. */
   heartsPerMinute?: number;
   /** Reveal mode: one-off Hearts for keeping it, shown on the Keep button. */
@@ -85,7 +89,7 @@ function Confetti({ seed }: { seed: string }) {
  * The shareable result card: the baby between its two parents on one 16 row grid (every row traced to the
  * parent it came from), tier, lineage, traits, chance / value / Hearts, and the Keep vs trade-in choice.
  */
-export function BabyCard({ baby, parentA, parentB, creature, friend, hatchNumber, chance, value, mode = "reveal", onKeep, onRelease, onUseAsParent, discoveries, hint, heartsPerMinute, keepBonus,
+export function BabyCard({ baby, parentA, parentB, creature, friend, hatchNumber, chance, value, mode = "reveal", onKeep, onRelease, onUseAsParent, discoveries, hint, traceHint, heartsPerMinute, keepBonus,
   busy, busyLabel, error, reducedMotion, className }: BabyCardProps) {
   const id = useId();
   const node = useRef<HTMLElement>(null);
@@ -96,11 +100,12 @@ export function BabyCard({ baby, parentA, parentB, creature, friend, hatchNumber
   const traits = dna?.traits ?? [];
   const reveal = mode === "reveal";
   const hasRate = heartsPerMinute !== undefined;
-  const { line, titles } = useMemo(() => {
-    if (!creature) return { line: [], titles: [] };
+  const { line, titles, lookup, sources } = useMemo(() => {
+    if (!creature) return { line: [], titles: [], lookup: undefined, sources: [] };
     const known = new Map([parentA, parentB, friend].filter((parent): parent is Creature => !!parent).map(parent => [parent.key, parent]));
     const lookup = (key: string) => known.get(key) ?? creature(key);
-    return { line: familyLine(baby, lookup), titles: lineageTitles(baby, lookup, friend) };
+    // From F2 on (an F1's two real Friends are its parents, named in the trio): which real Friends its rows come from.
+    return { line: familyLine(baby, lookup), titles: lineageTitles(baby, lookup, friend), lookup, sources: baby.lineage > 1 ? rowSources(baby, lookup) : [] };
   }, [baby, parentA, parentB, creature, friend]);
   const breed = breedOfBaby(baby);
   // Reveal news: inherited shapes lead (they are the baby's own story), then what it adds to the collection.
@@ -162,16 +167,20 @@ export function BabyCard({ baby, parentA, parentB, creature, friend, hatchNumber
             </p>
             {shownTitle && <p className="rb-title-note" role="note"><strong>{shownTitle.label}:</strong> {shownTitle.detail}. Titles are just for show: the Sanctuary pays by tier.</p>}
           </div>
-          {line.length > 2 && <ul className="rb-card-line" aria-label={`Family line: ${line.join(", ")}`}>
-            {line.map(name => <li key={name}>{name}</li>)}
-          </ul>}
+          {(line.length > 2 || sources.length > 0) && <div className="rb-card-lineage">
+            {line.length > 2 && <ul className="rb-card-line" aria-label={`Family line: ${line.join(", ")}`}>
+              {line.map(name => <li key={name}>{name}</li>)}
+            </ul>}
+            {sources.length > 0 && <p className="rb-card-sources"><RowSources sources={sources} /></p>}
+          </div>}
           {news.length > 0 && <ul className="rb-card-news" aria-label="News">
             {news.map(line => <li key={line.text} className={cx(line.inherited && "rb-news-inherited")}><PixelIcon name={line.inherited ? "dna" : "sparkle"} /><span>{line.text}</span></li>)}
           </ul>}
         </header>
 
         {dna ? <DnaTrio baby={baby} parentA={parentA} parentB={parentB} reveal={reveal} reducedMotion={reduced}
-          maxScale={reveal ? 8 : 6} shrink={shrink} babyExtra={reveal && !reduced ? <Confetti seed={baby.key} /> : null} />
+          maxScale={reveal ? 8 : 6} shrink={shrink} babyExtra={reveal && !reduced ? <Confetti seed={baby.key} /> : null}
+          lookup={lookup} hint={traceHint ? TRACE_HINT : undefined} />
           : <div className="rb-card-hero"><SpriteThumb creature={baby} scale={compact ? 4 : 7} clip="walk" reducedMotion={reduced}
             label={`${baby.name}, ${tierLabel(tier)} baby`} className="rb-card-sprite" /></div>}
 

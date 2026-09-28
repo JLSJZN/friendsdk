@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { drawCreature } from "../draw.ts";
 import { isSideWalker, shapeRows } from "../genetics.ts";
+import { rowPath, type CreatureLookup } from "../legacy.ts";
 import { FRAME_SIZE, PARENT_TINT, TIER_STYLE, type Creature, type Facing } from "../types.ts";
 /** Parent A's tint is paper white, invisible on the paper portraits: its row highlight there is a darker paper band. */
 const A_ROW_ON_PAPER = "#D6CFBF";
 /** Inherited shape cells on the baby's portrait: a violet wash over the ink, full violet while one of its rows is traced. */
 const INHERIT_WASH = "rgba(138, 77, 255, .5)", INHERIT_HOT = TIER_STYLE.mutant.accent;
 import { PixelIcon } from "./PixelIcon.tsx";
+import { originLabel, RowPathNote, TRACE_HINT } from "./Provenance.tsx";
 import { cx, pixelMetrics, subscribeTick, useDevicePixelRatio, useReducedMotion, useRootSize } from "./shared.ts";
 
 export type DnaTrioProps = Readonly<{
@@ -23,6 +25,13 @@ export type DnaTrioProps = Readonly<{
   reveal?: boolean;
   reducedMotion?: boolean;
   className?: string;
+  /**
+   * Resolves ancestor keys (e.g. the controller's `creature`). A traced baby row then shows its whole path down to the
+   * real Friend it came from (src/legacy.ts rowPath), with that Friend's portrait when it is not a parent in view.
+   */
+  lookup?: CreatureLookup;
+  /** Replaces the tap hint, lit up, e.g. a first-run tip. With `lookup` the plain hint is TRACE_HINT too, so both read the same. */
+  hint?: string;
 }>;
 
 /** Sprite box in sprite pixels: the 16 x 16 frame plus a one pixel halo on every side. */
@@ -35,10 +44,14 @@ const PAPER = "#F4F1EA", RULE = "#E6E1D6";
 type Side = "a" | "baby" | "b";
 type Active = Readonly<{ row: number; side: Side }>;
 
-/** Full name, plus "#77949" for a Friend on narrow trios. */
-function Name({ creature, fallback }: { creature?: Creature | null; fallback: string }) {
+/**
+ * Full name, plus "#77949" for a Friend on narrow trios. A column too narrow for "Friend #262837" (about 7 px a
+ * character at 12 px) shows the whole token ID instead of a cut one.
+ */
+function Name({ creature, fallback, column }: { creature?: Creature | null; fallback: string; column: number }) {
   if (!creature) return <>{fallback}</>;
   if (creature.tokenId === undefined) return <>{creature.name}</>;
+  if (creature.name.length * 7 > column) return <>#{String(creature.tokenId)}</>;
   return <><span className="rb-long">{creature.name}</span><span className="rb-short">#{String(creature.tokenId)}</span></>;
 }
 
@@ -132,9 +145,9 @@ function RowSprite({ creature, device, css, facing, faded, highlight, marks, hot
  * Parent A, the baby and Parent B side by side at the same scale, rows aligned on one 16 row grid.
  * The links between them light up the rows each parent gave (PARENT_TINT: A paper white, B signal green);
  * rows a parent did not give are washed out in its portrait. Hover, tap or use the arrow keys on a row
- * to trace it across all three.
+ * to trace it across all three; with `lookup`, a baby row is traced all the way down to its real Friend.
  */
-export function DnaTrio({ baby, parentA, parentB, maxScale = 7, shrink = 0, babyExtra, reveal, reducedMotion, className }: DnaTrioProps) {
+export function DnaTrio({ baby, parentA, parentB, maxScale = 7, shrink = 0, babyExtra, reveal, reducedMotion, className, lookup, hint }: DnaTrioProps) {
   const node = useRef<HTMLElement>(null);
   const reduced = useReducedMotion(reducedMotion);
   const ratio = useDevicePixelRatio();
@@ -172,9 +185,26 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, shrink = 0, baby
     ? [{ rows: shapeRows(shape), cells: shape.cells[facing] ?? [], label: `${shape.from.name}'s ${shape.label}` }] : []), [dna, facing]);
   const inherited = useMemo(() => new Map(shapes.flatMap(shape => shape.rows.map(row => [row, shape] as const))), [shapes]);
   const hotShape = active ? inherited.get(active.row) ?? null : null;
+  // Gene Lab: rows the player locked to a parent get a lock mark on that parent's link.
+  const locks = dna?.locks, lockedRows = useMemo(() => ROWS.filter(row => locks?.[row] === 0 || locks?.[row] === 1), [locks]);
+  // The dream (src/dream.ts): a peg on the baby's right edge per row, filled where the row matches the dream child's.
+  const dream = baby.dream;
   const fromA = source.filter(side => side === 0).length, fromB = FRAME_SIZE - fromA;
   const nameA = parentA?.name ?? "Parent A", nameB = parentB?.name ?? "Parent B";
   const animate = !reduced;
+  // Pixel provenance: a traced baby row's path down to the real Friend it came from. When that Friend is further up
+  // than a parent, its portrait shows with the row lit (in the tint of the side it came in by): beside the parent the
+  // row came through, in the trio's side margin with its row level with theirs, when the margin fits it; else in the caption.
+  const traced = active?.side === "baby" ? active.row : null;
+  const path = useMemo(() => lookup && traced !== null ? rowPath(baby, traced, lookup) : null, [baby, lookup, traced]);
+  const originSide = path && path.steps.length > 1 && path.origin.creature ? path.steps[0].side : null;
+  const marginScale = width > 0 ? Math.min(scale, Math.floor(((width - trioWidth(scale)) / 2 - 16) / BOX)) : 0;
+  const inMargin = marginScale >= 2;
+  const origin = pixelMetrics(inMargin ? marginScale : 2, ratio);
+  const originSprite = path && originSide !== null && <RowSprite creature={path.origin.creature!} device={origin.device} css={origin.css} facing={facing}
+    faded={null} animate={animate} highlight={{ row: path.row, color: originSide === 1 ? PARENT_TINT[1] : A_ROW_ON_PAPER }} />;
+  const originTag = inMargin && path && originSprite && <span className={`rb-trio-origin rb-trio-origin-${originSide ? "b" : "a"}`}
+    style={{ "--rb-row": path.row } as CSSProperties} aria-hidden="true">{originSprite}<span className="rb-trio-origin-name">{originLabel(path.origin)}</span></span>;
 
   const rowAt = (event: PointerEvent<HTMLElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
@@ -206,6 +236,11 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, shrink = 0, baby
       const index = sides.indexOf(current.side) + (event.key === "ArrowLeft" ? -1 : 1);
       next = { row: Math.max(0, current.row), side: sides[Math.max(0, Math.min(2, index))] };
     }
+    // Enter or Space traces the row on the baby (again: stops); Escape stops first, so the card's Escape waits.
+    else if (event.key === "Enter" || event.key === " ") {
+      if (pinned && current.side === "baby") { event.preventDefault(); setPinned(false); setActive(null); return; }
+      next = { row: Math.max(0, current.row), side: "baby" };
+    } else if (event.key === "Escape" && active) { event.preventDefault(); setPinned(false); setActive(null); return; }
     if (!next) return;
     event.preventDefault();
     setPinned(true);
@@ -216,7 +251,10 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, shrink = 0, baby
     if (!active) return null;
     const { row, side } = active;
     const from = source[row], parentName = from === 0 ? nameA : nameB, role = from === 0 ? "Parent A" : "Parent B";
-    if (side === "baby") return <span><strong>Row {row + 1}</strong> of {baby.name}: from {parentName} ({role}){inherited.has(row) ? `, part of ${inherited.get(row)!.label}` : ""}{mutated.has(row) ? ", then mutated" : ""}.</span>;
+    const note = `${inherited.has(row) ? `, part of ${inherited.get(row)!.label}` : ""}${mutated.has(row) ? ", then mutated" : ""}`
+      + (dream && side === "baby" ? (dream.rows[row] ? ", like the dream" : ", not like the dream") : "");
+    if (side === "baby" && path) return <RowPathNote path={path} baby={baby.name} note={note} portrait={inMargin ? null : originSprite} />;
+    if (side === "baby") return <span><strong>Row {row + 1}</strong> of {baby.name}: from {parentName} ({role}){note}.</span>;
     const mine = side === "a" ? 0 : 1, name = side === "a" ? nameA : nameB;
     return from === mine ? <span><strong>Row {row + 1}</strong> of {name}: passed on to {baby.name}.</span>
       : <span><strong>Row {row + 1}</strong> of {name}: not passed on. {baby.name} got {from === 0 ? nameA : nameB}'s.</span>;
@@ -227,11 +265,13 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, shrink = 0, baby
       const hot = active?.row === row;
       const src = hot && (side === "baby" || (side === "a" ? source[row] === 0 : source[row] === 1));
       return <span key={row} className={cx("rb-trio-row", hot && "rb-hot", src && `rb-src rb-src-${source[row] === 0 ? "a" : "b"}`,
-        side === "baby" && mutated.has(row) && "rb-mut", side === "baby" && inherited.has(row) && "rb-inh")} />;
+        side === "baby" && mutated.has(row) && "rb-mut", side === "baby" && inherited.has(row) && "rb-inh")}>
+        {side === "baby" && dream && <i className={cx("rb-trio-dream-peg", dream.rows[row] && "rb-hit")} />}</span>;
     })}
   </span>;
   const link = (side: "a" | "b") => <span className={`rb-trio-link rb-trio-link-${side}`} aria-hidden="true">
-    {ROWS.map(row => <span key={row} className={cx("rb-trio-cell", source[row] === (side === "a" ? 0 : 1) && "rb-on", active?.row === row && "rb-hot")}
+    {ROWS.map(row => <span key={row} className={cx("rb-trio-cell", source[row] === (side === "a" ? 0 : 1) && "rb-on", active?.row === row && "rb-hot",
+      locks?.[row] === (side === "a" ? 0 : 1) && "rb-lock")}
       style={{ "--rb-i": row } as CSSProperties} />)}
   </span>;
   const slot = (side: Side, creature: Creature | null | undefined, faded: readonly boolean[] | null, label?: string) =>
@@ -242,15 +282,26 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, shrink = 0, baby
         : <span className="rb-trio-missing" style={{ width: BOX * css, height: BOX * css }}><PixelIcon name="help" /></span>}
       {rowsLayer(side)}
       {side === "baby" && babyExtra}
+      {side === (originSide ? "b" : "a") && originTag}
     </span>;
 
   const style = {
     "--rb-px": `${css}px`, "--rb-box": `${BOX * css}px`, "--rb-link": `${linkWidth(scale)}px`,
-    "--rb-tint-a": PARENT_TINT[0], "--rb-tint-b": PARENT_TINT[1],
+    "--rb-tint-a": PARENT_TINT[0], "--rb-tint-b": PARENT_TINT[1], "--rb-o-px": `${origin.css}px`, "--rb-o-box": `${BOX * origin.css}px`,
   } as CSSProperties;
+  const idle = <>
+    <span className={cx("rb-trio-hint", hint && "rb-trio-hint-new")}>{hint && <PixelIcon name="sparkle" />}{hint ?? (lookup ? TRACE_HINT : "Hover or tap a row to trace it.")}</span>
+    {shapes.map(shape => <span key={shape.label} className="rb-trio-inh-note"><i className="rb-trio-inh-pip" aria-hidden="true" />{rowsLabel(shape.rows)}: {shape.label}</span>)}
+    {mutated.size > 0 && <span className="rb-trio-mut-note"><i className="rb-trio-mut-pip" aria-hidden="true" />
+      {rowsLabel([...mutated])} mutated</span>}
+    {lockedRows.length > 0 && <span className="rb-trio-lock-note"><PixelIcon name="lock" />Locked {rowsLabel(lockedRows).toLowerCase()}</span>}
+    {dream && <span className="rb-trio-dream-note"><i className="rb-trio-dream-peg rb-hit" aria-hidden="true" />{dream.matched} of {FRAME_SIZE} like the dream</span>}</>;
   const summary = `DNA: ${fromA} of 16 rows from ${nameA} (Parent A), ${fromB} from ${nameB} (Parent B)` +
     shapes.map(shape => `, ${rowsLabel(shape.rows).toLowerCase()} carry ${shape.label}`).join("") +
-    (mutated.size ? `, ${mutated.size === 1 ? "1 row" : `${mutated.size} rows`} mutated.` : ".") + " Use the arrow keys to trace a row.";
+    (lockedRows.length ? `, ${rowsLabel(lockedRows).toLowerCase()} locked in the Gene Lab` : "") +
+    (mutated.size ? `, ${mutated.size === 1 ? "1 row" : `${mutated.size} rows`} mutated` : "") +
+    (dream ? `, ${dream.matched} of ${FRAME_SIZE} rows match your Friend's dream${dream.matched ? ` (${rowsLabel(ROWS.filter(row => dream.rows[row])).toLowerCase()})` : ""}.` : ".") +
+    (lookup ? " Up and Down move over the rows; Enter traces one to the real Friend it came from." : " Use the arrow keys to trace a row.");
 
   return <figure ref={node} className={cx("rb-trio", reveal && !reduced && "rb-trio-reveal", width === 0 && "rb-trio-measuring", className)} style={style}
     tabIndex={0} role="group" aria-label={summary} onKeyDown={onKeyDown} onBlur={() => { if (pinned) { setPinned(false); setActive(null); } }}>
@@ -263,15 +314,17 @@ export function DnaTrio({ baby, parentA, parentB, maxScale = 7, shrink = 0, baby
       {slot("baby", baby, null, `${baby.name}, walking`)}
       {link("b")}
       {slot("b", parentB, fadedB)}
-      <span className="rb-trio-name rb-trio-name-a"><strong><Name creature={parentA} fallback="Parent A" /></strong><span className="rb-trio-count"><i className="rb-trio-swatch rb-trio-swatch-a" />{fromA} {fromA === 1 ? "row" : "rows"}</span></span>
+      <span className="rb-trio-name rb-trio-name-a"><strong><Name creature={parentA} fallback="Parent A" column={BOX * css + BORDER} /></strong><span className="rb-trio-count"><i className="rb-trio-swatch rb-trio-swatch-a" />{fromA} {fromA === 1 ? "row" : "rows"}</span></span>
       <span className="rb-trio-name rb-trio-name-baby"><strong>{baby.name}</strong><span className="rb-trio-count">16 rows</span></span>
-      <span className="rb-trio-name rb-trio-name-b"><strong><Name creature={parentB} fallback="Parent B" /></strong><span className="rb-trio-count"><i className="rb-trio-swatch rb-trio-swatch-b" />{fromB} {fromB === 1 ? "row" : "rows"}</span></span>
+      <span className="rb-trio-name rb-trio-name-b"><strong><Name creature={parentB} fallback="Parent B" column={BOX * css + BORDER} /></strong><span className="rb-trio-count"><i className="rb-trio-swatch rb-trio-swatch-b" />{fromB} {fromB === 1 ? "row" : "rows"}</span></span>
     </div>
-    <figcaption className="rb-trio-caption" aria-live="polite">
-      {caption ?? <><span className="rb-trio-hint">Hover or tap a row to trace it.</span>
-        {shapes.map(shape => <span key={shape.label} className="rb-trio-inh-note"><i className="rb-trio-inh-pip" aria-hidden="true" />{rowsLabel(shape.rows)}: {shape.label}</span>)}
-        {mutated.size > 0 && <span className="rb-trio-mut-note"><i className="rb-trio-mut-pip" aria-hidden="true" />
-          {rowsLabel([...mutated])} mutated</span>}</>}
+    <figcaption className={cx("rb-trio-caption", lookup && "rb-trio-traceable", lookup && width > 0 && !inMargin && baby.lineage > 1 && "rb-trio-deep", caption && "rb-tracing")}
+      aria-live="polite">
+      {lookup ? <>
+        {/* The idle line keeps its place while a row is traced, so the card does not jump. */}
+        <span className="rb-trio-idle" aria-hidden={caption ? true : undefined}>{idle}</span>
+        {caption && <span className="rb-trio-now">{caption}</span>}
+      </> : caption ?? idle}
     </figcaption>
   </figure>;
 }

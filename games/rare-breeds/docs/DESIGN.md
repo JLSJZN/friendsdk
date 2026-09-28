@@ -14,13 +14,15 @@ Judges test solo, quickly, with a real holder wallet, on desktop and phone. Firs
 
 1. **Nursery**: the player's Friend walks around (WASD/arrows, tap/click to walk). Babies follow.
 2. **Matchmaker** station: 3 real wild Friends are offered as mates (free reroll). Parent A is the
-   player's Friend or a kept baby. Parent B is a wild Friend or another kept baby.
+   player's Friend or a kept baby. Parent B is a wild Friend or another kept baby. Its **Gene Lab** tab locks rows of
+   the pair to one parent (Hearts, never RF).
 3. **Breed**: needs 1 Egg. If there is none, buy one first (SDK `buy`, 1 simulated RF). Then SDK `play(1)`
    (uses the egg) and SDK `settle(playId)` reveal the tier (outcome). The mate walks in (courtship),
    then the hatch overlay plays: egg wobble, crack, parent rows fly in and merge, baby reveal.
 4. **Result card**: baby name, tier, hatch number and generation ("Hatch #7 · F2"), breed name, lineage titles (a tap
    explains one), parents, DNA strip (16 rows coloured by parent; an inherited shape's rows marked violet), traits
    (inherited ones name their source) and news ("Inherited: Horns from Zibu!" first). Names are unique per session.
+   Tapping a DNA row traces it to the real Friend it came from (pixel provenance, below).
    Keep it (joins the brood) or send it to the **Sanctuary** (SDK `redeem(outcomeId, 1)` for the fixed RF value).
 5. Kept babies can be parents again: F1, F2, F3 lineage. Their shape mutations pass on about 1 in 2 (a one-time toast
    says so for the first kept baby with a shape).
@@ -39,11 +41,44 @@ Every SDK buy/play/redeem shows a trusted runtime confirmation inside the frame.
   the body, so `Dna.shapes` records each shape's cells in all 16 frames of every facing it grew on (plus its source);
   its rows are the union, and a baby carries it only when it is whole in every one of those frames. A seeded wish per
   trait in the row mask ranking (after the hard checks, before the score) makes the measured pass-on rate about 1 in 2
-  (49.1%). The Matchmaker names what a chosen parent can pass on; the Moon Slingshot picker marks babies with a shape
+  (53.7%, 231 of 430 in `tests/genetics.test.ts`). The Matchmaker names what a chosen parent can pass on; the Moon Slingshot picker marks babies with a shape
   or a title.
+- **Gene Lab** (`src/ui/GeneLab.tsx`, `lockOptions` and `breed({ locks })` in `src/genetics.ts`): "The ledger rolls the
+  rarity, you design the genes: RF buys the roll, Hearts buy the genes." A Matchmaker tab that opens with what it is for
+  ("Pick which parent gives the eyes, ears or feet: lock their rows."), then Parent A, a rail of 16 row locks, a ghost
+  preview (locked rows solid, free rows both parents faint; Parent A's paper band ruled in ink), a rail and Parent B,
+  plus four edge shortcuts on every pair (Top rows / Bottom rows from each parent, 3 rows, `edgeLocks`) and a one-tap
+  shortcut per passable shape. Only the 630 masks that agree with the locks compete, ranked as before; without locks every baby
+  is byte-identical (golden test). "N of 630 possible babies" counts masks that agree, pass the hard checks and build; a
+  toggle that would leave none is disabled. 2 Hearts per locked row, the first 3 of a session free, charged once the egg
+  is used. The baby records its locks (`Dna.locks`), a laid egg keeps its pair and locks, and the result card marks
+  locked rows with a small lock. A pair's first `lockOptions` (tens of ms) never runs in a render: warmed while idle on
+  the Parents tab, else right after the lab's first paint (`useLockOptions`). Touch compromise: rows are 3 to 7 px tall,
+  so phones use the 44 px shortcuts and press-slide-release on a portrait (on frames under 300 px tall, where the lab
+  scrolls, a finger that travels scrolls); the rails suit mouse and keyboard.
 - **Lineage titles** (`src/titles.ts`): Echo of #id (12+ of 16 rows from the player's Friend), Purebred <Family> (all
   rows one family), Chimera (rows from 4+ Friends), traced with `src/legacy.ts`. Cosmetic, they stack in that order. The
   first of each explains itself in the news, and the card's title badges are buttons that show their meaning (touch).
+- **Pixel provenance** (`src/legacy.ts` `rowPath`, `rowSources`; `src/ui/Provenance.tsx`): every row of every baby is
+  one real Friend's row, so a traced baby row in the DNA trio reads "Row 8 of Loma: your Friend #7730 (Hoverer) via Veve (F1)",
+  and when that Friend is further up than a parent its portrait shows with the row lit (beside the parent it came
+  through on wide cards, level with its row; in the caption on phones). From F2 on the card leads with the player's own
+  Friend in the signal colour, "6 of 16 rows are your Friend #7730", then "rest from #50115 x7 · #159358 x3", next to
+  the family line (a real test run; "Rows from N real Friends: ..." when no row is the player's). Every card's trio hint
+  reads "Tap a row to see which real Friend it came from." Keys: Up/Down, Enter or Space, Escape. It must not make the
+  card taller where it is tight (the 960 x 640 card is at its height limit): the path replaces the caption line, the
+  portrait uses the trio's empty side margin, the sources line shares the family chips' row. Presentation only; no RF,
+  odds or values.
+- **Dream child** (`src/dream.ts`, `src/ui/DreamPanel.tsx`, `src/scene/bubble.ts`): "Every day your Friend dreams of a child.
+  Find the mate and the rows to make it real." It gives the Gene Lab a goal. From (local date, Friend ID, round) a seeded
+  wild mate (never the Friend) and one of the pair's best possible masks; the dream child is that body (Common look), so
+  16 locked rows hatch it exactly. It wakes after the first hatch (a thought bubble over the Friend, a one-time toast, a
+  HUD button). Clues: the picture and the mate's family; the mate's Dream tag; the dream beside the Gene Lab. Feedback
+  like Mastermind after each paid hatch of the pair: "Dream match: 11 of 16 rows" and a peg per row (a row matches when it
+  came from the dream's parent, or both parents draw it alike). 16 of 16: +50 Hearts once per dream, the Dreamchild
+  title, a burst (none with reduced motion); Dream again. Clue strength: a fresh set of mates brings the dream mate
+  27.6% of the time (1 in 4 bonus plus 3 in 72), a Wish for its family always; measured 3 to 4 eggs for a first player.
+  Hearts only: the tier, its odds and `game.json` never change.
 - **Breed book** (`src/breeds.ts`): 45 names, one per unordered family pair, read from the baby's label. The main goal
   (9 families, 4 tiers) stays; breeds are a side collection. The book lists unfound breeds as their dimmed family pair
   ("Skeleton × Mask ???"), so it says which parents to try. Nothing here touches odds or values.
@@ -113,7 +148,9 @@ Match the Rare Friends brand: crisp 1-bit pixel art, monochrome, one signal acce
 | `game.json`, `src/economy.ts`, `tests/economy.test.ts`, `tools/**`, test/video scripts | infra agent | |
 | `src/slingshot.ts`, `tests/slingshot.test.ts` | lead | Moon Slingshot crash point, multiplier curve, exits, payouts, Moon Fund and backing rule; simulated side ledger (`createFlightDesk` in `useSlingshot`: draw at ignition, book once; `topExit` is the record) |
 | `src/scene/launch.ts` | renderer agent | `createLaunchSequence` (`LaunchSequence` in `src/api.ts`): the rocket flight, presentation only (ignite, fly, end); `NurseryScene.playLaunch` lives in `src/scene/nursery.ts` |
+| `src/ui/GeneLab.tsx`, `tests/genelab.test.ts`, `dev/ui/lab-check.mjs` | UI agent, genetics agent | Gene Lab bench (portraits, rails, preview, edge and shape shortcuts, deferred first `lockOptions`) and its proofs: golden no-lock babies, locked rows in all 64 frames, disabled toggles, edge and shape shortcuts, row hit test |
 | `src/ui/SlingshotPanel.tsx`, `src/ui/LaunchOverlay.tsx` | UI agent | Station panel (baby picker, exits ladder, launch button) and the flight overlay: the flight clock, hold input, live counter and result card |
+| `src/dream.ts`, `src/ui/DreamPanel.tsx`, `src/scene/bubble.ts`, `tests/dream.test.ts` | lead | Dream child: the day's dream (mate, mask, child), match counting, the once-per-dream reward, the Matchmaker's mate draw (`pickMates`, `wishMates`), the panel and the nursery bubble; proofs of validity, exact full locks and measured solvability |
 | `index.tsx`, `README.md` | lead | integration |
 
 Relative imports inside the game use explicit `.ts`/`.tsx` extensions (esbuild bundles them; node

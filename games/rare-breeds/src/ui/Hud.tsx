@@ -30,13 +30,16 @@ export type HudProps = Readonly<{
   slingshot?: Readonly<{ net: bigint; launches: number }>;
   /** Makes the winnings pill a button that opens the Moon Slingshot. */
   onOpenSlingshot?: () => void;
+  /** Your Friend's dream (src/dream.ts): a thought-bubble button that opens it; `dreamSolved` marks it come true. */
+  onOpenDream?: () => void;
+  dreamSolved?: boolean;
 }>;
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** Top-left stats pill (plus the slingshot net pill) and top-right icon buttons. Leaves both bottom corners free for the runtime. */
 export function Hud({ balance, eggs, broodCount, muted, onToggleSound, onOpenSettings, onOpenBrood, disabled, collection, hearts, onOpenShop,
-  slingshot, onOpenSlingshot }: HudProps) {
+  slingshot, onOpenSlingshot, onOpenDream, dreamSolved }: HudProps) {
   const families = collection && { found: collection.families.length, total: ALL_FAMILIES.length };
   const brood = <>
     <PixelIcon name="baby" />
@@ -91,6 +94,10 @@ export function Hud({ balance, eggs, broodCount, muted, onToggleSound, onOpenSet
         : <span className={cx("rb-hud-sling", sling.net < 0n && "rb-hud-down")} role="group" aria-label="Slingshot net, simulated RF" title={winningsTitle}>{winnings}</span>)}
     </div>
     <div className="rb-hud-tools">
+      {onOpenDream && <button type="button" className={cx("rb-icon-button rb-hud-dream", dreamSolved && "rb-on")} onClick={onOpenDream} disabled={disabled}
+        aria-label={dreamSolved ? "Your Friend's dream came true" : "Your Friend's dream"} title="Your Friend's dream">
+        <PixelIcon name="dream" />
+      </button>}
       <button type="button" className="rb-icon-button" onClick={onToggleSound} disabled={disabled}
         aria-pressed={!muted} aria-label="Sound" title={muted ? "Sound is off" : "Sound is on"}>
         <PixelIcon name={muted ? "soundOff" : "soundOn"} />

@@ -13,6 +13,22 @@ export const HEART_CYCLE_SECONDS = 10;
 export const KEEP_BONUS = 5;
 /** Price of a Wish match: three candidates from a chosen family. */
 export const WISH_PRICE = 15;
+/** Gene Lab: Hearts per locked row, and the locked rows each session gets free (a first hatch with 0 Hearts can try it). */
+export const LOCK_PRICE = 2;
+export const FREE_LOCKS = 3;
+
+/** What `rows` locked rows cost while `freeLeft` of the session's free rows are unused: free rows first, then Hearts. */
+export function lockCost(rows: number, freeLeft: number) {
+  const free = Math.min(rows, Math.max(0, freeLeft));
+  return { free, hearts: (rows - free) * LOCK_PRICE };
+}
+
+/** The Gene Lab cost line: "No locks", "3 locks, free", "5 locks, 4 Hearts". */
+export function lockCostLabel(rows: number, freeLeft: number) {
+  if (!rows) return "No locks";
+  const { hearts } = lockCost(rows, freeLeft), locks = `${rows} ${rows === 1 ? "lock" : "locks"}`;
+  return hearts ? `${locks}, ${hearts} Hearts` : `${locks}, free`;
+}
 
 export const heartsPerMinute = (tier: TierId | undefined) => HEART_RATE[tier ?? "common"] * (60 / HEART_CYCLE_SECONDS);
 export const accessoryInfo = (id: AccessoryId) => ACCESSORIES.find(item => item.id === id)!;

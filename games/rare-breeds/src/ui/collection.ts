@@ -70,6 +70,16 @@ export function inheritedNews(baby: Creature): string[] {
   return [...bySource].map(([name, labels]) => `Inherited: ${labels.join(" and ")} from ${name}!`);
 }
 
+/** The reveal card's Gene Lab line, e.g. ["Locked 5 rows, all inherited"]: how many locked rows came from the chosen parent. */
+export function lockedNews(baby: Creature): string[] {
+  const locks = baby.dna?.locks, rowSource = baby.dna?.rowSource;
+  const locked = (locks ?? []).flatMap((lock, row) => lock === null ? [] : [row]);
+  if (!locks || !rowSource || !locked.length) return [];
+  const kept = locked.filter(row => rowSource[row] === locks[row]).length;
+  if (locked.length === 1) return [kept ? "Locked 1 row, inherited" : "Locked 1 row, not inherited"];
+  return [`Locked ${locked.length} rows, ${kept === locked.length ? "all" : kept} inherited`];
+}
+
 /**
  * What a freshly hatched baby adds to the collection it hatched into (`before` must not include it yet).
  * Preformatted lines for the reveal card, e.g. ["New family: Hollow · 3/9", "First Mutant · 2/4 tiers",

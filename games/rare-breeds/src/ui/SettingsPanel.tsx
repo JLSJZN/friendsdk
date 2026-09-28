@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { formatChance, formatRF } from "../economy.ts";
+import { DREAM_HEARTS } from "../dream.ts";
 import { PASS_ON_ODDS } from "../genetics.ts";
+import { FREE_LOCKS, LOCK_PRICE } from "../hearts.ts";
 import { CHIMERA_FRIENDS, ECHO_ROWS } from "../titles.ts";
 import { FIZZLE_BPS, LADDER_EXITS, MOON_FUND_START, MOON_HUNDREDTHS, multiplierLabel, reachBps } from "../slingshot.ts";
 import type { Creature } from "../types.ts";
@@ -58,9 +60,11 @@ export function SettingsPanel({ muted, onToggleSound, reducedMotion, onToggleRed
       <PixelIcon name="back" className="rb-flip" /><span>Replay intro</span></button>}
 
     <ol className="rb-steps">
-      <li><strong>Find a match.</strong> Pick a parent and one of three real Rare Friends. New faces are free.</li>
+      <li><strong>Find a match.</strong> Pick a parent and one of three real Rare Friends. New faces are free.
+        In the Gene Lab tab, lock rows to the parent you want them from: {LOCK_PRICE} Hearts a row, your first {FREE_LOCKS} free.</li>
+      <li><strong>Dream child.</strong> After your first hatch your Friend dreams of a child (tap the bubble): breed it with the tagged mate and copy the dream's rows in the Gene Lab. All 16 rows: +{DREAM_HEARTS} Hearts, once per dream.</li>
       <li><strong>Hatch an egg.</strong> Each egg costs {price} (simulated). Rare Friends asks you to confirm Buy egg and Use egg; both are previews.</li>
-      <li><strong>Meet the baby.</strong> Every pixel row comes from one parent, walk cycle included. Mutations are rare, but a kept baby passes its shapes on ({PASS_ON_ODDS} each): pick it as a parent.</li>
+      <li><strong>Meet the baby.</strong> Every pixel row comes from one parent, walk cycle included. Tap a row to follow it back to the real Friend it came from, token ID and all, however many generations up. Mutations are rare, but a kept baby passes its shapes on ({PASS_ON_ODDS} each): pick it as a parent.</li>
       <li><strong>Keep or trade in.</strong> Kept babies follow you, earn Hearts and can breed again; each generation counts up (F1, F2, F3). The Sanctuary trades a baby in for a fixed simulated RF value.
         Titles, just for show: Echo ({ECHO_ROWS}+ of 16 rows from your Friend), Purebred (one family), Chimera (rows from {CHIMERA_FRIENDS}+ Friends). Tap a title on a card to see why.</li>
       <li><strong>Feeling lucky?</strong> Launch a kept baby from the Moon Slingshot: hold to fly, let go to jump. Up to x10, or the pond.</li>

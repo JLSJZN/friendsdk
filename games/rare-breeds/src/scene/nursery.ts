@@ -13,6 +13,7 @@ import {
   SLING_FRONT, SLING_PULL, SLING_SEAT, SPAWN, STATIONS, WALK, WINDOW_CLIP, createRoom, pouchOffset, type Rect,
 } from "./room.ts";
 import { createPixelView } from "./view.ts";
+import { drawDreamBubble } from "./bubble.ts";
 
 const SPEED = 250;
 const DASH = 390;
@@ -119,7 +120,7 @@ function rectDistance(x: number, y: number, [x0, y0, x1, y1]: Rect) {
 const inside = (x: number, y: number, [x0, y0, x1, y1]: Rect) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
 
 export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
-  const { canvas, player: firstPlayer, onStationNear, onStationActivate, onCreatureActivate } = options;
+  const { canvas, player: firstPlayer, onStationNear, onStationActivate, onCreatureActivate, onDreamActivate } = options;
   let reducedMotion = options.reducedMotion;
   let paused = false, destroyed = false, dirty = true;
   const view = createPixelView(canvas, WORLD_WIDTH, WORLD_HEIGHT, { onResize: () => { dirty = true; }, zoomFor: compactZoom, overscan: true });
@@ -151,7 +152,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   let guided = false;
   /** The player's nameplate shows during the intro and after tapping the Friend. */
   let tagUntil = 3200, nextLookAt = 5000;
-  const debug = { x: "", y: "", near: "", brood: "", babies: "", view: "", incomes: "" };
+  const debug = { x: "", y: "", near: "", brood: "", babies: "", view: "", incomes: "", dream: "" };
   /** Camera: top-left of the visible region (logical px), eased look-ahead, and the UI insets (CSS px). */
   const cam = { x: 0, y: 0, lookX: 0, lookY: 0, layout: -1, top: 0, bottom: 0, family: 1 };
   /** The Friend's measured velocity (logical px / s), smoothed, for the look-ahead. */
@@ -450,6 +451,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     const slop = event.pointerType === "mouse" ? 2 : Math.min(40, 15 / view.cssScale);
     if (near && promptBox && inside(x, y, [promptBox[0] - slop, promptBox[1] - slop, promptBox[2] + slop, promptBox[3] + slop])) { activate(near); return; }
     if (beaconBox && inside(x, y, beaconBox)) { goToStation("matchmaker"); return; }
+    if (dreamBox && inside(x, y, [dreamBox[0] - slop, dreamBox[1] - slop, dreamBox[2] + slop, dreamBox[3] + slop])) { onDreamActivate?.(); return; }
     const baby = hitBaby(x, y, slop);
     if (baby) { hop(baby, 12, 300); onCreatureActivate?.(baby.creature.key); dirty = true; return; }
     if (inside(x, y, entityBox(player))) { hopChain(); fx.hearts(player.x, player.y - topOf(player) - 4, 1, 6); tagUntil = time + 2200; onCreatureActivate?.(player.creature.key); return; }
@@ -466,7 +468,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     if (event.pointerType === "mouse" && !paused) {
       const station = hitStation(x, y);
       const onBaby = !!hitBaby(x, y, 2) || inside(x, y, entityBox(player));
-      const onPrompt = !!(near && promptBox && inside(x, y, promptBox)) || !!(beaconBox && inside(x, y, beaconBox));
+      const onPrompt = !!(near && promptBox && inside(x, y, promptBox)) || !!(beaconBox && inside(x, y, beaconBox)) || !!(dreamBox && inside(x, y, dreamBox));
       if (station !== hover) { hover = station; dirty = true; }
       canvas.style.cursor = station || onBaby || onPrompt ? "pointer" : "";
     }
@@ -801,6 +803,8 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
   // Rendering
 
   let promptBox: Rect | null = null;
+  /** The dream bubble (setDream): its child, since when it shows, and its tap box while drawn. */
+  let dream: { child: Creature; solved: boolean; since: number } | null = null, dreamBox: Rect | null = null;
 
   const popScale = (entity: Entity) => {
     if (reducedMotion) return { sx: 1, sy: 1, visible: time >= entity.bornAt };
@@ -1114,6 +1118,20 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     promptBox = [x - 8, y - 8, x + width + 8, y + height + 12];
   }
 
+  /** The dream bubble beside the Friend's head; it makes way for a station prompt and for scripted scenes. */
+  function drawDream() {
+    dreamBox = null;
+    if (!dream || near || inputLock || time < DROP + 300) return;
+    const { width: viewWidth, top } = band();
+    // About 2 to 3 CSS px per sprite cell at any zoom, so the dream child reads on phones too.
+    const cell = clamp(Math.round(2.4 / (view.cssScale || 1)), 1, 4);
+    const alpha = reducedMotion ? 1 : clamp((time - dream.since) / 400);
+    dreamBox = drawDreamBubble(ctx, {
+      child: dream.child, headX: Math.round(player.x), headY: Math.round(player.y - topOf(player) - hopOffset(player) - dropOffset(player)),
+      left: view.camera.x, top: view.camera.y + top, right: view.camera.x + viewWidth, cell, time, reducedMotion, alpha, solved: dream.solved,
+    });
+  }
+
   function render() {
     view.sync();
     // A new layout (first frame, resize, zoom change) re-reads the UI insets and snaps the camera.
@@ -1164,6 +1182,7 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     drawIncome();
     drawBeacon();
     drawNameplate();
+    drawDream();
     drawPrompt();
     // Lightweight state for automated browser checks (written only when it changes).
     const next = { x: player.x.toFixed(1), y: player.y.toFixed(1), near: near ?? "", brood: String(brood.length), babies: brood.map(baby => `${Math.round(baby.x)},${Math.round(baby.y)}`).join(" ") };
@@ -1175,6 +1194,9 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
     // Camera: left, top, visible width, height (logical px) and zoom, for mapping world points in tests.
     const shown = `${camera.x},${camera.y},${+view.viewWidth.toFixed(2)},${+view.viewHeight.toFixed(2)},${+view.zoom.toFixed(3)}`;
     if (shown !== debug.view) canvas.dataset.view = debug.view = shown;
+    // The dream bubble's tap box (logical px), empty while hidden.
+    const bubble = dreamBox ? dreamBox.map(Math.round).join(",") : "";
+    if (bubble !== debug.dream) canvas.dataset.dream = debug.dream = bubble;
     // Hearts income in flight: badges / hearts.
     const flying = `${incomes.length}/${incomes.reduce((sum, item) => sum + item.hearts.filter(heart => time - item.start - heart.delay < HEART_FLIGHT).length, 0)}`;
     if (flying !== debug.incomes) canvas.dataset.incomes = debug.incomes = flying;
@@ -1579,6 +1601,13 @@ export function createNurseryScene(options: NurserySceneOptions): NurseryScene {
       const run = launchQueue.then(() => runScript(() => launch(entity, pull)));
       launchQueue = run.catch(() => {});
       return run;
+    },
+    setDream(child, solved) {
+      if (destroyed) return;
+      if (!child) dream = null;
+      else if (dream?.child !== child) dream = { child, solved, since: time };
+      else dream.solved = solved;
+      dirty = true;
     },
     celebrate(key) {
       if (destroyed) return;

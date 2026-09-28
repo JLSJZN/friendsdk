@@ -1,7 +1,8 @@
 // Rare Breeds legacy: how far the player's Friend travels through its brood.
 // A baby's row y is always row y of one parent (Dna.rowSource says which), so following rowSource down the
 // family tree ends at the Friend or wild Friend whose on-chain pixel row it really is.
-// Pure, deterministic and cycle-safe (no SDK runtime import), for the legacy card, the family tree and tests.
+// Pure, deterministic and cycle-safe (no SDK runtime import), for the legacy card, the family tree, the DNA trio's
+// row paths ("Row 5: Friend #4411 via Pip") and tests.
 import { familySides } from "./genetics.ts";
 import { FAMILY_NAMES } from "./sprites.ts";
 import { FRAME_SIZE, type Creature } from "./types.ts";
@@ -92,6 +93,70 @@ export function rowOrigins(baby: Creature, lookup: CreatureLookup): readonly str
 /** For each of the 16 rows, the family of the ancestor whose row it ultimately is. */
 export function rowFamilies(creature: Creature, lookup: CreatureLookup): readonly string[] {
   return rowTracer(lookup)(creature).families;
+}
+
+/** Where a row really comes from: the Friend or wild Friend (or the last known ancestor) whose pixel row it is. */
+export type RowOrigin = Readonly<{
+  /** Its key ("friend:77949", "wild:4411"); for an ancestor the lookup does not know, the key its child names. */
+  key: string;
+  /** Null when the lookup does not know it (its rows still count as its own). */
+  creature: Creature | null;
+  /** Its family; for an unknown ancestor, the child's label name for that side. */
+  family: string;
+  /** The on-chain token ID of a Friend or wild Friend. */
+  tokenId?: bigint;
+}>;
+
+/** One step down a row's path: a baby, the parent side the row came from (0 = parent A, 1 = parent B) and its generation (F2 -> 2). */
+export type RowStep = Readonly<{ creature: Creature; side: 0 | 1; generation: number }>;
+
+export type RowPath = Readonly<{
+  /** The row, 0-15. */
+  row: number;
+  /** One step per baby the row passed through, the traced baby first; empty for a Friend or wild Friend. */
+  steps: readonly RowStep[];
+  origin: RowOrigin;
+}>;
+
+/** A real ancestor and the baby's rows that are its own (0-15, top first). */
+export type RowSource = RowOrigin & Readonly<{ rows: readonly number[] }>;
+
+function rowOrigin(key: string, family: string, from: Creature, lookup: CreatureLookup): RowOrigin {
+  const creature = key === from.key ? from : lookup(key) ?? null;
+  return Object.freeze({ key, creature, family, tokenId: creature?.tokenId });
+}
+
+/**
+ * The path of row y from `baby` down to the real Friend it came from: every baby on the way with the parent side
+ * it took the row from, ending at your Friend or a wild Friend (token ID and family). One row mask covers all 64
+ * frames, so row y is row y of every frame; a Side-walker (a Colossus in its line) shows its right-facing frames
+ * from every side, so its row y is row y of its ancestors' right-facing (and left-facing) frames. The origin is
+ * the one rowOrigins finds (same tracer), so missing ancestors, cycles and very deep chains end the path safely.
+ * Null for a row outside 0-15.
+ */
+export function rowPath(baby: Creature, y: number, lookup: CreatureLookup): RowPath | null {
+  if (!Number.isInteger(y) || y < 0 || y >= FRAME_SIZE) return null;
+  const { keys, families } = rowTracer(lookup)(baby);
+  const steps: RowStep[] = [];
+  // Follow rowSource down until the tracer's origin (it stops at an unknown parent, a cycle or MAX_DEPTH too).
+  for (let at: Creature | null | undefined = baby; at?.dna && at.parents && at.key !== keys[y] && steps.length < MAX_DEPTH;) {
+    const side = at.dna.rowSource[y] === 1 ? 1 : 0;
+    steps.push(Object.freeze({ creature: at, side, generation: at.lineage }));
+    at = lookup(at.parents[side]);
+  }
+  return Object.freeze({ row: y, steps: Object.freeze(steps), origin: rowOrigin(keys[y], families[y], baby, lookup) });
+}
+
+/**
+ * The distinct real ancestors of a baby's 16 rows, most rows first (then by their first row): #77949 x10,
+ * #4411 x4, #812 x2. A Friend or wild Friend is its own single source.
+ */
+export function rowSources(baby: Creature, lookup: CreatureLookup): readonly RowSource[] {
+  const { keys, families } = rowTracer(lookup)(baby);
+  const rows = new Map<string, number[]>();
+  keys.forEach((key, y) => { const list = rows.get(key); if (list) list.push(y); else rows.set(key, [y]); });
+  return Object.freeze([...rows].map(([key, list]) => Object.freeze({ ...rowOrigin(key, families[list[0]], baby, lookup), rows: Object.freeze(list) }))
+    .sort((p, q) => q.rows.length - p.rows.length || p.rows[0] - q.rows[0]));
 }
 
 /** The creatures and all their known ancestors, each once (iterative, so any depth or cycle is safe). */

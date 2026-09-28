@@ -3084,7 +3084,8 @@ button.rb-tree-item:disabled { opacity: .5; cursor: not-allowed; }
   .rb-card-v2 .rb-card-head:has(.rb-card-news) { grid-template-areas: "news news" "title title" "line line"; }
   .rb-card-v2 .rb-card-head:has(.rb-card-news) > .rb-eyebrow { display: none; }
   .rb-card-v2 .rb-card-head .rb-card-news { display: block; line-height: 1.35; }
-  .rb-card-v2 .rb-card-head .rb-card-news li { display: inline; margin-right: 8px; font-size: 10px; }
+  /* Each find wraps as one piece, so its sparkle never ends a line on its own. */
+  .rb-card-v2 .rb-card-head .rb-card-news li { display: inline-block; max-width: 100%; margin-right: 8px; font-size: 10px; }
   .rb-card-v2 .rb-card-head .rb-card-news li > span { overflow-wrap: normal; }
   .rb-card-v2 .rb-card-head .rb-card-news .rb-icon { display: inline-block; margin-right: 3px; vertical-align: -1px; }
 }
@@ -3335,3 +3336,455 @@ button.rb-tree-item:disabled { opacity: .5; cursor: not-allowed; }
 @container rb (max-height: 479px) and (orientation: landscape) {
   .rb-flight-meter { top: var(--rb-edge); }
 }
+
+/* ---------- Gene Lab: a Matchmaker tab that locks rows of the chosen pair to one parent (src/ui/GeneLab.tsx) ---------- */
+
+.rb-match-tabs { display: flex; flex: none; gap: 6px; }
+.rb-match-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: var(--rb-tap);
+  padding: 0 12px;
+  border: 2px solid var(--rb-rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--rb-muted-2);
+  font: 700 12px/1 var(--rb-mono);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.rb-match-tab:hover { border-color: var(--rb-muted); color: var(--rb-panel-text); }
+.rb-match-tab.rb-on { border-color: var(--rb-signal); background: #22261A; color: var(--rb-panel-text); }
+.rb-match-tab .rb-icon { color: var(--rb-signal); }
+.rb-match-tab-tag { margin-left: 2px; }
+/* Wide frames: the tabs sit in the panel header (MatchmakerPanel headerEnd), so the view below keeps its height. */
+.rb-panel-head .rb-match-tabs { margin-left: auto; }
+.rb-match-view { display: flex; flex-direction: column; gap: inherit; min-width: 0; }
+/* First visit at wide frames: the pair stage drops its name captions (the cards name both) and keeps the fine print
+   under the chemistry line, and the mate cards are a little shorter, so Parent A, Parent B and all three mates show
+   at 960 x 640 without scrolling. The stacked layout and medium heights already hide the captions: same fine print. */
+.rb-chemistry-fine { display: none; font: 11px/1.3 var(--rb-mono); color: #5E5A52; }
+.rb-match-guided .rb-match-captions { display: none; }
+@container rb (min-width: 600px) and (min-height: 561px) {
+  .rb-match-guided .rb-pick-card .rb-slot { height: 72px; }
+  /* The longest chemistry line wraps: a tighter column keeps the stage at the sprites' height. */
+  .rb-match-guided .rb-match-middle { gap: 2px; padding-bottom: 2px; }
+  .rb-match-guided .rb-chemistry { gap: 2px; }
+}
+:is(.rb-match-guided, .rb-match:has(.rb-match-stacked)) .rb-chemistry-fine { display: block; }
+@container rb (max-height: 560px) {
+  .rb-chemistry-fine { display: block; }
+}
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-chemistry-fine { display: none; }
+}
+.rb-foot-lab { display: flex; align-items: center; gap: 6px; }
+.rb-foot-lab .rb-icon { color: var(--rb-signal); }
+.rb-foot-lab.rb-warn { color: var(--rb-danger); }
+
+/* The lab's panel keeps its full height, so a footer or cost line that changes with the locks never re-centres it
+   (a second tap on the same spot must hit the same row). */
+.rb-panel.rb-match-lab { height: 100%; }
+.rb-lab { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rb-lab-lead { font-size: 13px; line-height: 1.35; color: var(--rb-muted-2); }
+.rb-lab-lead strong { color: var(--rb-panel-text); }
+.rb-lab-bench {
+  --rb-bw: 2px;
+  container: rb-lab / inline-size;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 8px 6px;
+  border: 1px solid var(--rb-rule);
+  border-radius: 4px;
+  background: #0A0A0A;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.rb-lab-measuring .rb-lab-grid { visibility: hidden; }
+.rb-lab-grid {
+  display: grid;
+  grid-template-columns: calc(var(--rb-box) + 2 * var(--rb-bw)) var(--rb-rail) calc(var(--rb-box) + 2 * var(--rb-bw)) var(--rb-rail) calc(var(--rb-box) + 2 * var(--rb-bw));
+  column-gap: 6px;
+  row-gap: 5px;
+  align-items: start;
+  max-width: 100%;
+}
+.rb-lab-role { grid-row: 1; justify-self: center; font: 700 10px/1.2 var(--rb-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--rb-muted-2); white-space: nowrap; }
+.rb-lab-role-a { grid-column: 1; }
+.rb-lab-role-baby { grid-column: 3; color: var(--rb-signal); }
+.rb-lab-role-b { grid-column: 5; }
+/* Press, slide and release: the surfaces take the whole gesture, so a drag never scrolls the panel instead. */
+.rb-lab-slot, .rb-lab-rail { grid-row: 2; touch-action: none; }
+.rb-lab-readonly :is(.rb-lab-slot, .rb-lab-rail) { touch-action: auto; }
+.rb-lab-slot {
+  position: relative;
+  display: block;
+  border: var(--rb-bw) solid var(--rb-ink);
+  border-radius: 3px;
+  background: var(--rb-paper);
+  line-height: 0;
+  cursor: pointer;
+}
+.rb-lab-slot-a { grid-column: 1; }
+.rb-lab-slot-baby { grid-column: 3; outline: 2px dashed var(--rb-muted); outline-offset: 1px; }
+.rb-lab-slot-b { grid-column: 5; }
+.rb-lab-canvas { display: block; image-rendering: pixelated; }
+.rb-lab-rows { position: absolute; left: 0; right: 0; top: var(--rb-px); display: grid; grid-template-rows: repeat(16, var(--rb-px)); pointer-events: none; }
+.rb-lab-row { position: relative; }
+.rb-lab-row.rb-shape-hot { box-shadow: inset 3px 0 0 var(--rb-mut), inset -3px 0 0 var(--rb-mut); }
+.rb-lab-row.rb-hot { box-shadow: 0 0 0 1px rgba(17, 17, 17, .65); z-index: 1; }
+.rb-lab-row.rb-pressed { box-shadow: 0 0 0 2px var(--rb-ink), 0 0 0 4px var(--rb-signal); z-index: 2; }
+.rb-lab-rail { display: grid; grid-template-rows: repeat(16, var(--rb-px)); padding-top: calc(var(--rb-bw) + var(--rb-px)); cursor: pointer; }
+.rb-lab-rail-a { grid-column: 2; }
+.rb-lab-rail-b { grid-column: 4; }
+.rb-lab-readonly :is(.rb-lab-slot, .rb-lab-rail) { cursor: default; }
+.rb-lab-cell { position: relative; }
+.rb-lab-cell::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 1px;
+  margin-left: -2px;
+  background: #4A4740;
+}
+/* Locked to this parent: an arrow in the parent's tint (A paper, B green) flowing to the preview, as in the DNA trio. */
+.rb-lab-cell.rb-on::before {
+  top: 0;
+  bottom: max(1px, calc(var(--rb-px) * .2));
+  left: 0;
+  right: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  background: var(--rb-tint-a);
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 50%, calc(100% - 4px) 100%, 0 100%);
+}
+.rb-lab-rail-b .rb-lab-cell.rb-on::before { background: var(--rb-tint-b); clip-path: polygon(4px 0, 100% 0, 100% 100%, 4px 100%, 0 50%); }
+/* Not allowed with these locks (no possible baby would be left): a red dotted stub instead of the tick. */
+.rb-lab-cell.rb-no::before { left: 3px; right: 3px; width: auto; margin: 0; background: repeating-linear-gradient(90deg, var(--rb-danger) 0 1px, transparent 1px 3px); opacity: .7; }
+.rb-lab-cell.rb-hot { background: rgba(244, 241, 234, .16); }
+.rb-lab-name { grid-row: 3; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; text-align: center; }
+.rb-lab-name-a { grid-column: 1; }
+.rb-lab-name-baby { grid-column: 3; }
+.rb-lab-name-b { grid-column: 5; }
+.rb-lab-name strong { max-width: 100%; font-size: 12px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-lab-name strong.rb-lab-possible { font: 700 15px/1.1 var(--rb-mono); color: var(--rb-signal); }
+.rb-lab-possible span { font-size: 11px; font-weight: 400; color: var(--rb-muted-2); }
+.rb-lab-count { display: inline-flex; align-items: center; gap: 5px; font: 11px/1.2 var(--rb-mono); color: var(--rb-muted-2); white-space: nowrap; }
+.rb-lab-swatch { display: block; width: 9px; height: 9px; flex: none; }
+.rb-lab-swatch-a { background: var(--rb-tint-a); }
+.rb-lab-swatch-b { background: var(--rb-tint-b); }
+.rb-lab-caption { display: flex; align-items: center; justify-content: center; min-height: 30px; font: 11px/1.35 var(--rb-mono); color: var(--rb-muted-2); text-align: center; }
+/* Edge shortcuts (edgeLocks): top or bottom rows from a parent, a 2 x 2 grid with Parent A left and Parent B right. */
+.rb-lab-edges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.rb-button.rb-lab-edge { justify-content: flex-start; gap: 8px; padding: 4px 8px; }
+.rb-lab-edge > span { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.rb-lab-edge strong { font-size: 13px; line-height: 1.15; }
+.rb-lab-edge strong + span { overflow: hidden; text-overflow: ellipsis; font: 400 11px/1.15 var(--rb-mono); color: var(--rb-muted-2); }
+.rb-lab-edge .rb-lab-swatch { outline: 1px solid var(--rb-ink); }
+.rb-button.rb-lab-edge.rb-on { border-color: var(--rb-signal); background: #22261A; }
+.rb-lab-row.rb-edge-hot { box-shadow: inset 3px 0 0 var(--rb-signal), inset -3px 0 0 var(--rb-signal); }
+.rb-lab-shapes { display: flex; flex-wrap: wrap; gap: 8px; }
+.rb-button.rb-lab-shape { flex: 1 1 220px; justify-content: flex-start; min-height: 44px; padding: 0 12px; border-color: rgba(180, 140, 255, .55); font-size: 14px; }
+.rb-lab-shape .rb-icon { color: var(--rb-mut); }
+.rb-button.rb-lab-shape.rb-on { border-color: var(--rb-mut); background: rgba(138, 77, 255, .22); }
+.rb-lab-shape .rb-lab-shape-rows { flex: none; margin-left: auto; font: 11px/1 var(--rb-mono); color: var(--rb-muted-2); }
+.rb-lab-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.rb-lab-cost { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rb-lab-cost strong { font: 700 14px/1.2 var(--rb-mono); color: var(--rb-signal); }
+.rb-lab-cost.rb-warn strong { color: var(--rb-danger); }
+.rb-lab-cost span { font-size: 12px; line-height: 1.3; color: var(--rb-muted-2); }
+.rb-button.rb-lab-clear { min-height: 44px; }
+.rb-lab-clear .rb-icon { color: var(--rb-muted-2); }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-match-tab { padding: 0 10px; font-size: 11px; letter-spacing: .08em; }
+  .rb-lab { gap: 8px; }
+  .rb-lab-lead { font-size: 12px; }
+  .rb-lab-bench { --rb-bw: 1px; padding: 7px 4px 4px; gap: 4px; }
+  .rb-lab-grid { column-gap: 4px; row-gap: 3px; }
+  .rb-lab-cell.rb-on::before { clip-path: polygon(0 0, calc(100% - 3px) 0, 100% 50%, calc(100% - 3px) 100%, 0 100%); }
+  .rb-lab-rail-b .rb-lab-cell.rb-on::before { clip-path: polygon(3px 0, 100% 0, 100% 100%, 3px 100%, 0 50%); }
+  .rb-lab-role { font-size: 9px; letter-spacing: .08em; }
+  .rb-lab-name strong { font-size: 11px; }
+  .rb-lab-count { font-size: 10px; gap: 4px; }
+  .rb-lab-caption { min-height: 29px; font-size: 10px; }
+  /* Two shortcuts share a row (their rows show on the bench when pressed), and Free all sits beside the cost. */
+  .rb-button.rb-lab-shape { flex: 1 1 140px; padding: 4px 10px; gap: 6px; font-size: 13px; }
+  .rb-lab-shape:not(:disabled) .rb-lab-shape-rows { display: none; }
+  .rb-lab-foot { flex-wrap: nowrap; }
+  .rb-lab-cost { flex: 1 1 auto; }
+  .rb-lab-cost span { font-size: 11px; }
+  .rb-button.rb-lab-clear { flex: none; padding: 0 10px; }
+  .rb-lab-clear .rb-long { display: none; }
+  /* The lab tab's footer keeps the essentials: the pass-on line, the hint and the first-visit confirmation note return on
+     the Parents tab (a first visit always opens there). */
+  .rb-match-lab :is(.rb-foot-hint, .rb-foot-pass, .rb-match-confirm) { display: none; }
+  .rb-lab-edges { gap: 4px; }
+}
+/* Landscape phone frames: one row of shortcuts, and the lab's lead makes way. The lab scrolls there, so a finger on a
+   portrait or rail may pan it (GeneLab drops a press that travels): a swipe scrolls instead of locking a row. */
+@container rb (max-height: 300px) {
+  .rb-lab-slot, .rb-lab-rail { touch-action: pan-y; }
+  .rb-lab-lead { display: none; }
+  .rb-lab-caption { min-height: 0; }
+  .rb-lab-role { display: none; }
+}
+
+/* DNA trio: a row locked in the Gene Lab gets a small ink lock at its parent's end of the link (legend in the caption). */
+.rb-trio-cell.rb-lock::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  width: clamp(3px, calc(var(--rb-px) - 1px), 7px);
+  height: clamp(3px, calc(var(--rb-px) - 1px), 7px);
+  transform: translateY(-55%);
+  background: var(--rb-ink);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Cpath d='M2 0h3v1H2zM1 1h1v2H1zM5 1h1v2H5zM0 3h7v4H0z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Cpath d='M2 0h3v1H2zM1 1h1v2H1zM5 1h1v2H5zM0 3h7v4H0z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.rb-trio-link-b .rb-trio-cell.rb-lock::after { left: auto; right: 1px; }
+.rb-trio-lock-note { display: inline-flex; align-items: center; gap: 6px; color: var(--rb-panel-text); font-weight: 700; }
+.rb-trio-lock-note .rb-icon { color: var(--rb-signal); }
+.rb-lab-main, .rb-lab-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rb-lab-shape > span:not(.rb-lab-shape-rows) { white-space: normal; text-align: left; line-height: 1.2; }
+/* Wide frames: the shortcuts and the cost sit beside the bench, so the lab fits the 960 x 640 panel without scrolling. */
+@container rb (min-width: 600px) and (min-height: 480px) {
+  /* 236 px keeps the bench at scale 7 in the 960 x 640 panel. */
+  .rb-lab-main { display: grid; grid-template-columns: minmax(0, 1fr) 236px; align-items: start; gap: 8px; }
+  .rb-button.rb-lab-edge { gap: 6px; padding: 4px 6px; }
+  .rb-lab-edge strong { font-size: 12px; }
+  .rb-lab-shapes { flex-direction: column; }
+  .rb-button.rb-lab-shape { flex: none; width: 100%; }
+  .rb-lab-foot { flex-direction: column; align-items: stretch; }
+}
+/* Phones: the lab needs the room, so its tab drops the odds strip (the Parents tab keeps it). */
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-match-lab .rb-odds-strip { display: none; }
+  .rb-lab-main, .rb-lab-side { gap: 8px; }
+}
+.rb-lab-name .rb-short { display: none; }
+@container rb-lab (max-width: 340px) {
+  .rb-lab-name .rb-long { display: none; }
+  .rb-lab-name .rb-short { display: inline; }
+}
+
+/* ==========================================================================================
+   Pixel provenance: the card says which real Friends a baby's rows come from, and a traced baby row in the DNA trio
+   shows its whole path down to one of them, with that Friend's portrait. Appended block with its own selectors.
+   ========================================================================================== */
+
+/* From F2 on, "Rows from 3 real Friends: #77949 x10 · #4411 x4" shares the family line's row (wraps under it on
+   phones): token IDs bright, your Friend with a heart. */
+.rb-card-lineage { grid-area: line; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; min-width: 0; }
+.rb-card-sources { margin: 0; min-width: 0; color: var(--rb-muted-2); font: 10px/1.4 var(--rb-mono); }
+.rb-prov-source { font-weight: 700; color: var(--rb-panel-text); white-space: nowrap; }
+/* Your own Friend's share leads, in the signal colour and a size up; the other real Friends follow, small. */
+.rb-prov-own { display: inline-flex; align-items: center; gap: 5px; margin-right: 4px; font: 700 12px/1.3 var(--rb-mono); color: var(--rb-signal); white-space: nowrap; }
+.rb-prov-own .rb-icon { flex: none; }
+
+/* With a lookup the trio caption stacks its idle line and a traced row's path in one cell, so tracing never moves
+   the card; on narrow trios an F2 or later reserves the origin portrait's height. */
+.rb-trio-caption.rb-trio-traceable { display: grid; width: 100%; }
+.rb-trio-caption.rb-trio-deep { min-height: calc(var(--rb-o-box) + 2px); }
+.rb-trio-traceable > .rb-trio-idle, .rb-trio-traceable > .rb-trio-now { grid-area: 1 / 1; align-self: center; justify-self: center; min-width: 0; max-width: 100%; }
+.rb-trio-idle { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 14px; }
+/* Opacity too: Chrome can leave a pixel icon of the idle line (the Gene Lab lock) painted when only visibility flips. */
+.rb-trio-traceable.rb-tracing > .rb-trio-idle { visibility: hidden; opacity: 0; }
+.rb-trio-now { animation: rb-fade-in 140ms ease-out both; }
+
+/* The first result card's tip. */
+.rb-trio-hint.rb-trio-hint-new { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--rb-signal); }
+
+/* A traced row: "Row 5 of Zibu: Friend #4411 (Hollow) via Pip (F1)", the swatch in the tint of the side it came in by. */
+.rb-prov-path { display: flex; align-items: center; gap: 10px; text-align: left; }
+.rb-prov-text { min-width: 0; }
+@container rb-trio (max-width: 380px) { .rb-prov-text { line-height: 1.25; } }
+.rb-prov-swatch { display: inline-block; margin-right: 5px; vertical-align: -1px; }
+.rb-prov-note { color: var(--rb-mut); }
+/* The origin Friend's portrait with the row lit: a PARENT_TINT band on the canvas and a tick in the same tint. In the
+   caption (narrow trios) the tick points at the text; in the side margin (wide trios) it points at the parent's row,
+   level with it (its top offsets the two row pitches), with the token ID underneath. */
+.rb-prov-portrait, .rb-trio-origin { position: relative; flex: none; line-height: 0; }
+.rb-prov-portrait { border: 1px solid var(--rb-ink); border-radius: 2px; background: var(--rb-paper); }
+.rb-trio-origin {
+  position: absolute;
+  z-index: 2;
+  top: calc((var(--rb-row) + 1.5) * (var(--rb-px) - var(--rb-o-px)) - 1px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+  animation: rb-fade-in 160ms ease-out both;
+}
+.rb-trio-origin-a { right: calc(100% + 14px); }
+.rb-trio-origin-b { left: calc(100% + 14px); }
+.rb-trio-origin .rb-trio-canvas { border: 1px solid var(--rb-ink); border-radius: 2px; box-shadow: 0 0 0 1px var(--rb-rule); }
+.rb-trio-origin-name { font: 700 10px/1.2 var(--rb-mono); color: var(--rb-panel-text); white-space: nowrap; }
+.rb-prov-portrait.rb-prov-from-a::after, .rb-prov-portrait.rb-prov-from-b::after, .rb-trio-origin::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--rb-o-px) * (var(--rb-row) + 1.5) - 3px);
+  right: -8px;
+  width: 6px;
+  height: 7px;
+  background: var(--rb-tint-a);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.rb-trio-origin::after { top: calc(1px + var(--rb-o-px) * (var(--rb-row) + 1.5) - 3.5px); right: -11px; }
+/* The row itself, outlined in ink like the trio's traced rows. */
+.rb-prov-portrait::before, .rb-trio-origin::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: calc(var(--rb-o-px) * (var(--rb-row) + 1));
+  left: 0;
+  width: var(--rb-o-box);
+  height: var(--rb-o-px);
+  box-shadow: 0 0 0 1px var(--rb-ink);
+}
+.rb-trio-origin::before { top: calc(1px + var(--rb-o-px) * (var(--rb-row) + 1)); left: 1px; }
+.rb-trio-origin-b::after { right: auto; left: -11px; clip-path: polygon(100% 0, 0 50%, 100% 100%); background: var(--rb-tint-b); }
+.rb-prov-portrait.rb-prov-from-b::after { background: var(--rb-tint-b); }
+
+/* The tightest frames (390 x 260 landscape, the short 3:4 portrait fallback) already drop the tap hint: the first card's
+   tip and the Rows from line give way too, and a traced path stays short text. */
+@container rb (max-height: 300px) {
+  .rb-trio-caption.rb-trio-deep { min-height: 0; }
+  .rb-prov-portrait, .rb-prov-more, .rb-card-sources, .rb-trio-hint.rb-trio-hint-new { display: none; }
+}
+@container rb (max-width: 599px) and (orientation: portrait) and (max-height: 540px) {
+  .rb-trio-caption.rb-trio-deep { min-height: 0; }
+  .rb-prov-portrait, .rb-prov-more, .rb-card-sources, .rb-trio-hint.rb-trio-hint-new { display: none; }
+}
+
+/* ==========================================================================================
+   Dream child (src/dream.ts): your Friend dreams of a child; find the mate and the rows to make it real. A lavender paper
+   cloud with the child in deep violet ink, the same pair as the nursery's thought bubble. Appended block with its own selectors.
+   ========================================================================================== */
+
+.rb-root { --rb-dream-paper: #EFE9FF; --rb-dream-ink: #4B34B8; --rb-dream: #C9B8FF; }
+
+/* HUD: the thought-bubble button (from the first hatch on); lit once the dream came true. */
+.rb-hud-dream { color: var(--rb-dream); }
+.rb-hud-dream.rb-on { color: var(--rb-signal); }
+
+/* Matchmaker: the dream mate's tag, where "New" would sit. */
+.rb-pick-dream { position: absolute; z-index: 1; top: 5px; left: 5px; display: inline-flex; align-items: center; gap: 4px;
+  background: var(--rb-dream); box-shadow: 0 0 0 1px var(--rb-ink); pointer-events: none; }
+.rb-pick-dream .rb-icon { width: 9px; height: auto; }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-pick-dream { top: 3px; left: 3px; padding: 2px 3px 1px; font-size: 8px; letter-spacing: .08em; gap: 2px; }
+  .rb-pick-dream .rb-icon { display: none; }
+}
+
+/* DNA trio: one peg per row on the baby's right edge, filled where the row matches the dream (legend in the caption). */
+.rb-trio-dream-peg {
+  position: absolute;
+  top: 50%;
+  right: max(1px, calc(var(--rb-px) * .12));
+  width: max(4px, calc(var(--rb-px) * .7));
+  height: max(4px, calc(var(--rb-px) * .7));
+  transform: translateY(-50%);
+  border: 1px solid var(--rb-dream-ink);
+  background: var(--rb-halo);
+}
+.rb-trio-dream-peg.rb-hit { background: var(--rb-dream-ink); }
+.rb-trio-dream-note { display: inline-flex; align-items: center; gap: 6px; color: var(--rb-dream); font-weight: 700; }
+.rb-trio-dream-note .rb-trio-dream-peg { position: static; transform: none; width: 8px; height: 8px; border-color: var(--rb-dream); background: var(--rb-dream); }
+
+/* The Dream panel: the child big and walking in its cloud, the clue, progress, and the way to the mate. */
+.rb-dream-panel .rb-panel-body { gap: 12px; }
+.rb-dream-hero { position: relative; display: flex; justify-content: center; padding: 4px 0 8px; }
+.rb-dream-cloud {
+  display: grid;
+  place-items: center;
+  padding: 14px 30px 10px;
+  border: 2px solid var(--rb-ink);
+  border-radius: 999px;
+  background: var(--rb-dream-paper);
+  box-shadow: 0 0 0 3px var(--rb-dream), 0 0 22px 2px rgba(201, 184, 255, .35);
+}
+.rb-dream-cloud .rb-slot, .rb-dream-cloud canvas { background: transparent; }
+.rb-dream-puffs { position: absolute; left: calc(50% - 88px); bottom: -4px; width: 30px; height: 20px; }
+.rb-dream-puffs i { position: absolute; display: block; border: 2px solid var(--rb-ink); border-radius: 50%; background: var(--rb-dream-paper); }
+.rb-dream-puffs i:first-child { right: 0; top: 0; width: 14px; height: 11px; }
+.rb-dream-puffs i:last-child { left: 0; bottom: 0; width: 8px; height: 7px; }
+.rb-dream-hero.rb-animate .rb-dream-cloud { animation: rb-dream-float 3.2s ease-in-out infinite; }
+@keyframes rb-dream-float { 50% { transform: translateY(-4px); } }
+.rb-dream-clue { font-size: 16px; line-height: 1.35; text-align: center; }
+.rb-dream-clue strong { color: var(--rb-dream); }
+.rb-dream-how { font-size: 13px; line-height: 1.4; color: var(--rb-muted-2); text-align: center; }
+.rb-dream-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.rb-dream-stats > div { display: flex; flex-direction: column; gap: 2px; padding: 7px 9px; border: 1px solid var(--rb-rule); border-radius: 4px; background: var(--rb-panel-2); }
+.rb-dream-stats dt { font: 700 10px/1.2 var(--rb-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--rb-muted); }
+.rb-dream-stats dd { display: flex; align-items: baseline; gap: 4px; margin: 0; font: 700 18px/1.15 var(--rb-mono); color: var(--rb-panel-text); white-space: nowrap; }
+.rb-dream-stats dd span { font-size: 11px; font-weight: 400; color: var(--rb-muted-2); }
+.rb-dream-stats dd .rb-icon { align-self: center; color: var(--rb-signal); }
+.rb-dream-offer { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.35; color: var(--rb-muted-2); }
+.rb-dream-offer .rb-icon { flex: none; margin-top: 3px; }
+.rb-dream-offer.rb-on { color: var(--rb-dream); }
+.rb-dream-offer strong { color: var(--rb-panel-text); }
+.rb-dream-fine { font-size: 11px; line-height: 1.35; color: var(--rb-muted); text-align: center; }
+.rb-dream-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.rb-dream-actions .rb-button { flex: 1 1 auto; justify-content: center; }
+.rb-dream-wish .rb-wish-price { display: inline-flex; align-items: center; gap: 3px; font-family: var(--rb-mono); }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-dream-cloud { padding: 10px 22px 7px; }
+  .rb-dream-puffs { left: calc(50% - 64px); }
+  .rb-dream-clue { font-size: 15px; }
+  .rb-dream-how { font-size: 12px; }
+  .rb-dream-stats { gap: 5px; }
+  .rb-dream-stats > div { padding: 5px 7px; }
+  .rb-dream-stats dt { font-size: 9px; letter-spacing: .06em; }
+  .rb-dream-stats dd { font-size: 15px; }
+  .rb-dream-offer { font-size: 12px; }
+}
+@container rb (max-height: 480px) { .rb-dream-how, .rb-dream-fine { display: none; } }
+
+/* Gene Lab: the dream beside the bench (its rows ruled like the bench's), in one row with its note, above the cost line. */
+.rb-dream-rows { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 10px; row-gap: 3px; align-items: center; margin: 0; }
+.rb-dream-rows figcaption { grid-column: 2; grid-row: 1; align-self: end; display: inline-flex; align-items: center; gap: 6px; font: 700 10px/1.2 var(--rb-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--rb-dream); }
+.rb-dream-rows-canvas { grid-column: 1; grid-row: 1 / 3; display: block; image-rendering: pixelated; border: 2px solid var(--rb-ink); border-radius: 3px; box-shadow: 0 0 0 2px var(--rb-dream); }
+.rb-dream-rows-note { grid-column: 2; grid-row: 2; align-self: start; font-size: 12px; line-height: 1.3; color: var(--rb-muted-2); }
+@container rb (max-width: 599px) or (max-height: 479px) {
+  .rb-dream-rows-canvas { border-width: 1px; }
+  .rb-dream-rows-note { font-size: 11px; }
+  /* Phones: the dream beside the Top / Bottom rows shortcuts (one row, so the lab still fits a 360 x 640 phone); the
+     Dream panel says how to use it. */
+  .rb-lab-side-aside { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .rb-lab-side-aside > :not(.rb-dream-rows, .rb-lab-edges) { grid-column: 1 / -1; }
+  .rb-lab-side-aside .rb-dream-rows { grid-template-columns: auto; grid-template-rows: auto auto; justify-items: center; }
+  .rb-lab-side-aside .rb-dream-rows figcaption { grid-column: 1; grid-row: 1; gap: 4px; font-size: 9px; letter-spacing: .08em; }
+  .rb-lab-side-aside .rb-dream-rows-canvas { grid-column: 1; grid-row: 2; }
+  .rb-lab-side-aside .rb-dream-rows-note { display: none; }
+  .rb-lab-side-aside .rb-button.rb-lab-edge { gap: 6px; padding: 4px 6px; }
+  .rb-lab-side-aside .rb-lab-edge strong { font-size: 12px; }
+  .rb-lab-side-aside .rb-lab-edge strong + span { font-size: 10px; }
+}
+
+/* Reveal: a short burst when the dream comes true (none with reduced motion; the news line says it). */
+.rb-dream-burst { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; pointer-events: none; overflow: hidden; }
+.rb-dream-burst-title {
+  display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px;
+  border: 2px solid var(--rb-ink); border-radius: 999px; background: var(--rb-dream-paper); color: var(--rb-dream-ink);
+  font: 800 22px/1 var(--rb-font); box-shadow: 0 0 0 3px var(--rb-dream);
+  animation: rb-dream-pop 1900ms cubic-bezier(.2, 1.3, .4, 1) both;
+}
+.rb-dream-burst i {
+  position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; background: var(--rb-dream); box-shadow: 0 0 0 2px var(--rb-ink);
+  animation: rb-dream-bit 1300ms cubic-bezier(.15, .8, .3, 1) both;
+}
+.rb-dream-burst i:nth-child(3n) { background: var(--rb-signal); }
+@keyframes rb-dream-pop { 0% { opacity: 0; transform: scale(.4); } 14% { opacity: 1; transform: scale(1.06); } 22%, 80% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: translateY(-18px); } }
+@keyframes rb-dream-bit { 0% { opacity: 0; transform: translate(0, 0) scale(.4); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); } }

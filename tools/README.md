@@ -140,10 +140,16 @@ A scenario exports `test` and/or `video`: an array of steps or `async ctx => {}`
 `{ confirm: "buy", expect: { description, amount } }` `{ cancel }` `{ tiers: [...] }` `{ rolls: [...] }` `{ gameRolls: [...] }` `{ mark: "name" }`
 `{ screenshot: "name" }` `{ run: async ctx => {} }` `{ log }`; any step may add `only: "desktop" | "phone"`.
 `tools/scenarios/rare-breeds.mjs` runs a smoke check until the `Find a match` button exists, then two full
-hatch loops (Spotted kept, Prismatic kept with its one-time "can pass on" tip, then sent to the Sanctuary, HUD shows
-24 RF), the Hearts shop and a hat, and a
-Moon Slingshot launch of the kept baby (one cancelled trade-in, then a confirmed one; hold **Hold to fly** for 2.4 s with a
-real mouse or touch press, let go, Skip, result card with the crash point; HUD shows 25 RF).
+hatch loops (Spotted kept, then a Prismatic F2 bred from it: one row traced through the Spotted to its real Friend,
+kept with its one-time "can pass on" tip, then sent to the Sanctuary, HUD shows 23 RF), the Gene Lab (a Top or Bottom
+rows shortcut on and off again, a row of Parent B locked by a click or tap on its portrait, the Prismatic's shape by its
+shortcut, "Will pass on", a third hatch, an F3, whose card shows one lock mark per locked row and "Locked N rows, all
+inherited", a locked row traced through the Prismatic with every lock mark kept, then its Sanctuary trade-in for 0.5 RF),
+the dream child (the one-time toast, a tap on the bubble, the Dream panel, New faces until the dream mate's tag shows,
+the Gene Lab with the dream beside it, a fourth hatch whose card reads "Dream match" with 16 row pegs, then its 0.5 RF
+trade-in), the Hearts shop and a hat, and a Moon Slingshot launch of the kept baby (one cancelled trade-in, then a
+confirmed one; hold **Hold to fly** for 2.4 s with a real mouse or touch press, let go, Skip, result card with the crash
+point; HUD shows 24 RF).
 
 ## GitHub Pages (manual)
 

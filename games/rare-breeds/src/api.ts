@@ -16,6 +16,8 @@ export type NurserySceneOptions = Readonly<{
   onStationActivate?: (station: StationId) => void;
   /** Player tapped/clicked a baby in the world. */
   onCreatureActivate?: (key: string) => void;
+  /** Player tapped/clicked the dream bubble over the Friend (see setDream). */
+  onDreamActivate?: () => void;
 }>;
 
 /** Created by createNurseryScene(options) in src/scene/nursery.ts. Owns its canvas, loop and input listeners. */
@@ -43,6 +45,11 @@ export interface NurseryScene {
   playLaunch(babyKey: string, pull: number): Promise<void>;
   /** Emits a short celebration burst around a creature (key) in the world. */
   celebrate(key: string): void;
+  /**
+   * A thought bubble over the player's Friend showing the dream child (src/dream.ts), or none (null). It pops in gently,
+   * floats (still with reduced motion) and makes way for station prompts; `solved` adds a small heart.
+   */
+  setDream(child: Creature | null, solved: boolean): void;
   destroy(): void;
 }
 

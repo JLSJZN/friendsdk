@@ -129,3 +129,12 @@ export function purchaseBlocker(snapshot: Pick<GameSnapshot, "rfBalance" | "free
   if (snapshot.freeStake < maxPrize(definition) || snapshot.freeStake + cost < reserve) return "backing";
   return null;
 }
+
+/** A pending hatch already owns its egg and prize backing, so recovery never needs another purchase. */
+export function breedAvailability(snapshot: GameSnapshot | null, definition: ChanceGameDefinition) {
+  const eggs = snapshot?.consumables ?? 0n;
+  const pendingPlay = snapshot?.plays.find(play => play.outcomeId === null) ?? null;
+  const needsEgg = eggs === 0n && !pendingPlay;
+  const blocker = snapshot && needsEgg ? purchaseBlocker(snapshot, definition) : null;
+  return { eggs, pendingPlay, needsEgg, blocker, canAfford: !!snapshot && !blocker };
+}

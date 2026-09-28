@@ -12,9 +12,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(here, "shots");
 const filter = process.argv[2] ?? "";
 const SCENARIOS = ["thumbs", "nursery", "nursery-prompt", "nursery-prompt-long", "matchmaker", "matchmaker-buy", "matchmaker-broke", "matchmaker-busy",
-  "matchmaker-brood", "matchmaker-first", "matchmaker-stock", "matchmaker-preferred", "intro-1", "intro-2", "intro-3", "intro-4", "intro-5", "intro-6", "nursery-coach",
+  "matchmaker-brood", "matchmaker-first", "matchmaker-stock", "matchmaker-preferred", "genelab", "genelab-locked", "genelab-short", "genelab-pending", "genelab-two", "dream-hud", "dream-panel", "dream-panel-offer", "dream-solved", "matchmaker-dream", "genelab-dream", "reveal-dream", "reveal-dream-solved", "intro-1", "intro-2", "intro-3", "intro-4", "intro-5", "intro-6", "nursery-coach",
   "shop", "shop-wish", "eggs", "eggs-stocked", "eggs-broke", "hatching", "reveal-common", "reveal-spotted", "reveal-mutant", "reveal-prismatic", "reveal-f3",
-  "reveal-inherit", "reveal-echo", "brood-inherit", "brood-book", "brood", "brood-detail", "brood-empty", "brood-tabs", "brood-legacy", "brood-legacy-ghost", "brood-legacy-empty", "brood-legacy-detail", "friend-panel",
+  "reveal-inherit", "reveal-echo", "reveal-locked", "brood-inherit", "brood-book", "brood", "brood-detail", "brood-empty", "brood-tabs", "brood-legacy", "brood-legacy-ghost", "brood-legacy-empty", "brood-legacy-detail", "friend-panel",
   "settings", "settings-stations", "settings-screen", "loading", "error",
   "slingshot", "slingshot-many", "slingshot-crowd", "slingshot-empty", "slingshot-marks", "slingshot-blocked", "slingshot-busy", "slingshot-ready", "slingshot-flying", "slingshot-pond", "slingshot-jump",
   "slingshot-record", "slingshot-crash",

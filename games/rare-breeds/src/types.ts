@@ -25,7 +25,12 @@ export type Dna = Readonly<{
   traits: readonly string[];
   /** Shape mutations the baby carries, grown at this hatch or inherited (optional: absent on older data). */
   shapes?: readonly ShapeTrait[];
+  /** Gene Lab: the 16 row locks the baby was bred with (null = free); every locked row matches rowSource. Absent without locks. */
+  locks?: readonly RowLock[];
 }>;
+
+/** Gene Lab row lock: the row must come from parent A (0) or parent B (1); null leaves it to the seeded mask. */
+export type RowLock = 0 | 1 | null;
 
 /** Frames per facing: idle 0-7, then walk 0-7 (the order of ShapeTrait.cells lists). */
 export const FACING_FRAMES = 16;
@@ -76,13 +81,19 @@ export type Creature = Readonly<{
   playId?: bigint;
   /** Equipped cosmetic, drawn by drawCreature on every frame. */
   accessory?: AccessoryId;
+  /** Babies of your Friend and the day's dream mate: how close they came to the dream child (src/dream.ts). */
+  dream?: DreamMatch;
 }>;
+
+/** A hatch measured against the dream: per row, whether it matches the dream child's row (16 entries), and the count. */
+export type DreamMatch = Readonly<{ id: string; rows: readonly boolean[]; matched: number }>;
 
 /**
  * Input to genetics.breed. seed must be derived deterministically from friendId, parents and playId. `takenNames`: baby
- * names already used this session; the name is re-rolled (deterministically) until it is not one of them.
+ * names already used this session; the name is re-rolled (deterministically) until it is not one of them. `locks`: the
+ * Gene Lab's 16 row locks (omitted or all null: the baby is exactly the one bred without them).
  */
-export type BreedInput = Readonly<{ a: Creature; b: Creature; seed: number; tier: TierId; playId: bigint; takenNames?: ReadonlySet<string> }>;
+export type BreedInput = Readonly<{ a: Creature; b: Creature; seed: number; tier: TierId; playId: bigint; takenNames?: ReadonlySet<string>; locks?: readonly RowLock[] }>;
 export type BreedResult = Readonly<{ sheet: SpriteSheet; dna: Dna; name: string; family: string; familyId: number; lineage: number }>;
 
 /** Tier visuals shared by renderer and UI. */

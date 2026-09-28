@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState } from "react";
 import type { AccessoryInfo } from "../accessories.ts";
+import { FREE_LOCKS, LOCK_PRICE } from "../hearts.ts";
 import type { AccessoryId, Creature } from "../types.ts";
 import { Panel } from "./Panel.tsx";
 import { PixelIcon } from "./PixelIcon.tsx";
@@ -93,7 +94,7 @@ export function HeartShopPanel({ hearts, perMinute, wearers, catalog, owned, equ
       <Hearts amount={hearts} className="rb-shop-balance" />
       <p>
         <strong>{perMinute > 0 ? `Your brood earns ${perMinute} Hearts per minute.` : "Kept babies earn Hearts every few seconds."}</strong>
-        <span>Hearts are game points. They are never RF and cannot be traded in.</span>
+        <span>Never RF, cannot be traded in. Gene Lab locks in the Matchmaker: {LOCK_PRICE} Hearts a row, first {FREE_LOCKS} free.</span>
       </p>
     </div>
 

@@ -4,10 +4,33 @@
 
 A FriendSDK **v0.1.2** game. Your verified Rare Friend picks a mate from real Rare Friends,
 an egg hatches, and the baby inherits whole pixel rows from both parents, walk cycle included.
-Kept babies follow you around the nursery, earn Hearts for hats and wishes, and can become parents
-themselves (F1, F2, F3), or ride the **Moon Slingshot**: strapped to a tiny firework rocket, a baby climbs from x1
-to x10 until you let go, like the casino game Crash. **All RF, eggs, outcomes and payouts are simulated. Hearts are game points, never RF.** The
-wallet, the NFT ownership check and the character art are real.
+Kept babies follow you around the nursery, earn Hearts for hats, wishes and Gene Lab locks, and can become parents
+themselves (F1, F2, F3), or ride the Moon Slingshot, a Crash-style rocket. **All RF, eggs, outcomes and payouts are
+simulated. Hearts are game points, never RF.** The wallet, the NFT ownership check and the character art are real.
+
+## What only happens here
+
+- **Heredity from on-chain pixels.** A baby is built from whole rows of its parents' 64 canonical on-chain frames, one
+  row mask for all 64, so it walks with a mix of both walk cycles and no inherited pixel is ever removed. Evidence:
+  [`tests/genetics.test.ts`](tests/genetics.test.ts), 500 random pairs x 4 tiers, one 8-connected body in all 64 frames.
+- **Genes across generations.** Kept babies breed again (F1, F2, F3), and a Mutant's horns are pixels in its own rows, so
+  a descendant of any tier can inherit them. Evidence: the same file, 231 of 430 shapes passed on (the test holds it between 42 and 58%).
+- **Gene Lab: RF buys the roll, Hearts buy the genes.** Locks narrow the 630 row masks to those that agree, ranked as
+  before; the tier and its odds never change. Evidence: [`tests/genelab.test.ts`](tests/genelab.test.ts), 70 golden
+  samples x 4 tiers byte-identical without locks, 1,428 locked rows of 267 babies from the chosen parent in all 64 frames.
+  Its daily goal is the [Dream child](#dream-child-hearts-never-rf): 16 locked rows hatch your Friend's dream exactly
+  ([`tests/dream.test.ts`](tests/dream.test.ts), 292 dreams in every tier).
+- **Pixel provenance.** Every row of every baby traces, through any number of generations, to the token ID of the real
+  Friend whose on-chain row it is. Evidence: [`tests/legacy.test.ts`](tests/legacy.test.ts), `rowPath` and
+  `rowSources` against an independent oracle, F1 to F3, cycles and 400-generation chains.
+- **An open, reproducible genome.** The same inputs (Friend ID, parent keys, play ID, tier, locks) always rebuild the
+  same baby in pure TypeScript with no SDK runtime import. Evidence: [`docs/GENOME.md`](docs/GENOME.md) with a runnable
+  recipe; 101 of 101 unit tests pass.
+
+| Prize category | Evidence |
+| --- | --- |
+| Character Spotlight | Your verified Friend's 64 on-chain frames are the genome; 73 real mates; 8 hats anchored per frame, tested on 73 pool Friends and 32 bred babies ([Pixel genetics](#pixel-genetics), [Pixel provenance](#pixel-provenance)) |
+| Economy Potential | 1 RF Egg on the SDK's unchanged `ChanceGame`, 0.8875 RF expected value exact ([Rules and rewards](#rules-and-rewards-rf-simulated)); Hearts never redeemable; row royalties and a breeding market designed, not built ([Economy Potential](docs/SUBMISSION.md#economy-potential)) |
 
 ![Rare Breeds gameplay](docs/media/gameplay.gif)
 
@@ -21,7 +44,10 @@ wallet, the NFT ownership check and the character art are real.
    is one of three real wild Friends, or another baby from your brood. **New faces** rerolls the wild Friends
    for free; **Wish** (15 Hearts) offers three from a family you pick. A strip above the button shows what can
    hatch. When a chosen parent carries a shape mutation, the footer says so: "Can pass on: Horns from Zibu (about 1
-   in 2)".
+   in 2)". A first visit shows one line of help (Parent A is yours, Parent B the mate) until the first breed; on wide
+   frames the tabs sit in the panel header, so Parent A and all three mates show at 960 x 640 without scrolling.
+   The **Gene Lab** tab lets you pick which parent gives a row (2 Hearts a row, your first 3 free): see
+   [Gene Lab](#gene-lab-hearts-never-rf).
 3. **Breed.** Uses one Egg. With no egg waiting, the button reads **Buy egg & breed · 1 RF** and buys one first.
    The runtime shows its own confirmations (**Buy egg**, then **Use egg**). A wild mate walks in first, then the
    egg wobbles, cracks, both parents' rows fly in and merge, and the baby is revealed.
@@ -29,8 +55,9 @@ wallet, the NFT ownership check and the character art are real.
    × Hollow), any lineage titles (tap one for its meaning), parents, a DNA strip (16 rows, coloured by parent, with row
    counts), traits (inherited ones name their source: "Horns (from Zibu)"), the news: an inherited shape first
    ("Inherited: Horns from Zibu!", its rows marked violet in the DNA strip with "Rows 2-4: Zibu's Horns" and its pixels
-   tinted on the baby's portrait), then what it adds to your collection ("New breed: Ghost Bones · 4/45"), and both
-   choices side by side: **Keep** (+5 Hearts now, then Hearts every 10 s) or **Trade in at the Sanctuary** for its
+   tinted on the baby's portrait), then what it adds to your collection ("New breed: Ghost Bones · 4/45"). Tap a DNA
+   row to trace it to the real Friend it came from, however many generations up ([Pixel provenance](#pixel-provenance)).
+   Both choices sit side by side: **Keep** (+5 Hearts now, then Hearts every 10 s) or **Trade in at the Sanctuary** for its
    fixed Simulated RF value (runtime confirmation **Redeem reward**). Baby names are never reused within a session.
 5. **Spend Hearts.** The heart counter (top left) opens the **Hearts shop**: hats for your Friend and your babies,
    and the Wish match.
@@ -38,6 +65,12 @@ wallet, the NFT ownership check and the character art are real.
    Its shape mutations pass on about 1 in 2 each, whatever the new egg's tier (the first kept baby with one says so:
    "Zibu can pass on its Horns (about 1 in 2): pick it as a parent"), and lines earn titles (Echo, Purebred, Chimera). The goal: babies from all 9 Friend families and all 4 tiers; on the side, the breed book
    of 45 named family pairs.
+7. **Dream child.** After your first hatch your Friend dreams of a child: a thought bubble floats over it (tap it, or the
+   bubble button top right). The Dream panel shows the child walking and the clue ("Friend #7730 dreams of a child with a
+   Hoverer"). The dream mate wears a **Dream** tag in the Matchmaker; breed your Friend with it, copy the dream in the
+   Gene Lab (it sits beside the preview), and every hatch of the pair reads "Dream match: 11 of 16 rows" with a peg per
+   row. All 16 rows: **Dream come true!**, +50 Hearts once per dream and the **Dreamchild** title; **Dream again** dreams
+   the next one. See [Dream child](#dream-child-hearts-never-rf).
 
 The **Egg incubator** (centre station) sells 1, 3 or 5 eggs in one confirmation. The **Sanctuary** (right
 station) opens your brood, where you can inspect, breed or trade in any baby.
@@ -80,7 +113,10 @@ Sanctuary trade-in: nothing is booked in the Slingshot net.
 | Hearts shop | Heart counter in the HUD | Tap the heart counter |
 | Intro | Left / Right arrows step, Escape skips | Next, Back, Skip intro |
 | Panels | Tab / Shift+Tab, Enter or Space, Escape closes | Tap; tap outside to close |
+| Gene Lab (Matchmaker tab) | Up / Down pick a row, Left locks it to Parent A, Right to Parent B, Space or Delete frees it | **Top rows** / **Bottom rows** lock 3 rows of one parent; press a row on a parent's portrait, slide to adjust, release to lock it; again to free it. Shape shortcuts lock a whole shape |
 | Hatch animation | Escape or **Skip**; on the result card Escape means **Keep** | **Skip** |
+| Dream child | Bubble button (top right, from the first hatch on) | Tap the thought bubble over your Friend, or the bubble button |
+| Trace a DNA row | Tab to the DNA strip, Up / Down move over the rows, Enter or Space traces the baby's row (again: stops), Escape stops first | Tap or click a row (again: stops); hover previews on desktop |
 | Moon Slingshot: launch | **Trade in, then fly** (Enter or Space), then confirm **Redeem reward** | Tap **Trade in & fly**, then confirm **Redeem reward** |
 | Slingshot flight | Hold Space or Enter on **Hold to fly**, release to jump; Escape or **Skip** also jump (and then skip to the result); Escape before lighting = **Don't fly** | Press and hold **Hold to fly**, let go to jump; **Skip** jumps |
 | Sound, help | HUD buttons, top right | HUD buttons, top right |
@@ -110,15 +146,85 @@ so a baby that takes all of those rows carries it, in any tier, Common included,
 parent, baby). A shape bobs and walks with the body, so its rows are the rows it covers in any of the 16 frames (idle
 and walk) of every facing it grew on, and a baby counts as carrying it only when it is whole in every one of those
 frames. The mask ranking adds one seeded wish per parent trait (take it or leave it, 1 in 2) after the hard checks (ink
-floor, connectivity, symmetry, coherent walk cycle) and before the score, so the measured pass-on rate is **49.1%**
-(1,609 of 3,275 passable traits in a sample of 3,000 pool pairs; 47 to 51% in every tier; 47.0% one generation later,
-755 of 1,607), shown as "about 1 in 2" (the unit test keeps it between 42 and 58%). Detection is a pure check of real
+floor, connectivity, symmetry, coherent walk cycle) and before the score, so the measured pass-on rate is **53.7%**
+(231 of 430 passable traits in [`tests/genetics.test.ts`](tests/genetics.test.ts); 47 to 58% per tier; 48.7% one
+generation later, 127 of 261), shown as "about 1 in 2" (the test keeps it between 42 and 58%). Detection is a pure check of real
 pixels: every row of the trait came from that parent and every trait cell is ink in the baby's own frame, frame by
 frame (`inheritedShapes`; `Dna.shapes` records each shape with its cells in every frame and its source).
 A Mutant or Prismatic that already carries a head mutation grows a tail instead of a second head (or nothing new
 when no tail fits or it carries one). A patterned parent's kind (spots, stripes, patch) is tried first when the
 baby's tier shows a pattern. Babies of two Friends are unchanged, pixel for pixel. See
 [`docs/media/genetics-inherit.png`](docs/media/genetics-inherit.png).
+
+### Gene Lab (Hearts, never RF)
+
+**The ledger rolls the rarity, you design the genes: RF buys the roll, Hearts buy the genes.** The Matchmaker's
+**Gene Lab** tab opens with what it is for ("Pick which parent gives the eyes, ears or feet: lock their rows.") and
+shows Parent A, a rail of 16 row locks, a preview of the baby (locked rows solid from their parent, free rows both
+parents faint; Parent A's paper band gets an ink rule above and below), a second rail and Parent B. Tap a row on a
+parent to lock it to that parent, tap it again to free it. Four shortcuts work on every pair: **Top rows** and **Bottom
+rows** from each parent lock 3 rows (the session's free rows) from the pair's first inked row down or up from its last
+(`edgeLocks`). Each shape the pair can pass on gets a shortcut too ("Lock Horns from Zibu") that locks all of its rows;
+the footer then reads "Will pass on: Horns from Zibu" instead of "about 1 in 2". A shortcut the locks rule out is
+disabled. The tier still comes from the ledger alone.
+
+- **Genetics** (`breed({ locks })` and `lockOptions` in [`src/genetics.ts`](src/genetics.ts)): the candidate masks are
+  the 630 masks of `ALL_MASKS` (runs of 2 to 5 rows, each parent at least 4 rows) that agree with the locks, with the
+  same seeded choice and ranking (hard checks, inheritance wishes, score); the finalists scale with the smaller pool, so
+  the same locks still hatch different babies. The counter reads "24 of 630 possible babies": masks that agree, pass the
+  hard checks and build. Without locks the median pool pair has 624 (425 at the 5th percentile); 14 of 5,256 near-twin
+  pairs have none, and the lab says so. A toggle that would leave no possible baby is disabled.
+- **Proven** in [`tests/genelab.test.ts`](tests/genelab.test.ts): without locks every baby is byte-identical to before
+  (golden digests of 70 samples in all 4 tiers: pool pairs, Colossus pairs, F2 babies of shaped parents); in 267 babies
+  with random allowed lock sets (pool and baby parents, every tier) all 1,428 locked rows come from the chosen parent in
+  all 64 frames, and each baby is one of the counted ones; a toggle is disabled exactly when it leaves none; 90 shape
+  shortcuts (360 babies, all 4 tiers) all carry the locked shape; all 320 edge shortcuts of 80 pairs are enabled exactly
+  when a baby is left, and their babies take every locked row. `node dev/ui/lab-check.mjs` presses the first and last
+  pixel of every row on both rails and all three portraits (960 x 640, 390 x 651, 360 x 480): each names its own row.
+- **Cost of a toggle:** the first look at a pair assesses its 630 masks once (about 40 ms in Node on a laptop, more on
+  slow phones). It never runs inside a render: the Parents tab assesses the chosen pair while the browser is idle, and
+  a lab opened before that runs it right after its first paint (`useLockOptions`), counting "... of 630" and toggling
+  nothing until then. After that a toggle takes about 0.2 ms in `lockOptions` and about 5 ms in the browser, render and
+  portraits included.
+- **Determinism:** the baby records its locks (`Dna.locks`). A laid egg keeps its pair and locks, so **Finish hatching**
+  hatches exactly what was chosen and paid for (shown read-only: "5 locks, 4 Hearts paid", or "3 locks, free"). If the
+  Hearts are gone when the egg is used, it hatches without locks, never with free ones. Locks stay while the same pair is picked, also after a
+  cancelled confirmation, and clear after a hatch. The result card marks locked rows with a small lock in the DNA strip
+  ("Locked rows 1-4, 14-16") and the news says "Locked 5 rows, all inherited".
+- **Touch:** the 16 rows are 3 to 7 CSS px tall (4 or 5 on phones), far below the 44 px target. So on phones the main
+  path is the 44 px shortcuts (**Top rows**, **Bottom rows**, shapes) and **Free all rows**, plus the press on a
+  portrait (a band and the caption name the row under the finger; slide, then release); the rails suit a mouse and the
+  keyboard. On short landscape frames (under 300 px tall) the lab scrolls, so a finger that travels over a portrait
+  scrolls it instead of locking a row.
+
+### Dream child (Hearts, never RF)
+
+**Every day your Friend dreams of a child. Find the mate and the rows to make it real.** It gives the Gene Lab a goal and
+keeps your Friend the protagonist. Pure logic in [`src/dream.ts`](src/dream.ts); panel in `src/ui/DreamPanel.tsx`; the
+bubble in `src/scene/bubble.ts`.
+
+- **The dream:** from (your local date, your Friend's ID, the round) a seeded mate from the 73 wild Friends (never your
+  Friend; one that differs from it in at least 8 rows) and a row mask among the best-scoring quarter of the pair's
+  possible masks (`possibleMasks` in `src/genetics.ts`: hard checks pass, it builds). The dream child is that body, no
+  pattern or mutation. Locking all 16 rows to the mask hatches it exactly, in any tier.
+- **Clue and feedback, like Mastermind:** the picture (the child walking) and the mate's family. The dream mate gets a
+  **Dream** tag among the wild mates, and with your Friend as Parent A and it as Parent B the Gene Lab shows the dream
+  beside the preview (on phones under it, next to the Top / Bottom rows shortcuts, so the lab still fits). After each
+  hatch of that pair the card reads "Dream match: 11 of 16 rows", a peg per row on the baby (filled where it matches)
+  and a traced row says "like the dream". A row matches when it came from the same parent as in the dream, or when both
+  parents draw it alike in all 64 frames (it looks the same either way). No row feedback before the egg is paid.
+- **Solving:** 16 of 16 rows is **Dream come true!**: +50 Hearts once per dream, the cosmetic **Dreamchild** title
+  (stacks with the others) and a short burst over the card (none with reduced motion). **Dream again** dreams the next
+  round; its reward is new.
+- **Solvability, measured** in [`tests/dream.test.ts`](tests/dream.test.ts) over 292 dreams (73 pool Friends x 4 dates):
+  a fresh set of wild mates (New faces, or the new faces after every hatch) brings the dream mate 27.6% of the time
+  (a 1 in 4 dream bonus on top of the plain 3 in 72), 3.56 sets on average, 81.1% within 5; a Wish for its family
+  (15 Hearts) always does. The first try matches 9.6 of 16 rows on average, and its pegs name the whole dream: locking
+  every row that tells the parents apart makes it real on the second egg (21.8 Hearts on average, using the 3 free
+  locks); locking only the misses takes 3.53 eggs (median 3, at most 6) and 38.7 Hearts. With the first hatch that wakes
+  the dream, a first-time player needs about 3 to 4 eggs and 20 to 40 Hearts.
+- **Economy:** every attempt is an ordinary 1 RF simulated egg; the tier and its odds never change (`game.json`
+  untouched, `node tools/economy-report.mjs` byte-identical). The dream pays Hearts (game points, never RF).
 
 ### Hearts (game points, never RF)
 
@@ -131,11 +237,14 @@ Hearts give **Keep** a reason next to the Sanctuary's fixed RF value. They live 
 | Average kept baby | 0.6 x 6 + 0.25 x 12 + 0.125 x 24 + 0.025 x 60 = 11.1 Hearts per minute |
 | Keep bonus | +5 Hearts each time you keep a baby |
 | Income pauses | While the runtime is paused (menus, confirmations), during the intro and a hatch, and while the tab is hidden |
+| Dream child | +50 Hearts the first time a dream comes true (all 16 rows); **Dream again** starts a new dream with its own reward |
+| Gene Lab | 2 Hearts per locked row; the first 3 locked rows of a session are free, so a first hatch with 0 Hearts can lock 3. Charged only once the egg is used (**Use egg** confirmed): a cancelled confirmation costs nothing, **Finish hatching** is already paid. The Hearts shop names it too |
 | What Hearts are not | Not RF. They cannot be bought with RF, traded in or redeemed, so they back no payout and need no prize reserve |
 
 Example, one baby on its own: a Common trades in for 0.5 RF, or earns 6 Hearts a minute and, with the Keep bonus,
 pays for a Party hat in 2.5 minutes. A Prismatic trades in for 6 RF, or earns 60 Hearts a minute and pays for the
-Halo in about 4 minutes.
+Halo in about 4 minutes. Locking a 4-row shape once the free rows are used costs 8 Hearts, about 45 s of one average
+kept baby.
 
 ### Hearts shop: hats and Wish match
 
@@ -149,7 +258,7 @@ Halo in about 4 minutes.
 | Top hat | 80 |
 | Crown | 150 |
 | Halo | 250 |
-| **Wish match**: the Matchmaker offers three wild Friends from a family you pick | 15 |
+| **Wish match**: the Matchmaker offers three wild Friends from a family you pick (the dream mate's family always brings the dream mate) | 15 |
 
 The full wardrobe costs 630 Hearts. Each hat is bought once and worn by one creature at a time (your Friend or any
 baby); putting it on someone else moves it, and a traded-in baby's hat returns to the wardrobe. A hat is drawn on
@@ -173,11 +282,27 @@ No reward is attached; it is a goal.
 - **Lineage titles** ([`src/titles.ts`](src/titles.ts)), traced row by row to the real Friends they came from
   ([`src/legacy.ts`](src/legacy.ts)): **Echo of #id** (at least 12 of 16 rows from your own Friend, e.g. a
   backcross), **Purebred <Family>** (all 16 rows from one family), **Chimera** (rows from at least 4 distinct
-  Friends). Titles stack in that order and show on the card and in the brood. A first one explains itself ("First Echo:
+  Friends), **Dreamchild** (all 16 rows match your Friend's dream, see [Dream child](#dream-child-hearts-never-rf)).
+  Titles stack in that order and show on the card and in the brood. A first one explains itself ("First Echo:
   12 of 16 rows from your Friend, just for show"), and tapping a title badge on the card shows its meaning.
 - **Hatch number:** this session's settled hatches, oldest first, with the generation: "Hatch #7 · F2".
 
 None of these changes a tier, an odd or a value: the Sanctuary pays by tier only.
+
+### Pixel provenance
+
+A baby's row y is always row y of one parent, so every row of every baby, through any number of generations, is one
+real on-chain Friend's row: its token ID is known. Tap a row of the baby in the DNA strip ("Tap a row to see which real
+Friend it came from", on every card) and the path shows, as in a test run: "Row 8 of Loma: your Friend #7730 (Hoverer)
+via Veve (F1)" ("from Parent B" for an F1), with a swatch in the colour of the side the row came in by. When that Friend is further up than a parent, its portrait appears with the row lit and outlined:
+on wide cards beside the parent the row came through, its row level with theirs, on phones in the caption. From F2 on
+the card also says where the 16 rows come from, your own Friend first, in the signal colour: "6 of 16 rows are your
+Friend #7730", then the other real Friends, most rows first: "rest from #50115 x7 · #159358 x3" (Loma again; a baby
+with no row of your Friend reads "Rows from 3 real Friends: ..."). Both come from [`src/legacy.ts`](src/legacy.ts) (`rowPath`, `rowSources`),
+on the same memoised tracer as the titles, so traded-in ancestors still resolve and missing data or cycles end a path
+safely. One row mask covers all 64 frames, so the row is the same in every frame; a Side-walker's rows are its
+ancestors' right-facing rows, which is what its portraits show. The trace works on the reveal card and on every
+baby's card in the brood; nothing here touches RF, odds or values.
 
 ### Onboarding
 
@@ -187,8 +312,11 @@ at rest and your Friend) into a canvas and pins numbered markers on the stations
 shows Keep and the Sanctuary as the same Common to Prismatic range (6 to 60 Hearts a minute, 0.5 to 6 RF) and says a
 kept baby passes on its mutations; its last step shows copies of the HUD chips with their live values. The **?** panel
 repeats both legends ("Stations" and "Your screen") next to the rules. First-time hints: a "Start here" coach on
-**Find a match**, a note in the Matchmaker about the runtime confirmations to expect, a Keep or trade-in hint on the
-first reveal card, and a toast when the first kept baby with a shape can pass it on.
+**Find a match**, a note in the Matchmaker about the runtime confirmations to expect, a Keep or trade-in hint and "Tap a
+row to see which real Friend it came from." on the first reveal card, and a toast when the first kept baby with a shape
+can pass it on. The Matchmaker's first-time help is one line (Parent A is yours, Parent B the mate), so the mates stay
+in view; the Gene Lab is found by its tab's "3 FREE" badge, opens with one line on what locking is for, and the **?**
+rules and the Hearts shop each name it in one sentence (2 Hearts a row, the first 3 free).
 
 ### Phone layout
 
@@ -302,7 +430,7 @@ the fund never blocked a launch.
 
 | Simulated (SDK preview ledger) | Game state only (this session) | Real |
 | --- | --- | --- |
-| RF balance, prize stake, eggs, plays, tiers, Sanctuary payouts | Hearts, hats, the collection, the brood's lineage, titles and the breed book | Wallet connection and a fresh ownership/eligibility read by the SDK runtime (Robinhood mainnet, chain 4663) |
+| RF balance, prize stake, eggs, plays, tiers, Sanctuary payouts | Hearts, hats, Gene Lab locks, the dream, the collection, the brood's lineage, titles and the breed book | Wallet connection and a fresh ownership/eligibility read by the SDK runtime (Robinhood mainnet, chain 4663) |
 | Every **Buy egg**, **Use egg** and **Redeem reward** confirmation ("Simulated RF. No transaction will be sent.") | | Your Friend's 64 canonical frames, read on-chain through the SDK's `createFriendReader` |
 | | | The wild mates' art: canonical frames of 73 real Friends (see Credits) |
 
@@ -310,7 +438,9 @@ Game code uses only the SDK's fixed action client (`read`, `buy`, `play`, `settl
 through it; a slingshot launch's trade-in is an ordinary `redeem`. Hearts, hats and the slingshot's multiplier
 never touch it.
 The game has no wallet code, sends no transactions and deploys no contracts. No trading, creator fees or
-wearable NFTs are implemented.
+wearable NFTs are implemented. **Future work, not built, needs SDK support:** row royalties (a sire or market fee split
+over the real token IDs whose rows a baby carries, computed exactly by `rowSources`) and a breeding market; see
+[Economy Potential](docs/SUBMISSION.md#economy-potential) and [`docs/GENOME.md`](docs/GENOME.md).
 
 **The Moon Slingshot splits cleanly between the SDK and a simulated side ledger.**
 
@@ -362,15 +492,23 @@ network add `--host 0.0.0.0 --port 4173` and open `http://YOUR_LAN_IP:4173` in a
 | --- | --- |
 | Static build | `node scripts/dev-game.mjs build games/rare-breeds` (output `games/rare-breeds/.friendsdk/`) |
 | Game validation | `node scripts/dev-game.mjs check games/rare-breeds` |
-| Unit tests | `node --test "games/rare-breeds/tests/*.test.ts"` (economy, genetics incl. inheritance, accessories, legacy, titles, breeds, slingshot; use the glob, a bare directory fails on Node 22) |
+| Unit tests | `node --test "games/rare-breeds/tests/*.test.ts"` (economy, genetics incl. inheritance, Gene Lab, dream, accessories, legacy, titles, breeds, slingshot; use the glob, a bare directory fails on Node 22) |
 | Typecheck | `npx tsc -p games/rare-breeds/tsconfig.json` |
 | Browser test | `npx playwright install chromium` once, then `node tools/test-game.mjs` (960 x 800 and 390 x 844 touch) |
 | Economy report | `node tools/economy-report.mjs` |
 | GitHub Pages folder | `node tools/build-pages.mjs --smoke --base <repository>` (output `.friendsdk/site/`) |
 
 The browser test drives the real sandboxed runtime with the SDK's mock wallet and sample Friend #7730: the intro,
-two full hatch loops with the runtime confirmations (the card's "Hatch #1 · F1" and first "New breed" line), the Keep
-bonus, the one-time tip that the kept Prismatic can pass on its shapes, the Matchmaker naming what it can pass on, "Breeds 2/45" in the brood, buying and wearing a hat, a trade-in, and a
+two full hatch loops with the runtime confirmations (the card's "Hatch #1 · F1", first "New breed" line and one-time
+row tip; the second baby is an F2 of the first, and one of its rows is traced through its F1 parent to a real Friend,
+by tap on the phone and by click and keys on desktop), the Keep
+bonus, the one-time tip that the kept Prismatic can pass on its shapes, the Matchmaker naming what it can pass on, the Gene
+Lab (a Top or Bottom rows shortcut on and off again, a row locked by tapping Parent B's portrait, the Prismatic's shape by its shortcut, "Will pass on", a third hatch, an
+F3, whose card shows one lock per locked row and "Locked N rows, all inherited", a locked row traced through the
+Prismatic with every lock mark kept, then its trade-in), "Breeds 2/45" (up to 4/45) in the brood, buying and wearing a
+hat, a trade-in, and a
+dream child (the one-time toast, a tap on the bubble, the Dream panel, New faces until the dream mate's tag shows, the Gene
+Lab with the dream beside it, a fourth hatch whose card reads "Dream match" with 16 row pegs, then its trade-in), a
 Moon Slingshot launch (a cancelled **Redeem reward** that changes nothing, a confirmed one, holding **Hold to fly**
 for 2.4 s with a real mouse or touch press while the multiplier climbs, letting go, Skip, the result card with the
 revealed crash point, the brood and balance afterwards and the HUD net).
@@ -387,22 +525,30 @@ Mocks exist only in automated tests, never in a build. Details: [`tools/README.m
   holding still works; the ending is a short fade to the final frame.
 - **Skip:** the hatch and the slingshot flight both have a **Skip** button (and Escape). In the air it means
   "jump now"; after that it skips to the result.
-- **Keyboard:** every action works without a pointer. Panels are modal dialogs with a focus trap, Escape to close
+- **Keyboard:** every action works without a pointer. The DNA strip is one tab stop: Up / Down move over the rows,
+  Enter or Space traces the baby's row, and Escape stops a trace before it would keep the baby. Panels are modal dialogs with a focus trap, Escape to close
   and visible focus rings. The slingshot's **Hold to fly** button is held with Space or Enter (release to jump);
   Escape before lighting the rocket is **Don't fly**. A key still held when the rocket ends the flight by itself
   presses nothing (not Skip, not the result card) until it is released, and while the game is paused the hold
   button keeps focus (aria-disabled) instead of handing it to **Don't fly**. The world canvas has a text label with
-  the controls.
+  the controls. The Gene Lab's bench is one focusable group: Up and Down pick a row, Left and Right lock it to a parent,
+  Space or Delete frees it, and a live caption says what changed ("Row 5 locked to Zibu. 24 of 630 possible babies.").
+  The Matchmaker's tabs use a roving tab stop (Left and Right switch) and name their tab panel.
 - **Screen readers:** HUD values (including Hearts, labelled "not RF", and the Slingshot net, labelled
-  simulated), hatch progress and results and the slingshot's exits (chance, multiplier and payout) have text
+  simulated), a traced row's whole path (a live caption), hatch progress and results and the slingshot's exits (chance, multiplier and payout) have text
   labels. The flight has a live region that announces lift-off, x2, x4, the ending (jump, pond or Moon) and the
   result, not every frame. A plain click from assistive technology lights the rocket and the next one jumps.
 - **Small screens:** compact HUD and panels, the tall portrait frame and the follow camera. The full loop is tested
   at 390 x 844 with touch. The flight's hold button is at least 44 px tall (56 px on portrait phones, 64 px on
-  desktop), and holding it cannot scroll, zoom or select text.
+  desktop), and holding it cannot scroll, zoom or select text. The Gene Lab fits 360 px wide phones and 390 x 844 without
+  scrolling; its rows are smaller than 44 px (see [Gene Lab](#gene-lab-hearts-never-rf) for the touch path).
 
 ## Known limitations
 
+- **Gene Lab locks live in the frame.** A laid egg keeps its pair and locks there; if only the game frame reloads
+  before it hatches, **Finish hatching** uses the pair picked then (like a rebuilt baby, it cannot know the old one).
+- **One dream per day and Friend, per session.** The day is the local date when the session starts; a reload dreams the
+  same dream again but forgets its progress and reward (session state, like the Hearts).
 - **Session-local state.** The sandbox has no storage and the SDK bridge has no save API. Reloading starts a new
   session: 20 RF, 0 Hearts, no hats, an empty brood and collection, a 600 RF Moon Fund with a Slingshot net
   of 0, and the intro again.

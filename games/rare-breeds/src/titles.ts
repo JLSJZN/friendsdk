@@ -4,7 +4,7 @@
 import { rowFamilies, rowOrigins, type CreatureLookup } from "./legacy.ts";
 import { FRAME_SIZE, type Creature } from "./types.ts";
 
-export type TitleId = "echo" | "purebred" | "chimera";
+export type TitleId = "echo" | "purebred" | "chimera" | "dreamchild";
 export type LineageTitle = Readonly<{ id: TitleId; label: string; detail: string }>;
 
 /** Rows that must trace to the player's own Friend for "Echo of #<id>". */
@@ -12,15 +12,16 @@ export const ECHO_ROWS = 12;
 /** Distinct real Friends a Chimera's rows must trace to. */
 export const CHIMERA_FRIENDS = 4;
 /** Titles stack; a baby lists every title it earns in this order. */
-export const TITLE_ORDER: readonly TitleId[] = ["echo", "purebred", "chimera"];
+export const TITLE_ORDER: readonly TitleId[] = ["echo", "purebred", "chimera", "dreamchild"];
 /** Short names for tight spots (brood grid, discovery lines). */
-export const TITLE_NAME: Readonly<Record<TitleId, string>> = { echo: "Echo", purebred: "Purebred", chimera: "Chimera" };
+export const TITLE_NAME: Readonly<Record<TitleId, string>> = { echo: "Echo", purebred: "Purebred", chimera: "Chimera", dreamchild: "Dreamchild" };
 
 /**
  * Every title a baby earns, in TITLE_ORDER:
  * - "Echo of #<id>": at least 12 of its 16 rows trace to the player's own Friend (`friend`).
  * - "Purebred <Family>": all 16 rows trace to Friends of one family.
  * - "Chimera": its rows trace to at least 4 distinct real Friends.
+ * - "Dreamchild": all 16 rows match your Friend's dream (baby.dream, src/dream.ts).
  * Friends and wild Friends earn none. An unknown ancestor counts as the origin of its rows (see legacy.ts).
  */
 export function lineageTitles(baby: Creature, lookup: CreatureLookup, friend?: Creature | null): LineageTitle[] {
@@ -33,5 +34,6 @@ export function lineageTitles(baby: Creature, lookup: CreatureLookup, friend?: C
   if (new Set(families).size === 1) titles.push({ id: "purebred", label: `Purebred ${families[0]}`, detail: `all ${FRAME_SIZE} rows from ${families[0]} Friends` });
   const founders = new Set(origins).size;
   if (founders >= CHIMERA_FRIENDS) titles.push({ id: "chimera", label: "Chimera", detail: `rows from ${founders} different Friends` });
+  if (baby.dream?.matched === FRAME_SIZE) titles.push({ id: "dreamchild", label: "Dreamchild", detail: "your Friend's dream come true, all 16 rows" });
   return titles;
 }

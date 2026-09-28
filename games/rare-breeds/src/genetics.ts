@@ -3,7 +3,7 @@
 // facing and frame index from each parent) so the walk cycle stays coherent. Every frame is then
 // repaired into one 8-connected body, and the hatch tier adds a pattern and a shape mutation.
 // Pure and deterministic (no SDK runtime import): shared by the game, node tests and dev tools.
-import { FACING_FRAMES, FACINGS, FRAME_SIZE, type BreedInput, type BreedResult, type Clip, type Creature, type Facing, type Frame, type ShapeTrait, type SpriteSheet, type TierId } from "./types.ts";
+import { FACING_FRAMES, FACINGS, FRAME_SIZE, type BreedInput, type BreedResult, type Clip, type Creature, type Facing, type Frame, type RowLock, type ShapeTrait, type SpriteSheet, type TierId } from "./types.ts";
 import { COLOSSUS, FAMILY_NAMES } from "./sprites.ts";
 import { babyName } from "./names.ts";
 
@@ -400,6 +400,194 @@ function rankRows(a: SpriteSheet, b: SpriteSheet, seed: number, sideWalker: bool
   }
   return ranked.map(entry => ({ ...entry, misses: misses(entry.rows) }))
     .sort((p, q) => Number(q.ok) - Number(p.ok) || p.misses - q.misses || p.score - q.score).map(entry => entry.rows);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Gene Lab: row locks. The player may lock rows to one parent; the mask is then drawn only from the masks that agree with
+// the locks, with the same seeded choice and ranking (hard checks, inheritance wishes, score). Without a lock breed() takes
+// rankRows unchanged, so every baby stays byte-identical.
+
+/** Every row mask breed can draw (ALL_MASKS): the Gene Lab's "of 630 possible babies". */
+export const MASK_COUNT = ALL_MASKS.length;
+/** Sixteen free rows. */
+export const NO_LOCKS: readonly RowLock[] = Object.freeze(Array<RowLock>(N).fill(null));
+/** How many rows a lock set locks. */
+export const lockCount = (locks: readonly RowLock[] | undefined) => (locks ?? []).filter(lock => lock === 0 || lock === 1).length;
+
+const agrees = (rows: Rows, locks: readonly RowLock[]) => locks.every((lock, y) => lock === null || lock === undefined || rows[y] === lock);
+
+/**
+ * What a pair can really hatch, per mask in ALL_MASKS order: `ok` (passes assessRows' hard checks), `builds` (every frame keeps
+ * its ink floor, exactly buildBody's test) and the assessRows score. `possible` counts masks that are both.
+ */
+type MaskReport = Readonly<{ ok: Uint8Array; builds: Uint8Array; score: Float64Array; possible: number }>;
+
+/** One report per pair of sheets (and Side-walker flag), so the Matchmaker's toggles and the hatch share the work. */
+const reports = new WeakMap<SpriteSheet, WeakMap<SpriteSheet, [MaskReport | null, MaskReport | null]>>();
+
+function reportOf(a: SpriteSheet, b: SpriteSheet, sideWalker: boolean, mirror: MirrorPolicy): MaskReport {
+  let byB = reports.get(a);
+  if (!byB) reports.set(a, byB = new WeakMap());
+  let pair = byB.get(b);
+  if (!pair) byB.set(b, pair = [null, null]);
+  return pair[Number(sideWalker)] ??= buildReport(a, b, sideWalker, mirror);
+}
+
+function buildReport(a: SpriteSheet, b: SpriteSheet, sideWalker: boolean, mirror: MirrorPolicy): MaskReport {
+  const views: Facing[] = sideWalker ? ["right"] : ["down", "right"];
+  // Ink per row of both parents in every frame buildBody mixes: a mask's raw ink is a sum, and bridges only add ink, so a
+  // frame at or above its floor always builds. Only frames below it need the real mix and repair.
+  const frames: { clip: Clip; facing: Facing; i: number; fa: Frame; fb: Frame; floor: number; inkA: number[]; inkB: number[] }[] = [];
+  const inkRows = (frame: Frame) => Array.from({ length: N }, (_, y) => rowInk(frame, y));
+  for (const clip of CLIPS) for (const facing of FACINGS) {
+    if (sideWalker && (facing === "down" || facing === "up")) continue;
+    for (let i = 0; i < 8; i++) {
+      const fa = a[clip][facing][i], fb = b[clip][facing][i];
+      frames.push({ clip, facing, i, fa, fb, floor: minInk(fa, fb), inkA: inkRows(fa), inkB: inkRows(fb) });
+    }
+  }
+  const ok = new Uint8Array(MASK_COUNT), builds = new Uint8Array(MASK_COUNT), score = new Float64Array(MASK_COUNT);
+  let possible = 0;
+  ALL_MASKS.forEach((rows, m) => {
+    const result = assessRows(a, b, rows, views, mirror);
+    ok[m] = Number(result.ok); score[m] = result.score;
+    builds[m] = Number(frames.every(({ clip, facing, i, fa, fb, floor, inkA, inkB }) => {
+      let raw = 0;
+      for (let y = 0; y < N; y++) raw += rows[y] ? inkB[y] : inkA[y];
+      return raw >= floor || inkOf(asRight(facing, mix(fa, fb, rows), f => connect(f, mirror(clip, facing, i)))) >= floor;
+    }));
+    if (ok[m] && builds[m]) possible++;
+  });
+  return { ok, builds, score, possible };
+}
+
+/** The locks breed applies: null without a lock, or when no mask agrees with them (an impossible lock set is ignored). */
+function activeLocks(locks: readonly RowLock[] | undefined): readonly RowLock[] | null {
+  if (!locks || locks.every(lock => lock === null || lock === undefined)) return null;
+  return ALL_MASKS.some(rows => agrees(rows, locks)) ? locks : null;
+}
+
+/**
+ * rankRows for locked rows. Candidates are the pair's possible masks that agree with the locks, in seeded order; the first
+ * `finalists` of them, plus as many that grant every inheritance wish, compete on misses, then score. `finalists` keeps
+ * rankRows' share of choice (16 finalists per the pair's possible masks), so a small pool is not always won by its one best
+ * mask. The other agreeing masks follow (possible ones first), so breed finds a baby whenever any agreeing mask builds.
+ */
+function rankLocked(a: SpriteSheet, b: SpriteSheet, seed: number, sideWalker: boolean, mirror: MirrorPolicy, heirs: readonly Heir[], locks: readonly RowLock[]): Rows[] {
+  const report = reportOf(a, b, sideWalker, mirror);
+  const agreeing = ALL_MASKS.map((_, m) => m).filter(m => agrees(ALL_MASKS[m], locks));
+  const order = stream(seed, "rows").shuffle(agreeing.filter(m => report.ok[m] && report.builds[m]));
+  const finalists = Math.max(1, Math.round(MASK_FINALISTS * order.length / Math.max(1, report.possible)));
+  const misses = wishesOf(heirs, seed), chosen = new Set(order.slice(0, finalists));
+  if (heirs.length) {
+    const granted = stream(seed, "heir-rows").shuffle(order.filter(m => misses(ALL_MASKS[m]) === 0));
+    for (let k = 0, tried = 0; k < granted.length && tried < finalists; k++) if (!chosen.has(granted[k])) { chosen.add(granted[k]); tried++; }
+  }
+  const ranked = [...chosen].sort((p, q) => misses(ALL_MASKS[p]) - misses(ALL_MASKS[q]) || report.score[p] - report.score[q]);
+  const rest = [...order.filter(m => !chosen.has(m)), ...agreeing.filter(m => !(report.ok[m] && report.builds[m]))];
+  return [...ranked, ...rest].map(m => ALL_MASKS[m]);
+}
+
+/** A passable shape in the Gene Lab: its rows, what the locks make of it, and whether its one-tap shortcut fits. */
+export type LabShape = Readonly<{
+  label: string; side: 0 | 1; name: string;
+  /** The rows it covers in any frame (top first); the shortcut locks all of them to `side`. */
+  rows: readonly number[];
+  /** "sure": every possible baby carries it; "blocked": none can; "chance": the seeded wish decides (about 1 in 2). */
+  odds: "sure" | "chance" | "blocked";
+  /** Locking all of its rows to its parent (over the current locks) leaves at least one possible baby. */
+  lockable: boolean;
+}>;
+
+export type LockOptions = Readonly<{
+  /** Babies still possible: masks that agree with the locks, pass the hard checks and build (of MASK_COUNT). */
+  possible: number;
+  /** Per row, [parent A, parent B]: locking the row to that parent (or switching it) keeps at least one possible baby. */
+  allowed: readonly (readonly [boolean, boolean])[];
+  /** Per passable shape, in passableShapes order. */
+  shapes: readonly LabShape[];
+}>;
+
+/**
+ * The Gene Lab's view of a pair under a lock set (16 entries), for the Matchmaker. Pure. The first call for a pair assesses
+ * all 630 masks once (a few tens of ms); every later lock set of that pair only filters them. Freeing a row never removes a
+ * possible baby, so it is always allowed.
+ */
+export function lockOptions(a: Creature, b: Creature, locks: readonly RowLock[]): LockOptions {
+  const sideWalker = isSideWalker(a) || isSideWalker(b);
+  const report = reportOf(a.sheet, b.sheet, sideWalker, mirrorPolicy(a.sheet, b.sheet));
+  const allowed = Array.from({ length: N }, () => [false, false] as [boolean, boolean]);
+  const valid: Rows[] = [];
+  ALL_MASKS.forEach((rows, m) => {
+    if (!report.ok[m] || !report.builds[m]) return;
+    // A mask agrees with the locks once row y is changed when its only disagreement (if any) is row y.
+    let off = -1, count = 0;
+    for (let y = 0; y < N; y++) if (locks[y] !== null && locks[y] !== undefined && rows[y] !== locks[y]) { off = y; count++; }
+    if (count === 0) { valid.push(rows); rows.forEach((side, y) => { allowed[y][side] = true; }); }
+    else if (count === 1) allowed[off][rows[off]] = true;
+  });
+  const locked = locks.some(lock => lock !== null && lock !== undefined);
+  const shapes = heirsOf(a, b, sideWalker).map((heir): LabShape => {
+    const taking = valid.filter(rows => takes(heir, rows)).length;
+    const odds = !locked ? "chance" : !valid.length || !taking ? "blocked" : taking === valid.length ? "sure" : "chance";
+    const target = locks.map((lock, y) => heir.rows.includes(y) ? heir.side : lock);
+    const lockable = ALL_MASKS.some((rows, m) => report.ok[m] && report.builds[m] && agrees(rows, target));
+    return Object.freeze({ label: heir.trait.label, side: heir.side, name: heir.parent.name, rows: heir.rows, odds, lockable });
+  });
+  return Object.freeze({ possible: valid.length, allowed, shapes });
+}
+
+/**
+ * True once lockOptions has assessed this pair (its first call, tens of ms, builds the pair's report; later calls only
+ * filter it), so the UI can run that first call after a paint instead of during a render.
+ */
+export function lockOptionsReady(a: Creature, b: Creature): boolean {
+  return !!reports.get(a.sheet)?.get(b.sheet)?.[Number(isSideWalker(a) || isSideWalker(b))];
+}
+
+/** Rows per edge shortcut: the session's free locked rows, so a first shortcut costs no Hearts. */
+export const EDGE_ROWS = 3;
+
+/** One of the Gene Lab's always-there shortcuts: the pair's top or bottom rows from one parent. */
+export type LabEdge = Readonly<{
+  edge: "top" | "bottom"; side: 0 | 1;
+  /** EDGE_ROWS rows from the first inked row of either parent down, or up from the last one (walk frames of the facing shown). */
+  rows: readonly number[];
+  /** Locking them to `side` (over the current locks) leaves at least one possible baby. */
+  lockable: boolean;
+}>;
+
+/**
+ * The top rows (ears, eyes) and the bottom rows (feet) from each parent: four shortcuts that work for every pair, unlike
+ * the shape shortcuts, which need a parent with a shape. Order: top from A, top from B, bottom from A, bottom from B.
+ * The mask rules (runs of 2 to 5 rows, the hard checks) decide `lockable`, exactly as lockOptions' `allowed`. Pure.
+ */
+export function edgeLocks(a: Creature, b: Creature, locks: readonly RowLock[]): readonly LabEdge[] {
+  const sideWalker = isSideWalker(a) || isSideWalker(b), facing: Facing = sideWalker ? "right" : "down";
+  const report = reportOf(a.sheet, b.sheet, sideWalker, mirrorPolicy(a.sheet, b.sheet));
+  let first = N, last = -1;
+  for (const sheet of [a.sheet, b.sheet]) for (const frame of sheet.walk[facing]) for (let y = 0; y < N; y++) {
+    if (rowInk(frame, y)) { first = Math.min(first, y); last = Math.max(last, y); }
+  }
+  if (last < 0) { first = 0; last = N - 1; }
+  const run = (start: number) => Array.from({ length: EDGE_ROWS }, (_, k) => start + k);
+  const edges = [["top", run(Math.min(first, N - EDGE_ROWS))], ["bottom", run(Math.max(last, EDGE_ROWS - 1) - EDGE_ROWS + 1)]] as const;
+  return edges.flatMap(([edge, rows]) => ([0, 1] as const).map((side): LabEdge => {
+    const target = locks.map((lock, y) => rows.includes(y) ? side : lock);
+    const lockable = ALL_MASKS.some((mask, m) => report.ok[m] && report.builds[m] && agrees(mask, target));
+    return Object.freeze({ edge, side, rows, lockable });
+  }));
+}
+
+/**
+ * Every row mask the pair can really hatch (passes the hard checks and builds; lockOptions' `possible`), best score first.
+ * Locking all 16 rows to one of them hatches exactly that mask (the dream child in src/dream.ts relies on it).
+ */
+export function possibleMasks(a: Creature, b: Creature): readonly (readonly (0 | 1)[])[] {
+  const sideWalker = isSideWalker(a) || isSideWalker(b);
+  const report = reportOf(a.sheet, b.sheet, sideWalker, mirrorPolicy(a.sheet, b.sheet));
+  return ALL_MASKS.map((_, m) => m).filter(m => report.ok[m] && report.builds[m])
+    .sort((p, q) => report.score[p] - report.score[q] || p - q).map(m => ALL_MASKS[m]);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -893,21 +1081,22 @@ function familyLabel(a: Creature, b: Creature, rows: Rows, view: Facing): string
 
 /**
  * Breed a baby; deterministic for the same input. Pick the row mask (seeded candidates ranked on the main
- * views), mix all 64 frames and repair each into one body, grow the tier's mutation, then derive the
- * pattern stencil. Parents may be babies themselves (lineage > 0).
+ * views; with Gene Lab locks only masks that agree with them), mix all 64 frames and repair each into one body,
+ * grow the tier's mutation, then derive the pattern stencil. Parents may be babies themselves (lineage > 0).
  */
 export function breed(input: BreedInput): BreedResult {
   const { a, b, seed, tier } = input;
   const sideWalker = isSideWalker(a) || isSideWalker(b);
-  const mirror = mirrorPolicy(a.sheet, b.sheet);
+  const mirror = mirrorPolicy(a.sheet, b.sheet), heirs = heirsOf(a, b, sideWalker), locks = activeLocks(input.locks);
+  const ranked = locks ? rankLocked(a.sheet, b.sheet, seed, sideWalker, mirror, heirs, locks) : rankRows(a.sheet, b.sheet, seed, sideWalker, mirror, heirs);
   let rows: Rows | null = null, frames: Frames | null = null;
-  for (const candidate of rankRows(a.sheet, b.sheet, seed, sideWalker, mirror, heirsOf(a, b, sideWalker))) {
+  for (const candidate of ranked) {
     frames = buildBody(a.sheet, b.sheet, candidate, sideWalker, mirror);
     if (frames) { rows = candidate; break; }
   }
   if (!rows || !frames) {
-    // Degenerate parents (nearly empty art): fall back to a fixed half and half mask, no ink floor.
-    rows = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1];
+    // Degenerate parents (nearly empty art): fall back to a fixed half and half mask (with locks, the best agreeing one), no ink floor.
+    rows = locks ? ranked[0] : [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1];
     frames = fallbackBody(a.sheet, b.sheet, rows, sideWalker, mirror);
   }
   // Inherited shapes first (checked on the body before this hatch grows anything), then what the tier grows.
@@ -939,6 +1128,7 @@ export function breed(input: BreedInput): BreedResult {
       mutations: Object.freeze(mutated.get(slot("idle", "down", 0)) ?? []),
       traits: Object.freeze(traits),
       shapes: Object.freeze(shapes),
+      ...(locks ? { locks: Object.freeze(Array.from({ length: N }, (_, y) => locks[y] ?? null)) } : {}),
     }),
     name: babyName(seed, input.takenNames),
     family: familyLabel(a, b, rows, sideWalker ? "right" : "down"),

@@ -176,7 +176,6 @@ export function IntroPanel({ player, mate, tiers, price, startBalance, hud, keep
       <div className="rb-intro-copy">
         <p className="rb-intro-lead">Pick a mate from three real Rare Friends. New faces are free.</p>
         <p>Each breed uses one egg. The baby inherits whole pixel rows from both parents, walk cycle included, so every egg hatches a one-of-a-kind mix.</p>
-        <p>Spend Hearts on a Wish to choose a mate's family.</p>
       </div>
     </>,
     // 4. Odds

@@ -3,25 +3,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GameComponentProps } from "@rarefriends/friendsdk/runtime";
 import { createFriendSoundKit, type FriendSoundCue, type FriendSoundKit } from "@rarefriends/friendsdk/sounds";
-import { useRareBreeds } from "./src/controller.ts";
+import { useRareBreeds, WILD_POOL } from "./src/controller.ts";
+import { dreamNews, localDateKey, stampDream, useDream } from "./src/dream.ts";
 import { ACCESSORIES } from "./src/accessories.ts";
-import { KEEP_BONUS, WISH_PRICE, heartsPerMinute, useHearts, wishFamilies } from "./src/hearts.ts";
+import { FREE_LOCKS, KEEP_BONUS, WISH_PRICE, heartsPerMinute, lockCost, useHearts, wishFamilies } from "./src/hearts.ts";
 import { describeTiers, expectedValueLabel, formatRF, purchaseBlocker } from "./src/economy.ts";
 import { createNurseryScene } from "./src/scene/nursery.ts";
 import { createHatchSequence, createQuickHatchSequence } from "./src/scene/hatch.ts";
 import { createLaunchSequence } from "./src/scene/launch.ts";
 import { multiplierLabel, slingshotNet, useSlingshot, type LaunchResult } from "./src/slingshot.ts";
-import { PASS_ON_ODDS, passableShapes } from "./src/genetics.ts";
+import { lockCount, NO_LOCKS, PASS_ON_ODDS, passableShapes } from "./src/genetics.ts";
 import { lineageTitles } from "./src/titles.ts";
 import type { HatchSequence, LaunchBeat, LaunchSequence, NurseryScene } from "./src/api.ts";
-import { TIER_ORDER, type Creature, type StationId, type TierId } from "./src/types.ts";
+import { TIER_ORDER, type Creature, type RowLock, type StationId, type TierId } from "./src/types.ts";
 import {
-  ActionBar, BabyCard, BroodPanel, EggShopPanel, ErrorScreen, GameRoot, HatchOverlay, HeartShopPanel, Hud, IntroPanel, LaunchOverlay, LoadingScreen,
-  MatchmakerPanel, SettingsPanel, SlingshotPanel, Toast, WorldLayer, buildCollection, discoveriesOf, familyOf, signedRF, type BroodTab, type ShopTab, type TierInfo,
+  ActionBar, BabyCard, BroodPanel, DreamBurst, DreamPanel, EggShopPanel, ErrorScreen, GameRoot, HatchOverlay, HeartShopPanel, Hud, IntroPanel, LaunchOverlay, LoadingScreen,
+  MatchmakerPanel, SettingsPanel, SlingshotPanel, Toast, WorldLayer, buildCollection, discoveriesOf, familyOf, lockedNews, signedRF, type BroodTab, type ShopTab, type TierInfo,
 } from "./src/ui/index.ts";
 import "./style.css";
 
-type PanelId = "match" | "brood" | "settings" | "eggs" | "shop" | "sling";
+type PanelId = "match" | "brood" | "settings" | "eggs" | "shop" | "sling" | "dream";
 type Note = Readonly<{ message: string; tone: "info" | "success" | "error"; id: number; duration?: number }>;
 /** A launched baby (traded in, out of the brood): the scene shot, then the flight overlay; `result` once the flight is booked. */
 type Flight = Readonly<{ baby: Creature; value: bigint; result: LaunchResult | null; stage: "shot" | "flight" | "result" }>;
@@ -47,10 +48,23 @@ const STOCK_UP = 5n;
 
 /** Rare Breeds: the SDK runtime supplies the verified Friend, the simulated ledger and every confirmation. */
 export default function RareBreeds({ friendId, client, paused }: GameComponentProps) {
-  const game = useRareBreeds({ friendId, client, paused });
+  // The dream mate (below) is read when wild mates are drawn: fresh sets and a Wish for its family bring it along.
+  const dreamMate = useRef<Creature | null>(null);
+  const game = useRareBreeds({ friendId, client, paused, dreamMate: useCallback(() => dreamMate.current, []) });
   const { player, snapshot, hatch, brood, definition } = game;
   const [panel, setPanel] = useState<PanelId | null>(null);
   const [parentAKey, setParentAKey] = useState<string | undefined>();
+  const [parentBKey, setParentBKey] = useState<string | undefined>();
+  const [matchView, setMatchView] = useState<"pair" | "lab">("pair");
+  // Dream child: every day your Friend dreams of a child (src/dream.ts). It wakes after the first hatch, with a one-time toast.
+  const [today] = useState(() => localDateKey());
+  const dreamer = useDream({ friend: player, pool: WILD_POOL, date: today });
+  const dream = dreamer.awake ? dreamer.dream : null;
+  useEffect(() => { dreamMate.current = dreamer.dream?.mate ?? null; }, [dreamer.dream]);
+  const [dreamToast, setDreamToast] = useState(false);
+  // The baby whose reveal made the dream come true (a short burst over its card).
+  const [dreamBurst, setDreamBurst] = useState<string | null>(null);
+  const recorded = useRef(new Set<string>());
   const [broodFocus, setBroodFocus] = useState<string | null>(null);
   // Brood panel tab: "legacy" shows the Friend's card and family tree (e.g. after tapping the Friend).
   const [broodTab, setBroodTab] = useState<BroodTab>("brood");
@@ -81,6 +95,10 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
   // Hearts: game points kept babies earn (never RF). Income pauses with the runtime, the intro, a hatch and a flight.
   const hearts = useHearts({ brood, active: !paused && !showIntro && !hatch && !flight, onEarn: (key, amount) => scene.current?.emitHearts(key, amount) });
   const [shopTab, setShopTab] = useState<ShopTab>("hats");
+  // Gene Lab: the row locks for one pair (they stay while that pair is picked and clear after a hatch), and the session's
+  // free locked rows. Hearts are charged only once the egg is really used.
+  const [lab, setLab] = useState<Readonly<{ pair: readonly [string, string] | null; locks: readonly RowLock[] }>>({ pair: null, locks: NO_LOCKS });
+  const [freeLocks, setFreeLocks] = useState(FREE_LOCKS);
   // Everyone shown anywhere wears their equipped accessory.
   const dressedPlayer = useMemo(() => player && hearts.dress(player), [player, hearts.dress]);
   const dressedBrood = useMemo(() => brood.map(baby => hearts.dress(baby)), [brood, hearts.dress]);
@@ -135,8 +153,8 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
     setSanctuary(false);
     if (next) cue("select");
   }, [paused, cue]);
-  const openMatch = useCallback((parentA?: string) => {
-    setParentAKey(parentA); openPanel("match");
+  const openMatch = useCallback((parentA?: string, view: "pair" | "lab" = "pair", parentB?: string) => {
+    setParentAKey(parentA); setParentBKey(parentB); setMatchView(view); openPanel("match");
     setFirstTime(seen => seen.match ? { ...seen, match: false } : seen);
   }, [openPanel]);
   const openSling = useCallback(() => {
@@ -145,7 +163,7 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
   }, [openPanel]);
 
   // The nursery world. Callbacks go through a ref so the scene is created once per Friend.
-  const handlers = useRef({ station: (_: StationId) => {}, creature: (_: string) => {} });
+  const handlers = useRef({ station: (_: StationId) => {}, creature: (_: string) => {}, dream: () => {} });
   handlers.current = {
     station: station => {
       if (station === "matchmaker") openMatch();
@@ -156,6 +174,7 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
       const friend = key === player?.key;
       setBroodTab(friend ? "legacy" : "brood"); setBroodFocus(friend ? null : key); openPanel("brood");
     },
+    dream: () => openPanel("dream"),
   };
   useEffect(() => {
     if (!worldCanvas || !player) return;
@@ -164,6 +183,7 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
       onStationNear: setNear,
       onStationActivate: station => handlers.current.station(station),
       onCreatureActivate: key => handlers.current.creature(key),
+      onDreamActivate: () => handlers.current.dream(),
     });
     scene.current = created;
     return () => { created.destroy(); if (scene.current === created) scene.current = null; };
@@ -172,6 +192,7 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
   useEffect(() => { if (dressedPlayer) scene.current?.setPlayer(dressedPlayer); }, [dressedPlayer, worldCanvas]);
   useEffect(() => { scene.current?.setEggCount(Number(snapshot?.consumables ?? 0n)); }, [snapshot, worldCanvas, player]);
   useEffect(() => { scene.current?.setReducedMotion(reducedMotion); }, [reducedMotion]);
+  useEffect(() => { scene.current?.setDream(dream?.child ?? null, !!dreamer.progress?.solved); }, [dream, dreamer.progress?.solved, worldCanvas, player]);
   // The scene shot plays in the live world; the flight overlay pauses it.
   const worldPaused = paused || panel !== null || hatch !== null || showIntro || (flight !== null && flight.stage !== "shot");
   useEffect(() => { scene.current?.setPaused(worldPaused); }, [worldPaused, worldCanvas, player]);
@@ -208,14 +229,43 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
 
   useEffect(() => { if (game.error) notify(game.error, "error"); }, [game.error]);
 
-  async function breed(a: Creature, b: Creature) {
+  // The dream wakes once the first hatch card closes; its toast waits for a free moment (no panel, no other toast).
+  useEffect(() => {
+    if (dreamer.awake || !dreamer.dream || hatch || !hatchesShown.current.size) return;
+    dreamer.wake(); setDreamToast(true);
+  }, [hatch, dreamer.dream]);
+  const busyWorld = panel !== null || hatch !== null || showIntro || flight !== null;
+  useEffect(() => {
+    if (!dreamToast || note || busyWorld || !player) return;
+    setDreamToast(false);
+    notify(`${player.name} is dreaming of a child. Tap the bubble.`, "info", 7000);
+  }, [dreamToast, note, busyWorld]);
+  // Every revealed baby of your Friend and the dream mate counts once; all 16 rows the first time: Hearts and a burst.
+  useEffect(() => {
+    if (hatch?.stage !== "result" || recorded.current.has(hatch.baby.key)) return;
+    recorded.current.add(hatch.baby.key);
+    const reward = dreamer.record(hatch.baby);
+    if (reward) { hearts.grant(reward); cue("reward"); setDreamBurst(hatch.baby.key); }
+  }, [hatch?.baby.key, hatch?.stage]);
+
+  async function breed(a: Creature, b: Creature, locks: readonly RowLock[] = NO_LOCKS) {
+    const cost = lockCost(lockCount(locks), freeLocks);
+    if (!game.pendingCommit && cost.hearts > hearts.hearts) return;
     setPanel(null);
     const result = await game.breedPair(a, b, async () => {
       cue("action-start");
       if (b.kind === "wild") await scene.current?.playCourtship(b);
-    });
+    }, { locks, onCommit: () => {
+      // The Hearts can have gone meanwhile (e.g. a Wish): then the egg hatches without locks, never with free ones.
+      if (cost.hearts && !hearts.spend(cost.hearts)) {
+        notify("Not enough Hearts left for your Gene Lab locks: this egg hatches without them.", "error");
+        return { locks: NO_LOCKS, hearts: 0 };
+      }
+      setFreeLocks(left => Math.max(0, left - cost.free));
+      return { locks, hearts: cost.hearts };
+    }, stamp: dream ? baby => stampDream(dream, baby) : undefined });
     if (!result) setPanel("match");
-    else setFirstTime(seen => ({ ...seen, breed: false }));
+    else { setFirstTime(seen => ({ ...seen, breed: false })); setLab({ pair: null, locks: NO_LOCKS }); }
   }
 
   function keep(baby: Creature) {
@@ -288,13 +338,26 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
     if (await game.buyEggs(quantity)) { cue("purchase"); notify(`${quantity} eggs in the incubator.`, "success"); }
   }
 
-  function wish(familyId: number) {
+  function wish(familyId: number, view: "pair" | "lab" = "pair") {
     const family = wishFamilies.find(item => item.familyId === familyId);
     if (!family || !hearts.spend(WISH_PRICE)) return;
     game.wish(familyId);
     cue("purchase");
     notify(`Wish granted: 3 ${family.name} mates. -${WISH_PRICE} Hearts`, "success");
-    openMatch();
+    openMatch(view === "lab" ? player?.key : undefined, view, view === "lab" ? dream?.mate.key : undefined);
+  }
+
+  /** "Find the mate": the Matchmaker, on the dream pair's Gene Lab when the dream mate is on offer. */
+  function findDreamMate() {
+    const onOffer = !!dream && game.candidates.some(mate => mate.key === dream.mate.key);
+    openMatch(player?.key, onOffer ? "lab" : "pair", onOffer ? dream?.mate.key : undefined);
+  }
+
+  function dreamAgain() {
+    dreamer.again();
+    setPanel(null);
+    cue("select");
+    notify(`${player?.name ?? "Your Friend"} dreams a new dream. Tap the bubble.`, "info");
   }
 
   async function buyEggs(quantity: bigint) {
@@ -325,6 +388,7 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
   // What the HUD shows right now, for the intro's and the help panel's HUD legend.
   // The HUD counts a new baby only once it is kept: during the hatch and its reveal card it is not decided yet.
   const keptCount = brood.length - (hatch && brood.some(baby => baby.key === hatch.baby.key) ? 1 : 0);
+  const dreamOnOffer = !!dream && !dreamer.progress?.solved && game.candidates.some(mate => mate.key === dream.mate.key);
   const hudSample = { hearts: hearts.hearts, balance: formatRF(snapshot.rfBalance), eggs, brood: keptCount, families: collection.families.length, net: slingshotNet(sling.ledger) };
 
   return <GameRoot reducedMotion={reducedMotion} busy={!!busy}>
@@ -335,7 +399,7 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
         onOpenBrood={() => openBrood()} disabled={paused || !!busy} collection={collection}
         hearts={hearts.hearts} onOpenShop={() => openShop("hats")}
         slingshot={{ net: slingshotNet(sling.ledger) - (inAir ? inAir.payout - inAir.value : 0n), launches: sling.ledger.launches - (inAir ? 1 : 0) }}
-        onOpenSlingshot={openSling} />
+        onOpenSlingshot={openSling} onOpenDream={dream ? () => openPanel("dream") : undefined} dreamSolved={!!dreamer.progress?.solved} />
       {note && <Toast key={note.id} message={note.message} tone={note.tone} duration={note.duration} onDismiss={() => { setNote(null); game.clearError(); }} />}
       {!modalOpen && <ActionBar onFindMatch={() => openMatch()} broodCount={brood.length} onOpenBrood={() => openBrood()}
         primaryLabel={game.pendingPlay ? "Finish hatching" : busy ? busyLabel : undefined} disabled={paused || !!busy}
@@ -344,13 +408,15 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
         coach={firstTime.match ? COACH : null} />}
     </WorldLayer>
 
-    {panel === "match" && <MatchmakerPanel key={parentAKey ?? "friend"} parents={[dressedPlayer ?? player, ...dressedBrood]} candidates={game.candidates}
+    {panel === "match" && <MatchmakerPanel key={`${parentAKey ?? "friend"}:${parentBKey ?? "mate"}:${matchView}`} parents={[dressedPlayer ?? player, ...dressedBrood]} candidates={game.candidates}
       eggs={eggs} price={price} needsEgg={game.needsEgg} canAfford={game.canAfford} busy={!!busy} busyLabel={busyLabel}
       actionLabel={game.pendingPlay ? "Finish hatching" : undefined} error={game.error} disabledReason={game.blockerText || undefined}
-      initialParentA={parentAKey} onReroll={() => { cue("select"); game.reroll(); }} onBreed={(a, b) => void breed(a, b)}
+      initialParentA={parentAKey} initialParentB={parentBKey} onReroll={() => { cue("select"); game.reroll(); }} onBreed={(a, b, locks) => void breed(a, b, locks)}
+      lab={{ ...lab, onChange: (pair, locks) => setLab({ pair, locks }), freeLeft: freeLocks, hearts: hearts.hearts }} committed={game.pendingCommit}
       onClose={busy ? undefined : () => openPanel(null)} collectedFamilies={collection.families} odds={tiers} guide={firstTime.breed}
       onWish={() => openShop("wish")} wishPrice={WISH_PRICE} reducedMotion={reducedMotion}
-      preferredMateKey={game.candidates.find(mate => !collection.families.includes(familyOf(mate)))?.key}
+      preferredMateKey={(dreamOnOffer ? dream?.mate.key : undefined) ?? game.candidates.find(mate => !collection.families.includes(familyOf(mate)))?.key}
+      dream={dream} initialView={matchView}
       onStockUp={quantity => void stockUp(quantity)} stockUpQuantity={Number(STOCK_UP)} stockUpPrice={formatRF(definition.price * STOCK_UP)}
       stockUpDisabled={paused || purchaseBlocker(snapshot, definition, STOCK_UP) !== null} />}
 
@@ -376,6 +442,10 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
       onBuy={id => { if (hearts.buy(id)) cue("purchase"); }} onEquip={(key, id) => { hearts.equip(key, id); cue("select"); }}
       families={wishFamilies} wishPrice={WISH_PRICE} collectedFamilies={collection.families} onWish={wish} onClose={() => openPanel(null)} />}
 
+    {panel === "dream" && dream && dreamer.progress && <DreamPanel dream={dream} progress={dreamer.progress} friend={dressedPlayer ?? player} onOffer={dreamOnOffer}
+      hearts={hearts.hearts} wishPrice={WISH_PRICE} solvedBaby={dreamer.progress.solved ? game.creature(dreamer.progress.solved) : null}
+      onFindMate={findDreamMate} onWish={() => wish(dream.mate.familyId, "lab")} onAgain={dreamAgain} onClose={() => openPanel(null)} reducedMotion={reducedMotion} />}
+
     {/* The runtime also pauses the game while its "Redeem reward" dialog is open: busy wins, so the panel says what to confirm. */}
     {panel === "sling" && <SlingshotPanel brood={dressedBrood} tiers={tierRows} blocker={sling.blocker} fund={sling.ledger.fund} bestExit={sling.ledger.topExit} titles={titlesOf} busy={!!busy}
       disabledReason={paused && !busy ? "The game is paused." : undefined} onLaunch={key => void launch(key)} onFindMatch={() => openMatch()}
@@ -396,10 +466,13 @@ export default function RareBreeds({ friendId, client, paused }: GameComponentPr
       label={`${hatch.baby.name} hatched`}>
       {hatch.stage === "result" && <BabyCard baby={hatch.baby} parentA={hatchParents[0]} parentB={hatchParents[1]}
         chance={tierInfo(hatch.baby.tier).chance} value={tierInfo(hatch.baby.tier).value} mode="reveal"
-        discoveries={discoveriesOf(hatch.baby, collection, lineageTitles(hatch.baby, game.creature, player))}
+        discoveries={[...dreamNews(hatch.baby, dreamer.progress), ...lockedNews(hatch.baby),
+          ...discoveriesOf(hatch.baby, collection, lineageTitles(hatch.baby, game.creature, player)).filter(line => !line.startsWith("First Dreamchild"))]}
         heartsPerMinute={heartsPerMinute(hatch.baby.tier)} keepBonus={KEEP_BONUS} creature={dressedCreature} friend={dressedPlayer ?? player} hatchNumber={hatchNumber(hatch.baby)}
+        traceHint={firstTime.card}
         onKeep={() => keep(hatch.baby)} onRelease={() => void release(hatch.baby, true)} busy={!!busy} busyLabel={busyLabel}
         error={game.error} reducedMotion={reducedMotion} />}
+      {hatch.stage === "result" && dreamBurst === hatch.baby.key && <DreamBurst reducedMotion={reducedMotion} />}
     </HatchOverlay>}
   </GameRoot>;
 }

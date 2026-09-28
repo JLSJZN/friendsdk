@@ -1,8 +1,9 @@
 // The page's cast: the game's 73 wild Friends (data/wild-friends.json, real on-chain sprites) and babies bred from
 // them with the game's own genetics. Nothing here is saved or spent: it is the same maths the game runs, for show.
 import { breed, breedSeed } from "../../src/genetics.ts";
+import type { CreatureLookup } from "../../src/legacy.ts";
 import { FAMILY_NAMES, creatureFromRecord, type WildFriendRecord } from "../../src/sprites.ts";
-import { TIER_ORDER, type Creature, type TierId } from "../../src/types.ts";
+import { TIER_ORDER, type Creature, type RowLock, type TierId } from "../../src/types.ts";
 
 export type Pool = Readonly<{
   friends: readonly Creature[];
@@ -18,6 +19,7 @@ export async function loadPool(url = "./data/wild-friends.json"): Promise<Pool> 
   const friends = data.friends.map(record => creatureFromRecord(record));
   const byFamily = FAMILY_NAMES.map((_, id) => friends.filter(friend => friend.familyId === id));
   const index = new Map(friends.map(friend => [friend.tokenId!, friend]));
+  for (const friend of friends) known.set(friend.key, friend);
   return Object.freeze({
     friends, byFamily,
     get(id: bigint) {
@@ -28,23 +30,27 @@ export async function loadPool(url = "./data/wild-friends.json"): Promise<Pool> 
   });
 }
 
-const hatched = new Map<string, Creature>();
+/** Every Friend and baby this visit has seen, by key: the pool, then each hatched baby (rowPath walks through them). */
+const known = new Map<string, Creature>();
+export const lookup: CreatureLookup = key => known.get(key);
 
 /**
- * One baby exactly as the game hatches it: seed from (parent A's token, both keys, play), then breed() at `tier`.
- * Same wrapper as the intro's example babies (src/ui/intro.ts). Cached, so the same egg always shows the same baby.
+ * One baby exactly as the game hatches it: seed from (parent A's token, both keys, play), then breed() at `tier` with
+ * the Gene Lab's row `locks` (as makeBaby in src/controller.ts). Same wrapper as the intro's example babies
+ * (src/ui/intro.ts). Cached, so the same egg always shows the same baby.
  */
-export function hatch(a: Creature, b: Creature, tier: TierId, playId = 0n): Creature {
-  const key = `${a.key}|${b.key}|${playId}|${tier}`;
-  const known = hatched.get(key);
-  if (known) return known;
+export function hatch(a: Creature, b: Creature, tier: TierId, playId = 0n, locks?: readonly RowLock[]): Creature {
+  const locked = locks?.some(lock => lock !== null) ? `|${locks.map(lock => lock ?? "-").join("")}` : "";
+  const key = `baby:${a.key}|${b.key}|${playId}|${tier}${locked}`;
+  const cached = known.get(key);
+  if (cached) return cached;
   const seed = breedSeed(a.tokenId ?? 0n, a.key, b.key, playId);
-  const result = breed({ a, b, tier, playId, seed });
+  const result = breed({ a, b, tier, playId, seed, locks });
   const baby: Creature = Object.freeze({
-    key: `baby:${key}`, kind: "baby", name: result.name, family: result.family, familyId: result.familyId,
+    key, kind: "baby", name: result.name, family: result.family, familyId: result.familyId,
     lineage: result.lineage, sheet: result.sheet, tier, parents: [a.key, b.key] as const, dna: result.dna, playId,
   });
-  hatched.set(key, baby);
+  known.set(key, baby);
   return baby;
 }
 

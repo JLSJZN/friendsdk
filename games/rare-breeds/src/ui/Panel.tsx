@@ -13,6 +13,8 @@ export type PanelProps = Readonly<{
   footer?: ReactNode;
   /** Header slot before the title, e.g. a back button. */
   headerStart?: ReactNode;
+  /** Header slot after the title, before the close button, e.g. tabs on wide frames. */
+  headerEnd?: ReactNode;
   /** Max card width: sm 440, md 600, lg 760 px. Default md. */
   size?: "sm" | "md" | "lg";
   /** Change it to move focus back to the first control (e.g. when switching views inside the panel). */
@@ -25,7 +27,7 @@ export type PanelProps = Readonly<{
 }>;
 
 /** Centred modal card: aria-modal dialog, initial focus, focus trap, Escape to close, scrolls inside. */
-export function Panel({ title, eyebrow, onClose, children, footer, headerStart, size = "md", focusKey, closeLabel, dismissOnBackdrop = true, className }: PanelProps) {
+export function Panel({ title, eyebrow, onClose, children, footer, headerStart, headerEnd, size = "md", focusKey, closeLabel, dismissOnBackdrop = true, className }: PanelProps) {
   const id = useId();
   const node = useRef<HTMLDivElement>(null);
   useModalFocus(node, onClose, focusKey);
@@ -38,6 +40,7 @@ export function Panel({ title, eyebrow, onClose, children, footer, headerStart, 
           {eyebrow && <p className="rb-eyebrow">{eyebrow}</p>}
           <h2 id={`${id}-title`} className="rb-panel-title">{title}</h2>
         </div>
+        {headerEnd}
         {onClose && (closeLabel
           ? <button type="button" className="rb-button rb-button-ghost rb-button-sm rb-panel-skip" onClick={onClose}>{closeLabel}</button>
           : <button type="button" className="rb-icon-button rb-panel-close" onClick={onClose} aria-label={`Close ${title}`}>

@@ -69,7 +69,7 @@ test("titles stack in a fixed order, and only babies earn them", () => {
   // Purebred and Chimera together: four Cellular Friends.
   const left = baby("baby:s2", friend, cellular[0], "0000111100001111"), right = baby("baby:s3", cellular[1], cellular[2], "0000111100001111");
   assert.deepEqual(ids(baby("baby:s4", left, right, "0011001100110011")), ["purebred", "chimera"]);
-  assert.deepEqual([...TITLE_ORDER], ["echo", "purebred", "chimera"]);
+  assert.deepEqual([...TITLE_ORDER], ["echo", "purebred", "chimera", "dreamchild"]);
   assert.deepEqual(ids(friend), []);
   assert.deepEqual(ids(ofFamily("Mask")), []);
   // An unknown ancestor still counts as the origin of its rows (legacy.ts): a missing Mask parent keeps the line mixed.

@@ -15,7 +15,11 @@ import {
   MatchmakerPanel, PixelIcon, SettingsPanel, SlingshotPanel, SpriteThumb, Toast, WorldLayer, buildCollection, discoveriesOf, type BroodTab, type Collection,
   type HudSample, type PixelIconName,
 } from "../../games/rare-breeds/src/ui/index.ts";
-import { babies, candidates, creature, echo, heir, player, rerolled, shaped, tierInfo, tierRows, tiers, tierValue, wild } from "./fixtures.ts";
+import { babies, candidates, creature, designed, dream, dreamDone, dreamSolved, dreamTried, dreamTry, echo, heir, labLocks, player, rerolled, shaped, tierInfo, tierRows, tiers, tierValue, twoShapes, wild } from "./fixtures.ts";
+import { DreamBurst, DreamPanel } from "../../games/rare-breeds/src/ui/index.ts";
+import { dreamNews, startProgress, type DreamProgress } from "../../games/rare-breeds/src/dream.ts";
+import { NO_LOCKS } from "../../games/rare-breeds/src/genetics.ts";
+import type { RowLock } from "../../games/rare-breeds/src/types.ts";
 import { ALL_BREEDS, ALL_FAMILIES, ALL_TIERS } from "../../games/rare-breeds/src/ui/collection.ts";
 import { TITLE_ORDER, lineageTitles } from "../../games/rare-breeds/src/titles.ts";
 import { RF_UNIT } from "../../games/rare-breeds/src/economy.ts";
@@ -91,8 +95,9 @@ function useFakeHatch(stage: "hatching" | "result") {
 
 type Winnings = Readonly<{ net: bigint; launches: number }>;
 
-function Nursery({ prompt, toast, coach, brood = babies.slice(0, 3), inert, slingshot, onOpenSlingshot }: {
+function Nursery({ prompt, toast, coach, brood = babies.slice(0, 3), inert, slingshot, onOpenSlingshot, dreaming }: {
   prompt?: boolean | Readonly<{ label: string; short?: string; keyHint?: string }>; toast?: boolean | string; coach?: boolean; brood?: Creature[]; inert?: boolean; slingshot?: Winnings; onOpenSlingshot?: () => void;
+  dreaming?: boolean;
 }) {
   const [muted, setMuted] = useState(false);
   const [message, setMessage] = useState<string | null>(typeof toast === "string" ? toast : toast ? "Zibu joined your brood" : null);
@@ -100,7 +105,8 @@ function Nursery({ prompt, toast, coach, brood = babies.slice(0, 3), inert, slin
   return <WorldLayer inert={inert}>
     <FakeWorld brood={brood} />
     <Hud balance="18.5 RF" eggs={2} broodCount={brood.length} muted={muted} onToggleSound={() => setMuted(!muted)} onOpenSettings={() => {}} onOpenBrood={() => {}}
-      collection={collectionWithout()} hearts={42} onOpenShop={() => {}} slingshot={slingshot} onOpenSlingshot={onOpenSlingshot} />
+      collection={collectionWithout()} hearts={42} onOpenShop={() => {}} slingshot={slingshot} onOpenSlingshot={onOpenSlingshot}
+      onOpenDream={dreaming ? () => console.log("dream") : undefined} />
     {message && <Toast message={message} tone="success" onDismiss={dismiss} duration={0} />}
     {!inert && <ActionBar onFindMatch={() => {}} broodCount={brood.length} onOpenBrood={() => {}} hint="WASD / arrows or tap to walk · E near a station"
       prompt={prompt ? { ...(prompt === true ? { label: "Buy eggs" } : prompt), onActivate: () => {} } : null}
@@ -109,8 +115,8 @@ function Nursery({ prompt, toast, coach, brood = babies.slice(0, 3), inert, slin
 }
 
 function Matchmaker(props: { needsEgg?: boolean; canAfford?: boolean; busy?: boolean; error?: string; withBrood?: boolean; reason?: string; guide?: boolean;
-  stock?: boolean; preferred?: string; parentA?: string }) {
-  const [pool, setPool] = useState(candidates);
+  stock?: boolean; preferred?: string; parentA?: string; dreaming?: boolean }) {
+  const [pool, setPool] = useState(props.dreaming ? [candidates[0], dream.mate, candidates[2]] : candidates);
   return <>
     <Nursery inert />
     <MatchmakerPanel parents={props.withBrood ? [player, ...babies.slice(0, 5)] : [player]} candidates={pool}
@@ -120,11 +126,35 @@ function Matchmaker(props: { needsEgg?: boolean; canAfford?: boolean; busy?: boo
       busy={props.busy} busyLabel={props.busy ? "Buying egg…" : undefined} error={props.error} disabledReason={props.reason}
       onReroll={() => setPool(pool === candidates ? rerolled : candidates)} onBreed={(a, b) => console.log("breed", a.key, b.key)}
       onClose={() => console.log("close")} collectedFamilies={props.guide ? [] : collectionWithout().families} odds={tiers} guide={props.guide}
-      onWish={() => console.log("wish")} wishPrice={15} />
+      onWish={() => console.log("wish")} wishPrice={15} dream={props.dreaming ? dream : null} />
   </>;
 }
 
-function Hatch({ stage, baby }: { stage: "hatching" | "result"; baby: Creature }) {
+/** Gene Lab: the Matchmaker with the lab wired like index.tsx (locks per pair, 3 free rows, a Hearts balance). */
+function LabMatchmaker({ locks: initial = NO_LOCKS, hearts = 42, freeLeft = 3, mate = wild[4], parent = shaped, pending, dreaming }: {
+  locks?: readonly RowLock[]; hearts?: number; freeLeft?: number; mate?: Creature; parent?: Creature; pending?: boolean; dreaming?: boolean }) {
+  const [lab, setLab] = useState<{ pair: readonly [string, string] | null; locks: readonly RowLock[] }>({ pair: [parent.key, mate.key], locks: initial });
+  return <>
+    <Nursery inert />
+    <MatchmakerPanel parents={[player, ...(parent === player ? [] : [parent]), ...babies.slice(0, 3)]} candidates={[...candidates.slice(0, 2), mate]} initialParentA={parent.key} preferredMateKey={mate.key}
+      eggs={2} price="1 RF" needsEgg={false} canAfford onReroll={() => {}} onBreed={(a, b, locks) => console.log("breed", a.key, b.key, locks.join(","))}
+      onClose={() => console.log("close")} collectedFamilies={collectionWithout().families} odds={tiers} onWish={() => {}} wishPrice={15}
+      lab={{ ...lab, onChange: (pair, locks) => setLab({ pair, locks }), freeLeft, hearts }}
+      committed={pending ? { a: parent, b: mate, locks: initial, hearts: 8 } : null} actionLabel={pending ? "Finish hatching" : undefined} dream={dreaming ? dream : null} initialView={dreaming ? "lab" : undefined} />
+  </>;
+}
+
+/** The Dream panel over the nursery: not on offer (Wish), on offer, or come true. */
+function Dream({ progress = startProgress(dream.id), onOffer = false, hearts = 42 }: { progress?: DreamProgress; onOffer?: boolean; hearts?: number }) {
+  return <>
+    <Nursery inert />
+    <DreamPanel dream={dream} progress={progress} friend={player} onOffer={onOffer} hearts={hearts} wishPrice={15}
+      solvedBaby={progress.solved ? dreamSolved : null} onFindMate={() => console.log("find")} onWish={() => console.log("wish")}
+      onAgain={() => console.log("again")} onClose={() => console.log("close")} />
+  </>;
+}
+
+function Hatch({ stage, baby, progress }: { stage: "hatching" | "result"; baby: Creature; progress?: DreamProgress }) {
   const setCanvas = useFakeHatch(stage);
   const info = tierInfo(baby.tier ?? "common");
   return <>
@@ -133,7 +163,9 @@ function Hatch({ stage, baby }: { stage: "hatching" | "result"; baby: Creature }
       <BabyCard baby={baby} parentA={creature(baby.parents![0])} parentB={creature(baby.parents![1])} creature={creature} friend={player} chance={info.chance} value={info.value}
         onKeep={() => console.log("keep")} onRelease={() => console.log("release")} heartsPerMinute={heartsPerMinute(baby.tier)} keepBonus={5}
         hint={params.has("first") ? `Keep ${baby.name} to breed again (it follows your Friend), or trade it in at the Sanctuary for a fixed ${info.value} (simulated).` : undefined}
-        discoveries={discoveriesOf(baby, params.has("first") ? buildCollection([]) : collectionWithout(baby), titlesOf(baby))} />
+        discoveries={[...dreamNews(baby, progress ?? null), ...discoveriesOf(baby, params.has("first") ? buildCollection([]) : collectionWithout(baby), titlesOf(baby))
+          .filter(line => !line.startsWith("First Dreamchild"))]} />
+      {progress?.solved === baby.key && <DreamBurst />}
     </HatchOverlay>
   </>;
 }
@@ -323,6 +355,24 @@ const scenarios: Record<string, () => ReactNode> = {
   "matchmaker-busy": () => <Matchmaker needsEgg busy />,
   "matchmaker-brood": () => <Matchmaker withBrood />,
   "matchmaker-first": () => <Matchmaker needsEgg guide />,
+  // Gene Lab: fresh (no locks), a design with the Mutant's head shape locked, and one that costs more Hearts than there are.
+  "genelab": () => <LabMatchmaker />,
+  "genelab-locked": () => <LabMatchmaker locks={labLocks} />,
+  "genelab-short": () => <LabMatchmaker locks={labLocks} hearts={2} freeLeft={0} />,
+  // An egg laid with these locks whose hatch did not settle ("Finish hatching"): pair and locks are fixed.
+  "genelab-pending": () => <LabMatchmaker locks={labLocks} pending hearts={0} />,
+  // Two shape shortcuts (a head shape and a tail) and one row locked: the tallest lab on a phone.
+  "genelab-two": () => <LabMatchmaker parent={twoShapes} mate={wild[5]} locks={NO_LOCKS.map((lock, row) => row === 15 ? 1 : row === 14 ? 1 : lock)} />,
+  "reveal-locked": () => <Hatch stage="result" baby={designed} />,
+  // Dream child: the panel (mate not on offer, on offer, come true), the tagged mate, the lab beside the dream, and two cards.
+  "dream-hud": () => <Nursery dreaming toast={`${player.name} is dreaming of a child. Tap the bubble.`} slingshot={{ net: 54n * RF_UNIT, launches: 3 }} />,
+  "dream-panel": () => <Dream />,
+  "dream-panel-offer": () => <Dream progress={dreamTried} onOffer />,
+  "dream-solved": () => <Dream progress={dreamDone} />,
+  "matchmaker-dream": () => <Matchmaker dreaming />,
+  "genelab-dream": () => <LabMatchmaker parent={player} mate={dream.mate} dreaming />,
+  "reveal-dream": () => <Hatch stage="result" baby={dreamTry} progress={dreamTried} />,
+  "reveal-dream-solved": () => <Hatch stage="result" baby={dreamSolved} progress={dreamDone} />,
   shop: () => <Shop tab="hats" />,
   "shop-wish": () => <Shop tab="wish" />,
   "intro-1": () => <Intro step={0} />,

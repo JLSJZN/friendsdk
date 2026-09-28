@@ -2,10 +2,11 @@
 import wildData from "../../games/rare-breeds/data/wild-friends.json";
 import gameJson from "../../games/rare-breeds/game.json";
 import { describeTiers, type TierRow } from "../../games/rare-breeds/src/economy.ts";
-import { breed, breedSeed } from "../../games/rare-breeds/src/genetics.ts";
+import { breed, breedSeed, lockOptions, NO_LOCKS, passableShapes } from "../../games/rare-breeds/src/genetics.ts";
 import { lineageTitles } from "../../games/rare-breeds/src/titles.ts";
+import { dreamOf, recordHatch, startProgress, stampDream, type Dream, type DreamProgress } from "../../games/rare-breeds/src/dream.ts";
 import { creatureFromRecord, type WildFriendRecord } from "../../games/rare-breeds/src/sprites.ts";
-import { FACINGS, FRAME_SIZE, TIER_ORDER, type Creature, type Dna, type Frame, type SpriteSheet, type TierId } from "../../games/rare-breeds/src/types.ts";
+import { FACINGS, FRAME_SIZE, TIER_ORDER, type Creature, type Dna, type Frame, type RowLock, type SpriteSheet, type TierId } from "../../games/rare-breeds/src/types.ts";
 import type { TierInfo } from "../../games/rare-breeds/src/ui/index.ts";
 
 const records = (wildData as { friends: WildFriendRecord[] }).friends;
@@ -87,8 +88,8 @@ export const creature = (key: string) => lookup.get(key) ?? null;
 
 // Real genetics (src/genetics.ts) for the collector-depth stories: a Mutant with a shape, its Common child that inherited
 // it, and an Echo (a backcross with 12+ of 16 rows from the player's Friend). Deterministic: the first play id that fits.
-function bred(a: Creature, b: Creature, tier: TierId, playId: number): Creature {
-  const id = BigInt(playId), result = breed({ a, b, tier, playId: id, seed: breedSeed(player.tokenId ?? 0n, a.key, b.key, id),
+function bred(a: Creature, b: Creature, tier: TierId, playId: number, locks?: readonly RowLock[]): Creature {
+  const id = BigInt(playId), result = breed({ a, b, tier, playId: id, seed: breedSeed(player.tokenId ?? 0n, a.key, b.key, id), locks,
     takenNames: new Set([...lookup.values()].filter(item => item.kind === "baby").map(item => item.name)) });
   const baby: Creature = Object.freeze({ key: `baby:${playId}`, kind: "baby", name: result.name, family: result.family, familyId: result.familyId,
     lineage: result.lineage, sheet: result.sheet, tier, parents: [a.key, b.key] as const, dna: result.dna, playId: id });
@@ -107,6 +108,25 @@ export const shaped = first(60, id => bred(player, wild[1], "mutant", id), baby 
 export const heir = first(700, id => bred(shaped, wild[4], "common", id), baby => (baby.dna?.shapes ?? []).some(shape => shape.from));
 const firstBorn = first(90, id => bred(player, wild[2], "common", id), () => true);
 export const echo = first(800, id => bred(player, firstBorn, "spotted", id), baby => lineageTitles(baby, creature, player).some(title => title.id === "echo"));
+// Gene Lab: the shaped Mutant's head shape locked in (its rows from the Mutant), plus two more rows from the mate.
+const shapeRows = passableShapes(shaped, wild[4]).length ? lockOptions(shaped, wild[4], NO_LOCKS).shapes.find(item => item.side === 0 && item.lockable)?.rows ?? [] : [];
+export const labLocks: readonly RowLock[] = NO_LOCKS.map((lock, row) => shapeRows.includes(row) ? 0 : row >= 13 ? 1 : lock);
+export const designed = bred(shaped, wild[4], "spotted", 950, labLocks);
+// A Prismatic with a head shape and a tail: two shape shortcuts in the lab.
+export const twoShapes = first(1000, id => bred(player, wild[2], "prismatic", id), baby => (baby.dna?.shapes ?? []).length >= 2);
+
+// Dream child (src/dream.ts): the fixture Friend's dream of 2026-09-28, a try that matched 9 to 12 of 16 rows, and the baby
+// that made it real (all 16 rows locked to the dream).
+export const dream: Dream = dreamOf({ date: "2026-09-28", friend: player, pool: records.map(record => creatureFromRecord(record)) })!;
+lookup.set(dream.mate.key, dream.mate);
+export const dreamTry = stampDream(dream, first(1200, id => bred(player, dream.mate, "spotted", id),
+  baby => { const matched = stampDream(dream, baby).dream?.matched ?? 0; return matched >= 9 && matched <= 12; }));
+lookup.set(dreamTry.key, dreamTry);
+export const dreamSolved = stampDream(dream, bred(player, dream.mate, "spotted", 1500, dream.mask));
+lookup.set(dreamSolved.key, dreamSolved);
+/** After the try (one egg), and after it came true (two eggs). */
+export const dreamTried: DreamProgress = recordHatch(startProgress(dream.id), dreamTry).progress;
+export const dreamDone: DreamProgress = recordHatch(dreamTried, dreamSolved).progress;
 
 export const tiers: TierInfo[] = TIER_ORDER.map((tier, index) => ({
   tier, chance: ["62%", "25%", "10%", "3%"][index], value: ["0.25 RF", "1 RF", "2.5 RF", "8 RF"][index],
