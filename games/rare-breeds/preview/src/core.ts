@@ -14,25 +14,23 @@ export const $ = <T extends Element = HTMLElement>(selector: string, root: Paren
 export const $$ = <T extends Element = HTMLElement>(selector: string, root: ParentNode = document) => [...root.querySelectorAll<T>(selector)];
 
 /**
- * Calls `frame(now, dt)` every animation frame while `element` is within the viewport (plus a margin) and the tab is
- * visible. Scroll is read inside these frames, so there is no scroll listener anywhere on the page.
+ * Calls `frame(now, dt)` every animation frame while `element` is within the viewport (plus a margin). Hidden tabs
+ * need no check of their own: browsers pause animation frames there. Scroll is read inside these frames, so there is
+ * no scroll listener anywhere on the page.
  */
 export function whileVisible(element: Element, frame: (now: number, dt: number) => void, margin = "120px") {
-  let visible = false, raf = 0, last = 0;
+  let raf = 0, last = 0;
   const tick = (now: number) => {
     const dt = last ? Math.min(64, now - last) : 16;
     last = now;
     frame(now, dt);
     raf = requestAnimationFrame(tick);
   };
-  const update = () => {
-    const run = visible && !document.hidden;
-    if (run && !raf) { last = 0; raf = requestAnimationFrame(tick); }
-    if (!run && raf) { cancelAnimationFrame(raf); raf = 0; }
-  };
-  new IntersectionObserver(entries => { visible = entries.some(entry => entry.isIntersecting); update(); }, { rootMargin: margin }).observe(element);
-  document.addEventListener("visibilitychange", update);
-  return { redraw: () => frame(performance.now(), 0) };
+  new IntersectionObserver(entries => {
+    const visible = entries.some(entry => entry.isIntersecting);
+    if (visible && !raf) { last = 0; raf = requestAnimationFrame(tick); }
+    if (!visible && raf) { cancelAnimationFrame(raf); raf = 0; }
+  }, { rootMargin: margin }).observe(element);
 }
 
 export type StepProgress = Readonly<{ index: number; t: number }>;
